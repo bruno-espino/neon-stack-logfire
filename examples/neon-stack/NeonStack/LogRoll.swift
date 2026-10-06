@@ -603,7 +603,8 @@ enum LogRollOffscreenReplay {
     static func run() throws {
         let environment = ProcessInfo.processInfo.environment
         guard let renderer = LogRollRenderer() else { throw ReplayError.unavailable }
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 1280, height: 720, mipmapped: false)
+        let (width, height) = VideoCapture.size(environment: environment, default: (1280, 720))
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]; descriptor.storageMode = .shared
         guard let texture = renderer.device.makeTexture(descriptor: descriptor) else { throw ReplayError.unavailable }
         var seed = environment["NEON_SEED"].flatMap(UInt64.init) ?? 777
@@ -611,11 +612,12 @@ enum LogRollOffscreenReplay {
         let detail = FireDetail.from(environment: environment["LOG_ROLL_PARTICLES"]).rawValue
         let duration = environment["NEON_BENCHMARK_SECONDS"].flatMap(Double.init) ?? 20
         let recorder = PerformanceRecorder()
+        let capture = try VideoCapture.from(environment: environment, width: width, height: height)
         let started = CACurrentMediaTime()
         var previous = started, frames = 0, crashes = 0
-        while CACurrentMediaTime() - started < duration {
+        while (capture?.seconds ?? CACurrentMediaTime() - started) < duration {
             autoreleasepool {
-                let now = CACurrentMediaTime(), delta = now - previous
+                let now = capture.map { started + $0.seconds } ?? CACurrentMediaTime(), delta = now - previous
                 previous = now
                 engine.advance(delta, autoplay: true)
                 if engine.gameOver { crashes += 1; seed &+= 1; engine = LogRollEngine(seed: seed) }
@@ -623,14 +625,16 @@ enum LogRollOffscreenReplay {
                 let score = engine.score
                 renderer.render(engine: engine, particles: detail, seconds: delta, target: texture) { cpu, stages in
                     recorder.record(gpuStages: stages, frameMilliseconds: delta * 1000, cpuMilliseconds: cpu,
-                                    score: score, width: 1280, height: 720, workload: "offscreen", particles: detail)
+                                    score: score, width: width, height: height, workload: "offscreen", particles: detail)
                     done.signal()
                 }
                 done.wait()
+                capture?.append(texture)
                 frames += 1
-                Thread.sleep(forTimeInterval: max(0, 1.0 / 60.0 - (CACurrentMediaTime() - now)))
+                if capture == nil { Thread.sleep(forTimeInterval: max(0, 1.0 / 60.0 - (CACurrentMediaTime() - now))) }
             }
         }
+        capture?.finish()
         recorder.finish()
         if let output = environment["NEON_PERF_REPORT"] {
             try OffscreenReplay.savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent()

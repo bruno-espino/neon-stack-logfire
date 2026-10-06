@@ -11,7 +11,7 @@ struct ClearAnimation {
     var title: String {
         if allClear { return "ALL CLEAR!" }
         if burned { return "LOG BURNED \(rows.count) \(rows.count == 1 ? "ROW" : "ROWS")!" }
-        return rows.count == 4 ? "FOUR ROWS!" : "\(rows.count) \(rows.count == 1 ? "LINE" : "LINES")"
+        return rows.count == 4 ? "BATCH FLUSHED!" : "FLUSHED \(rows.count) \(rows.count == 1 ? "ROW" : "ROWS")"
     }
     func uniforms(at time: Double, reducedMotion: Bool = false) -> SIMD4<Float> {
         let age = time - started

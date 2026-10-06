@@ -7,8 +7,8 @@ import Foundation
         precondition(effect.rowMask == 0xF0000 && effect.title == "ALL CLEAR!")
         precondition(effect.uniforms(at: 10).x == 0 && effect.uniforms(at: 12).x == -1)
         precondition(effect.uniforms(at: 10.2, reducedMotion: true).w == 1)
-        precondition(ClearAnimation(rows: [19], allClear: false, started: 0).title == "1 LINE")
-        precondition(ClearAnimation(rows: [16, 17, 18, 19], allClear: false, started: 0).title == "FOUR ROWS!")
+        precondition(ClearAnimation(rows: [19], allClear: false, started: 0).title == "FLUSHED 1 ROW")
+        precondition(ClearAnimation(rows: [16, 17, 18, 19], allClear: false, started: 0).title == "BATCH FLUSHED!")
         let burn = ClearAnimation(rows: [18, 19], allClear: false, started: 0, burned: true)
         precondition(burn.title == "LOG BURNED 2 ROWS!" && burn.rowMask == (1 << 31 | 0xC0000), "Burned rows must flag fire")
         for cue in SoundCue.allCases {

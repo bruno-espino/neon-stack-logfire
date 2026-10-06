@@ -3,6 +3,7 @@ import QuartzCore
 import ImageIO
 import UniformTypeIdentifiers
 import os
+import AVFoundation
 
 enum ReplayError: Error { case unavailable }
 
@@ -18,8 +19,9 @@ enum OffscreenReplay {
         descriptor.fragmentFunction = library.makeFunction(name: "neonStack")
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         let pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        let (width, height) = VideoCapture.size(environment: environment, default: (600, 1200))
         let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                                                                         width: 600, height: 1200, mipmapped: false)
+                                                                         width: width, height: height, mipmapped: false)
         textureDescriptor.usage = [.renderTarget, .shaderRead]
         textureDescriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: textureDescriptor) else { throw ReplayError.unavailable }
@@ -33,14 +35,15 @@ enum OffscreenReplay {
         let detail = mode == "aurora" ? min(48, max(1, environment["NEON_AURORA_LAYERS"].flatMap(Int.init) ?? 24)) : 0
         let recorder = PerformanceRecorder()
         let signposter = OSSignposter(subsystem: "dev.example.NeonStack", category: .pointsOfInterest)
+        let capture = try VideoCapture.from(environment: environment, width: width, height: height)
         let started = CACurrentMediaTime()
         var previous = started
         var frame = 0
         var effect: ClearAnimation?
         var previews: Set<String> = []
-        while CACurrentMediaTime() - started < duration {
+        while (capture?.seconds ?? CACurrentMediaTime() - started) < duration {
             try autoreleasepool {
-                let now = CACurrentMediaTime()
+                let now = capture.map { started + $0.seconds } ?? CACurrentMediaTime()
                 let interval = (now - previous) * 1000
                 previous = now
                 if frame % 21 == 0 {
@@ -65,7 +68,7 @@ enum OffscreenReplay {
                       let encoder = command.makeRenderCommandEncoder(descriptor: pass) else { throw ReplayError.unavailable }
                 command.label = "NeonStack.OffscreenFrame"; encoder.label = "BoardAndGlow"
                 encoder.setRenderPipelineState(pipeline)
-                var uniforms = SIMD4<Float>(600, 1200, Float(now - started), mode == "aurora" ? 2 : (mode == "neon" ? 1 : 0))
+                var uniforms = SIMD4<Float>(Float(width), Float(height), Float(now - started), mode == "aurora" ? 2 : (mode == "neon" ? 1 : 0))
                 encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.size, index: 0)
                 engine.displayCells.withUnsafeBytes { bytes in
                     if let base = bytes.baseAddress { encoder.setFragmentBytes(base, length: bytes.count, index: 1) }
@@ -81,6 +84,7 @@ enum OffscreenReplay {
                 let cpu = (CACurrentMediaTime() - now) * 1000
                 command.commit(); command.waitUntilCompleted()
                 if command.status == .error { throw command.error ?? ReplayError.unavailable }
+                capture?.append(texture)
                 if demo != nil, frame == 10, engine.piece.burning, let output = environment["NEON_PERF_REPORT"] {
                     try savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent().appendingPathComponent("burning-log.png"))
                 }
@@ -92,12 +96,13 @@ enum OffscreenReplay {
                     }
                 }
                 recorder.record(commandBuffer: command, frameMilliseconds: interval, cpuMilliseconds: cpu,
-                                mode: mode, lines: engine.lines, score: engine.score, width: 600, height: 1200,
+                                mode: mode, lines: engine.lines, score: engine.score, width: width, height: height,
                                 workload: "offscreen", auroraLayers: detail)
                 frame += 1
-                Thread.sleep(forTimeInterval: max(0, 1.0 / 60.0 - (CACurrentMediaTime() - now)))
+                if capture == nil { Thread.sleep(forTimeInterval: max(0, 1.0 / 60.0 - (CACurrentMediaTime() - now))) }
             }
         }
+        capture?.finish()
         recorder.finish()
         if let output = environment["NEON_PERF_REPORT"] {
             try savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent().appendingPathComponent("board.png"))
@@ -119,5 +124,67 @@ enum OffscreenReplay {
         else { throw ReplayError.unavailable }
         CGImageDestinationAddImage(destination, image, nil)
         if !CGImageDestinationFinalize(destination) { throw ReplayError.unavailable }
+    }
+}
+
+/// Writes offscreen frames to an H.264 movie when `NEON_RECORD` names an output file.
+/// Recording uses a fixed 60 FPS clock, so the same seed always produces the same footage.
+final class VideoCapture {
+    static let fps = 60.0
+    private let writer: AVAssetWriter
+    private let input: AVAssetWriterInput
+    private let adaptor: AVAssetWriterInputPixelBufferAdaptor
+    private var frames: Int64 = 0
+
+    static func from(environment: [String: String], width: Int, height: Int) throws -> VideoCapture? {
+        guard let path = environment["NEON_RECORD"] else { return nil }
+        return try VideoCapture(url: URL(fileURLWithPath: path), width: width, height: height)
+    }
+
+    /// Recording size from `NEON_RECORD_SIZE` (for example `1920x1080`), or the replay's default.
+    static func size(environment: [String: String], default fallback: (Int, Int)) -> (Int, Int) {
+        guard environment["NEON_RECORD"] != nil, let parts = environment["NEON_RECORD_SIZE"]?.split(separator: "x"),
+              parts.count == 2, let width = Int(parts[0]), let height = Int(parts[1]) else { return fallback }
+        return (width, height)
+    }
+
+    init(url: URL, width: Int, height: Int) throws {
+        try? FileManager.default.removeItem(at: url)
+        writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: width * height * 12]])
+        input.expectsMediaDataInRealTime = false
+        adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height])
+        writer.add(input)
+        guard writer.startWriting() else { throw writer.error ?? ReplayError.unavailable }
+        writer.startSession(atSourceTime: .zero)
+    }
+
+    /// Seconds of footage written so far; replays use it as their clock while recording.
+    var seconds: Double { Double(frames) / Self.fps }
+
+    func append(_ texture: MTLTexture) {
+        while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.001) }
+        guard let pool = adaptor.pixelBufferPool else { return }
+        var buffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+        guard let buffer else { return }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        texture.getBytes(CVPixelBufferGetBaseAddress(buffer)!, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                         from: MTLRegionMake2D(0, 0, texture.width, texture.height), mipmapLevel: 0)
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        adaptor.append(buffer, withPresentationTime: CMTime(value: frames, timescale: CMTimeScale(Self.fps)))
+        frames += 1
+    }
+
+    func finish() {
+        input.markAsFinished()
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        print("Recorded \(frames) frames to \(writer.outputURL.path)")
     }
 }

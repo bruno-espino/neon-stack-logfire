@@ -5,9 +5,10 @@ vertex VertexOutput fullscreen(uint id [[vertex_id]]) {
     float2 points[] = {float2(-1, -1), float2(3, -1), float2(-1, 3)};
     return {float4(points[id], 0, 1), points[id]};
 }
+/// Each piece is a log level, colored like Logfire colors them: trace, debug, info, notice, warn, error, fatal.
 float3 palette(int value) {
-    float3 colors[] = {float3(0.12, 0.91, 0.96), float3(1.0, 0.83, 0.25), float3(0.72, 0.36, 1.0),
-        float3(0.26, 0.94, 0.58), float3(1.0, 0.32, 0.48), float3(1.0, 0.57, 0.24), float3(0.28, 0.52, 1.0)};
+    float3 colors[] = {float3(0.62, 0.6, 0.74), float3(0.25, 0.82, 0.9), float3(0.35, 0.6, 1.0),
+        float3(0.3, 0.85, 0.55), float3(1.0, 0.78, 0.22), float3(1.0, 0.32, 0.3), float3(0.88, 0.3, 1.0)};
     return colors[clamp(value - 1, 0, 6)];
 }
 static float stackHash(float2 p) {
@@ -24,6 +25,19 @@ static float flames(float2 p, float time) {
     float rise = stackNoise(float2(p.x * 2.2, p.y * 1.6 + time * 3.2)) * 0.65 + stackNoise(float2(p.x * 5, p.y * 4 + time * 5.5)) * 0.35;
     return smoothstep(0.35, 0.85, rise);
 }
+/// Sparks drifting up from the fire under the board. `uv` runs from the top (0) to the bottom (1).
+static float3 embers(float2 uv, float time) {
+    float3 light = 0;
+    for (int layer = 0; layer < 3; ++layer) {
+        float scale = 9 + float(layer) * 6;
+        float2 p = float2(uv.x * scale + sin(uv.y * 9 + time + float(layer)) * 0.3, (uv.y + time * (0.07 + 0.03 * float(layer))) * scale * 2);
+        float2 id = floor(p), offset = float2(stackHash(id + 31), stackHash(id + 57)) - 0.5;
+        if (stackHash(id + float(layer) * 17) < 0.8) continue;
+        float spark = smoothstep(0.12, 0.0, length((fract(p) - 0.5 - offset * 0.6) * float2(1, 0.6)));
+        light += mix(float3(1.0, 0.3, 0.05), float3(1.0, 0.75, 0.3), stackHash(id + 5)) * spark * (0.35 - 0.08 * float(layer));
+    }
+    return light * smoothstep(0.1, 1.0, uv.y);
+}
 float blockDistance(float2 p) {
     float2 q = abs(p - 0.5) - 0.35;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.055;
@@ -36,7 +50,7 @@ float3 aurora(float2 uv, float time, uint layers) {
             + 0.08 * sin(uv.x * 14 + seed * 1.7 - time * 0.24);
         float ribbon = exp(-abs(uv.y - center) * (22 + 10 * sin(seed)));
         float folds = 0.5 + 0.5 * sin(uv.x * (32 + float(i)) + seed + time * 0.4);
-        float3 tint = mix(float3(0.12, 0.8, 0.66), float3(0.58, 0.2, 0.9), 0.5 + 0.5 * sin(seed));
+        float3 tint = mix(float3(1.0, 0.42, 0.08), float3(0.9, 0.15, 0.4), 0.5 + 0.5 * sin(seed));
         light += tint * ribbon * folds;
     }
     return light * (4.0 / max(float(layers), 1.0));
@@ -49,11 +63,16 @@ fragment float4 neonStack(VertexOutput in [[stage_in]], constant float4 &state [
     int2 cell = clamp(int2(floor(grid)), int2(0), int2(9, 19));
     float2 local = fract(grid);
     bool neon = state.w > 0.5;
-    float3 color = neon ? mix(float3(0.017, 0.026, 0.05), float3(0.03, 0.055, 0.09), uv.y)
-                        : float3(0.025, 0.03, 0.04);
-    if (state.w > 1.5) color += aurora(uv, state.z, auroraLayers);
+    float3 color = neon ? mix(float3(0.03, 0.02, 0.025), float3(0.07, 0.03, 0.02), uv.y)
+                        : float3(0.035, 0.03, 0.03);
+    if (neon) {
+        // A campfire glows under the board.
+        float flicker = 0.85 + 0.15 * sin(state.z * 7.3) * sin(state.z * 3.1 + uv.x * 4);
+        color += float3(1.0, 0.33, 0.06) * exp(-(1 - uv.y) * 7) * 0.4 * flicker + embers(uv, state.z);
+    }
+    if (state.w > 1.5) color += aurora(uv, state.z, auroraLayers) * 0.6;
     float line = 1 - smoothstep(0.015, 0.035, min(min(local.x, 1-local.x), min(local.y, 1-local.y)));
-    color += line * float3(0.023, 0.037, 0.048);
+    color += line * float3(0.05, 0.035, 0.03);
     if (neon) {
         for (int y = -1; y <= 1; ++y) for (int x = -1; x <= 1; ++x) {
             int2 neighbor = cell + int2(x, y);
@@ -81,9 +100,17 @@ fragment float4 neonStack(VertexOutput in [[stage_in]], constant float4 &state [
         float3 block = wood + float3(1.0, 0.42, 0.08) * fire * (neon ? 1.9 : 0.8) + float3(1.0, 0.8, 0.4) * pow(fire, 4.0) * 0.6;
         color = mix(color, block, fill);
     } else if (value > 0) {
+        // A log record: dark card, level stripe on the left, two lines of "text".
         float fill = 1 - smoothstep(-0.015, 0.025, distance);
         float rim = 1 - smoothstep(0.01, 0.05, abs(distance));
-        float3 block = neon ? palette(value) * (0.75 + 0.3 * (1-local.y)) + rim * 0.32 : palette(value) * 0.85;
+        float3 level = palette(value);
+        float3 block = mix(float3(0.06, 0.05, 0.06), level, neon ? 0.28 : 0.22) + rim * level * (neon ? 0.7 : 0.35);
+        float stripe = step(0.2, local.x) * step(local.x, 0.3) * step(0.22, local.y) * step(local.y, 0.78);
+        float length1 = 0.62 + 0.2 * stackHash(float2(cell) + 3), length2 = 0.48 + 0.25 * stackHash(float2(cell) + 11);
+        float text = step(0.38, local.x) * (step(abs(local.y - 0.38), 0.045) * step(local.x, length1)
+                                          + step(abs(local.y - 0.62), 0.045) * step(local.x, length2));
+        block = mix(block, level * (neon ? 1.25 : 1.0), stripe);
+        block = mix(block, float3(0.92, 0.88, 0.85), text * 0.55);
         color = mix(color, block, fill);
     }
     if (neon) color *= 0.94 + 0.06 * sin(uv.y * state.y * 2.0 + state.z * 0.3);
@@ -92,7 +119,7 @@ fragment float4 neonStack(VertexOutput in [[stage_in]], constant float4 &state [
         float fade = (1 - progress) * (1 - progress);
         bool fire = (clearedRows >> 31) != 0;
         bool special = effect.z > 0.5 || effect.y == 4 || fire;
-        float3 accent = effect.z > 0.5 ? float3(1.0, 0.8, 0.3) : fire ? float3(1.0, 0.45, 0.1) : float3(0.3, 0.95, 1.0);
+        float3 accent = effect.z > 0.5 ? float3(1.0, 0.35, 0.65) : fire ? float3(1.0, 0.45, 0.1) : float3(1.0, 0.72, 0.3);
         bool cleared = (clearedRows & (1u << uint(cell.y))) != 0;
         if (effect.w > 0.5) {
             if (cleared) color = mix(color, accent, fade * 0.35);

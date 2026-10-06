@@ -13,7 +13,7 @@ struct LogLine: Identifiable, Equatable {
             switch self {
             case .info: Color(red: 0.35, green: 0.6, blue: 1.0)
             case .notice: Color(red: 0.3, green: 0.85, blue: 0.55)
-            case .warn: Color(red: 1.0, green: 0.62, blue: 0.2)
+            case .warn: Color(red: 1.0, green: 0.78, blue: 0.22)
             case .error: Color(red: 1.0, green: 0.3, blue: 0.3)
             }
         }
@@ -23,6 +23,14 @@ struct LogLine: Identifiable, Equatable {
     let level: Level
     let message: String
     let detail: String
+}
+
+/// Every piece is a log level. The colors match the board shader's palette.
+enum PieceLevel {
+    static let names = ["TRACE", "DEBUG", "INFO", "NOTICE", "WARN", "ERROR", "FATAL"]
+    static let colors: [Color] = [Color(red: 0.62, green: 0.6, blue: 0.74), Color(red: 0.25, green: 0.82, blue: 0.9),
+        Color(red: 0.35, green: 0.6, blue: 1.0), Color(red: 0.3, green: 0.85, blue: 0.55), Color(red: 1.0, green: 0.78, blue: 0.22),
+        Color(red: 1.0, green: 0.32, blue: 0.3), Color(red: 0.88, green: 0.3, blue: 1.0)]
 }
 
 final class GameState: ObservableObject {
@@ -197,7 +205,7 @@ struct GameSwitcher: View {
                 Picker("Game", selection: $selection) {
                     Text("Log Roll").tag("log-roll")
                     Text("Flappy Log").tag("flappy-log")
-                    Text("Neon Stack").tag("neon-stack")
+                    Text("Log Stack").tag("neon-stack")
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 380).padding(.top, 10)
             }
             switch selection {
@@ -212,7 +220,7 @@ struct GameSwitcher: View {
 struct GameScreen: View {
     @ObservedObject var game: GameState
     @Environment(\.accessibilityReduceMotion) private var reducedMotion
-    let cyan = Color(red: 0.2, green: 0.94, blue: 0.96)
+    let accent = Color(red: 1.0, green: 0.45, blue: 0.15)
     var body: some View {
         GeometryReader { geometry in
             let wide = geometry.size.width > 600
@@ -220,18 +228,18 @@ struct GameScreen: View {
             VStack(spacing: wide ? 22 : 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("NEON STACK").font(.system(size: wide ? 32 : 24, weight: .black, design: .monospaced)).tracking(3)
-                        Text("LOGFIRE EDITION · EVERY 8TH PIECE BURNS").font(.system(size: 10, design: .monospaced)).tracking(3).foregroundStyle(cyan)
+                        Text("LOG STACK").font(.system(size: wide ? 32 : 24, weight: .black, design: .monospaced)).tracking(3)
+                        Text("EVERY PIECE IS A LOG · EVERY 8TH BURNS").font(.system(size: 10, design: .monospaced)).tracking(3).foregroundStyle(accent)
                     }
                     Spacer()
                     if wide { renderingControls() }
                 }
                 if !wide { renderingControls() }
                 if game.renderMode == "aurora" {
-                    Picker("Aurora detail", selection: $game.auroraLayers) {
+                    Picker("Blaze detail", selection: $game.auroraLayers) {
                         Text("Low").tag(8); Text("Medium").tag(24); Text("High").tag(48)
                     }.pickerStyle(.segmented).frame(maxWidth: 300).disabled(game.benchmark)
-                        .accessibilityLabel("Aurora detail")
+                        .accessibilityLabel("Blaze detail")
                 }
                 if !wide {
                     HStack { stat("SCORE", game.engine.score); Spacer(); stat("LINES", game.engine.lines)
@@ -245,11 +253,12 @@ struct GameScreen: View {
                     if wide {
                         VStack(alignment: .leading, spacing: 12) {
                             stat("SCORE", game.engine.score); stat("LINES", game.engine.lines); stat("LEVEL", game.engine.level)
-                            Rectangle().fill(cyan.opacity(0.2)).frame(height: 1)
+                            Rectangle().fill(accent.opacity(0.2)).frame(height: 1)
                             preview("NEXT UP", kind: game.engine.nextKind, burning: game.engine.piecesUntilFire == 1).frame(height: 70)
                             preview(holdTitle, kind: game.engine.heldKind).frame(height: 70)
                             fireCountdown
                             Spacer()
+                            levelLegend
                             Text("← →  MOVE\n↑     ROTATE\n↓     SOFT DROP\nSPACE HARD DROP\nC     HOLD / SWAP\nP     PAUSE\nR     RESTART\n\nBURNING LOGS BURN\nEVERY ROW THEY TOUCH")
                                 .font(.system(size: 10, design: .monospaced)).lineSpacing(4).foregroundStyle(.white.opacity(0.45))
                                 .fixedSize(horizontal: false, vertical: true)
@@ -262,17 +271,17 @@ struct GameScreen: View {
                         }
                         if game.paused || game.engine.gameOver {
                             VStack(spacing: 16) {
-                                Text(game.engine.gameOver ? "STACK COMPLETE" : "TAKE A BREATH")
+                                Text(game.engine.gameOver ? "STACK OVERFLOW" : "TAKE A BREATH")
                                     .font(.system(size: 20, weight: .black, design: .monospaced))
-                                Text("Score \(game.engine.score)").foregroundStyle(cyan)
+                                Text("Score \(game.engine.score)").foregroundStyle(accent)
                                 Button(game.engine.gameOver ? "Play again" : "Resume") {
                                     game.action(game.engine.gameOver ? "restart" : "pause")
-                                }.buttonStyle(.borderedProminent).tint(cyan).foregroundStyle(.black)
+                                }.buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black)
                             }.padding(30).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                         }
                     }.aspectRatio(0.5, contentMode: .fit)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(cyan.opacity(0.3), lineWidth: 1))
-                        .shadow(color: cyan.opacity(game.glow ? 0.25 : 0), radius: 25)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.3), lineWidth: 1))
+                        .shadow(color: accent.opacity(game.glow ? 0.25 : 0), radius: 25)
                     if showFeed { LogFeed(lines: game.logFeed).frame(width: 230) }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 if !showFeed {
@@ -285,7 +294,7 @@ struct GameScreen: View {
                     control(game.paused ? "▶" : "Ⅱ", "pause")
                 }
                 HStack {
-                    Circle().fill(cyan).frame(width: 5, height: 5)
+                    Circle().fill(accent).frame(width: 5, height: 5)
                     Text(game.benchmark ? "FIXED-SEED REPLAY" : "METAL · LIVE")
                     Spacer()
                     Button { game.toggleSound() } label: {
@@ -296,11 +305,21 @@ struct GameScreen: View {
                     Text(String(format: "%.0f FPS / %.2f ms GPU", game.fps, game.gpuMilliseconds))
                 }.font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.45))
             }.padding(wide ? 30 : 18).foregroundStyle(.white)
-                .background(LinearGradient(colors: [Color(red: 0.04, green: 0.06, blue: 0.12), .black],
+                .background(LinearGradient(colors: [Color(red: 0.12, green: 0.05, blue: 0.04), .black],
                                            startPoint: .topLeading, endPoint: .bottomTrailing))
                 .onAppear { game.reducedMotion = reducedMotion }
                 .onChange(of: reducedMotion) { _, value in game.reducedMotion = value }
         }
+    }
+    var levelLegend: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], spacing: 5) {
+            ForEach(0..<7, id: \.self) { kind in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 1).fill(PieceLevel.colors[kind]).frame(width: 3, height: 9)
+                    Text(PieceLevel.names[kind]).foregroundStyle(PieceLevel.colors[kind].opacity(0.85))
+                }
+            }
+        }.font(.system(size: 9, weight: .semibold, design: .monospaced)).accessibilityHidden(true)
     }
     var holdTitle: String {
         if game.engine.holdUsed { return "HOLD · DROP TO SWAP" }
@@ -314,27 +333,30 @@ struct GameScreen: View {
     }
     func preview(_ title: String, kind: Int?, burning: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.55))
+            HStack(spacing: 6) {
+                Text(title).foregroundStyle(.white.opacity(0.55))
+                if let kind { Text(burning ? "BURNING" : PieceLevel.names[kind]).foregroundStyle(burning ? accent : PieceLevel.colors[kind]) }
+            }.font(.system(size: 9, design: .monospaced))
             PiecePreview(kind: kind, burning: burning).opacity(title.hasPrefix("HOLD") && game.engine.holdUsed ? 0.45 : 1)
         }.accessibilityElement(children: .combine)
-            .accessibilityLabel("\(title). \(kind.map { ["I", "O", "T", "S", "Z", "L", "J"][$0] + " piece" } ?? "Empty")")
+            .accessibilityLabel("\(title). \(kind.map { PieceLevel.names[$0].capitalized + " piece" } ?? "Empty")")
     }
     func renderingControls() -> some View {
         VStack(alignment: .trailing, spacing: 6) {
             Picker("Rendering mode", selection: $game.renderMode) {
                 Text("Classic").tag("classic")
-                Text("Neon").tag("neon")
-                Text("Aurora").tag("aurora")
+                Text("Glow").tag("neon")
+                Text("Blaze").tag("aurora")
             }.pickerStyle(.segmented).labelsHidden().frame(width: 270).disabled(game.benchmark)
-            Text(game.renderMode == "aurora" ? "LIVING LIGHTS + GLOW" : (game.glow ? "GLOW + SCANLINES" : "FLAT COLORS"))
+            Text(game.renderMode == "aurora" ? "HEAT HAZE + EMBERS" : (game.glow ? "CAMPFIRE + EMBERS" : "FLAT COLORS"))
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(game.glow ? cyan : .white.opacity(0.65))
+                .foregroundStyle(game.glow ? accent : .white.opacity(0.65))
         }
     }
     func stat(_ title: String, _ value: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.system(size: 10, design: .monospaced)).tracking(2).foregroundStyle(.white.opacity(0.45))
-            Text(String(format: "%02d", value)).font(.system(size: 27, weight: .bold, design: .monospaced)).foregroundStyle(cyan)
+            Text(String(format: "%02d", value)).font(.system(size: 27, weight: .bold, design: .monospaced)).foregroundStyle(accent)
         }
     }
     func control(_ label: String, _ action: String) -> some View {
@@ -355,7 +377,8 @@ struct ClearBanner: View {
     var body: some View {
         Text(effect.title)
             .font(.system(size: effect.allClear ? 27 : 22, weight: .black, design: .monospaced))
-            .tracking(2).foregroundStyle(effect.allClear ? Color.yellow : Color.cyan)
+            .tracking(2).foregroundStyle(effect.allClear ? Color(red: 1.0, green: 0.35, blue: 0.65)
+                                       : Color(red: 1.0, green: effect.burned ? 0.5 : 0.75, blue: 0.3))
             .padding(16).background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 12))
             .scaleEffect(reducedMotion ? 1 : (fading ? 1.08 : 0.9)).opacity(fading ? 0 : 1)
             .onAppear {
@@ -415,7 +438,6 @@ struct PiecePreview: View {
                              at: CGPoint(x: size.width / 2, y: size.height / 2))
                 return
             }
-            let colors: [Color] = [.cyan, .yellow, .purple, .green, .red, .orange, .blue]
             let cells = Piece(kind: kind, x: 0, y: 0).cells
             let minX = cells.map(\.x).min() ?? 0; let minY = cells.map(\.y).min() ?? 0
             let columns = (cells.map(\.x).max() ?? 0) - minX + 1
@@ -425,7 +447,11 @@ struct PiecePreview: View {
             for cell in cells {
                 let rect = CGRect(x: origin.x + CGFloat(cell.x - minX) * unit, y: origin.y + CGFloat(cell.y - minY) * unit,
                                   width: unit - 2, height: unit - 2)
-                context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(burning ? .orange : colors[kind]))
+                let color = burning ? Color.orange : PieceLevel.colors[kind]
+                context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(color.opacity(0.3)))
+                context.stroke(Path(roundedRect: rect, cornerRadius: 4), with: .color(color.opacity(0.8)), lineWidth: 1)
+                context.fill(Path(CGRect(x: rect.minX + rect.width * 0.2, y: rect.minY + rect.height * 0.22,
+                                         width: max(2, rect.width * 0.1), height: rect.height * 0.56)), with: .color(color))
             }
         }.background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
     }
