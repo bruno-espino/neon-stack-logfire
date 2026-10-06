@@ -51,19 +51,22 @@ final class PerformanceRecorder {
     private var frames: [Double] = []
     private var cpu: [Double] = []
     private var gpu: [Double] = []
+    private var stageSamples: [String: [Double]] = [:]
     private var latest: (Double, Double)?
     private var cohort: String?
     private let output = ProcessInfo.processInfo.environment["NEON_PERF_REPORT"]
 
     func record(frameMilliseconds: Double, cpuMilliseconds: Double, gpuMilliseconds: Double?,
-                mode: String, lines: Int, score: Int, width: Int, height: Int, workload: String = "onscreen", auroraLayers: Int = 0) {
+                mode: String, lines: Int, score: Int, width: Int, height: Int, workload: String = "onscreen", auroraLayers: Int = 0,
+                game: String = "neon-stack", particles: Int = 0, stages: [String: Double] = [:]) {
         let now = CACurrentMediaTime()
         guard now - started >= 2 else { return }
         lock.lock()
-        let currentCohort = "\(mode)/\(workload)/\(width)/\(height)/\(auroraLayers)"
+        let currentCohort = "\(game)/\(mode)/\(workload)/\(width)/\(height)/\(auroraLayers)/\(particles)"
         if cohort != currentCohort {
             cohort = currentCohort
             frames.removeAll(keepingCapacity: true); cpu.removeAll(keepingCapacity: true); gpu.removeAll(keepingCapacity: true)
+            stageSamples.removeAll()
             windowStarted = now
 #if canImport(StateReporting)
             if #available(macOS 27.0, iOS 27.0, *) { NativeGameState.report(mode: mode, workload: workload, auroraLayers: auroraLayers) }
@@ -72,6 +75,7 @@ final class PerformanceRecorder {
         if windowStarted == 0 { windowStarted = now }
         frames.append(frameMilliseconds); cpu.append(cpuMilliseconds)
         if let value = gpuMilliseconds, value > 0 { gpu.append(value) }
+        for (stage, value) in stages where value > 0 { stageSamples[stage, default: []].append(value) }
         guard now - windowStarted >= 5 else { lock.unlock(); return }
         let elapsed = now - windowStarted
         let fps = 1000 / (frames.reduce(0, +) / Double(frames.count))
@@ -86,10 +90,13 @@ final class PerformanceRecorder {
             "frames_over_25_ms": frames.filter { $0 > 25 }.count,
             "lines": lines, "score": score, "drawable_width": width, "drawable_height": height,
             "thermal_state": ProcessInfo.processInfo.thermalState.rawValue,
-            "workload": workload, "aurora_layers": auroraLayers,
+            "workload": workload, "aurora_layers": auroraLayers, "game": game,
         ]
+        if particles > 0 { data["particles"] = particles }
         if !gpu.isEmpty { data["gpu_command_p95_ms"] = percentile(gpu, 0.95) }
+        for (stage, values) in stageSamples where !values.isEmpty { data["gpu_\(stage)_p95_ms"] = percentile(values, 0.95) }
         frames.removeAll(keepingCapacity: true); cpu.removeAll(keepingCapacity: true); gpu.removeAll(keepingCapacity: true)
+        stageSamples.removeAll()
         windowStarted = now
         lock.unlock()
         let snapshot = data

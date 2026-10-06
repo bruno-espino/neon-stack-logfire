@@ -94,6 +94,7 @@ final class GameState: ObservableObject {
 
 @main struct NeonStackApp: App {
     @StateObject private var game = GameState()
+    @StateObject private var flappy = FlappyState()
     init() {
         if ProcessInfo.processInfo.environment["NEON_OFFSCREEN"] == "1" {
             do { try OffscreenReplay.run(); exit(0) }
@@ -102,7 +103,7 @@ final class GameState: ObservableObject {
     }
     var body: some Scene {
         WindowGroup {
-            GameScreen(game: game)
+            GameSwitcher(game: game, flappy: flappy)
                 .onAppear {
                     #if os(macOS)
                     if game.benchmark,
@@ -115,6 +116,25 @@ final class GameState: ObservableObject {
                 .frame(minWidth: 720, idealWidth: 850, minHeight: 780, idealHeight: 850)
                 #endif
         }
+    }
+}
+
+/// Chooses between Neon Stack and Flappy Log. Benchmarks pick the game with NEON_GAME and hide the switcher.
+struct GameSwitcher: View {
+    @ObservedObject var game: GameState
+    let flappy: FlappyState
+    @State private var selection = ProcessInfo.processInfo.environment["NEON_GAME"]
+        ?? (ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1" ? "neon-stack" : "flappy-log")
+    var body: some View {
+        VStack(spacing: 0) {
+            if !game.benchmark {
+                Picker("Game", selection: $selection) {
+                    Text("Flappy Log").tag("flappy-log")
+                    Text("Neon Stack").tag("neon-stack")
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 260).padding(.top, 10)
+            }
+            if selection == "flappy-log" { FlappyScreen(game: flappy) } else { GameScreen(game: game) }
+        }.background(Color.black)
     }
 }
 
