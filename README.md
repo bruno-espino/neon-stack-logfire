@@ -81,7 +81,8 @@ logfire-apple profile --seconds 5
 Capture collects Apple's retained history and saves recordings and symbols locally.
 Logfire receives selected summaries and capture metadata.
 Attach streams selected native measurements and whole-host load during its bounded observation period.
-Profile records a short Instruments interval and exports selected CPU samples and the top 20 leaf functions.
+Profile records a short Time Profiler interval and exports selected CPU samples and the top 20 leaf functions.
+For automated scenarios, `run --profile cpu` records during the app run, then exports and decodes the recording after the runner stops the app.
 Use a Release build for optimization. The full `.trace` and symbols remain local.
 All three commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.

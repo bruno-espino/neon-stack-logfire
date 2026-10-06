@@ -6,7 +6,13 @@ import Darwin
 
 enum CompanionError: Error, CustomStringConvertible {
     case message(String)
-    var description: String { if case .message(let value) = self { return value }; return "Native command failed" }
+    case interrupted(Int32)
+    var description: String {
+        switch self {
+        case .message(let value): return value
+        case .interrupted(let code): return "Apple command interrupted (exit \(code))"
+        }
+    }
 }
 
 struct NativeSession {
@@ -53,6 +59,11 @@ struct NativeSession {
 }
 
 enum HostCommand {
+    static func requireSuccess(_ code: Int32, message: String) throws {
+        if [130, 143].contains(code) { throw CompanionError.interrupted(code) }
+        guard code == 0 else { throw CompanionError.message(message) }
+    }
+
     static func run(_ executable: String, _ arguments: [String], output: URL, errors: URL,
                     seconds: Double, stopAtDeadline: Bool = false, onTick: (() throws -> Bool)? = nil,
                     onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {

@@ -157,8 +157,10 @@ enum ScenarioRun {
         var readinessObservation = "polled"
         var profiled = false
         var capturedGPU: CapturedGPUWorkload?
+        var capturedCPU: CapturedCPURecording?
         var appDuration: Double = 0
         var analysisDuration: Double = 0
+        var analysisInterruption: Int32?
         var retained: [String: Any] = [:]
         var finalCode: Int32 = 127
         let began = ProcessInfo.processInfo.systemUptime
@@ -203,12 +205,15 @@ enum ScenarioRun {
                             var args = ["--sessions", sessions.path, "--output", folder.appendingPathComponent("profile").path]
                             if options.local { args += ["--no-telemetry"] }
                             do {
+                                let remaining = max(0.1, options.seconds - (ProcessInfo.processInfo.systemUptime - began))
                                 if profile == "cpu" {
-                                    if try InstrumentsProfile.run(args + ["--seconds", "5"]) != 0 {
-                                        issues.append("Optional CPU profile is incomplete. Inspect retained profile evidence.")
+                                    capturedCPU = try client.withSpan("development.cpu.record") {
+                                        try InstrumentsProfile.record(args + ["--seconds", "5"], timeout: remaining, onTick: {
+                                            host.tick(client: client, context: context.merging(["process.pid": pid]) { _, value in value })
+                                            return false
+                                        })
                                     }
                                 } else {
-                                    let remaining = max(0.1, options.seconds - (ProcessInfo.processInfo.systemUptime - began))
                                     capturedGPU = try client.withSpan("development.gpu.capture") {
                                         try GPUCapture.capture(GPUCaptureOptions(args + ["--profile"]), seconds: min(30, remaining))
                                     }
@@ -221,14 +226,34 @@ enum ScenarioRun {
                     })
             } catch { failure = "Run identity or scenario protocol failed. Inspect retained SDK marker, status, and console output." }
             appDuration = ProcessInfo.processInfo.systemUptime - began
-            // The runner reaps the app before GPU replay uses the device.
-            if let capturedGPU {
+            // The runner reaps the app before either profiler analyzes its recording.
+            let interruptedRun = !result.requestedStop && [130, 143].contains(result.exitCode)
+            if interruptedRun, capturedCPU != nil || capturedGPU != nil {
+                issues.append("Profile analysis was skipped after run interruption. The recording remains local.")
+            }
+            if let capturedCPU, !interruptedRun {
+                let analysisStarted = ProcessInfo.processInfo.systemUptime
+                do {
+                    let code = try client.withSpan("development.cpu.analysis") { try InstrumentsProfile.analyze(capturedCPU) }
+                    if code != 0 {
+                        issues.append("Optional CPU profile is incomplete. Inspect retained profile evidence.")
+                    }
+                } catch CompanionError.interrupted(let code) {
+                    analysisInterruption = code
+                    issues.append("CPU analysis was interrupted. The recording remains local.")
+                } catch { issues.append("Optional CPU analysis failed. Inspect retained profile evidence.") }
+                analysisDuration = ProcessInfo.processInfo.systemUptime - analysisStarted
+            }
+            if let capturedGPU, !interruptedRun {
                 let analysisStarted = ProcessInfo.processInfo.systemUptime
                 do {
                     let code = try client.withSpan("development.gpu.analysis") { try GPUCapture.analyze(capturedGPU) }
                     if code != 0 {
                         issues.append("Optional GPU profile is incomplete. Inspect retained profile evidence.")
                     }
+                } catch CompanionError.interrupted(let code) {
+                    analysisInterruption = code
+                    issues.append("GPU analysis was interrupted. The recording remains local.")
                 } catch { issues.append("Optional GPU analysis failed. Inspect retained profile evidence.") }
                 analysisDuration = ProcessInfo.processInfo.systemUptime - analysisStarted
             }
@@ -262,7 +287,8 @@ enum ScenarioRun {
             try host.write(to: folder.appendingPathComponent("host-samples.json"))
             let processCode = result.requestedStop && [0, 143].contains(result.exitCode) ? 0 : result.exitCode
             let code: Int32
-            if result.timedOut || completedLate { code = 124 }
+            if let analysisInterruption { code = analysisInterruption }
+            else if result.timedOut || completedLate { code = 124 }
             else if failure != nil { code = [130, 143].contains(processCode) ? processCode : 1 }
             else { code = ScenarioSignal.exitCode(result: result, signal: signal, windows: windows.count, required: definition.requireFrameWindows, issues: issues) }
             let report: [String: Any] = context.merging([
@@ -283,7 +309,10 @@ enum ScenarioRun {
             runSpan?.setAttribute(key: "profile.analysis.duration_seconds", value: analysisDuration)
             runSpan?.setAttribute(key: "run.exit_code", value: Int(code))
             runSpan?.setAttribute(key: "scenario.phase", value: signal?.phase ?? "missing")
-            if code != 0 { runSpan?.status = .error(description: code == 2 ? "Requested observation is incomplete" : "Development scenario failed") }
+            if code != 0 {
+                runSpan?.status = .error(description: analysisInterruption != nil ? "Profiler analysis interrupted" :
+                    code == 2 ? "Requested observation is incomplete" : "Development scenario failed")
+            }
             client.event("development.run.summary", attributes: Companion.attributes(context.merging([
                 "run.exit_code": code, "scenario.phase": signal?.phase ?? "missing", "frame.windows": windows.count,
                 "run.observation_gaps": issues.count, "profile.requested": options.profile ?? "none",

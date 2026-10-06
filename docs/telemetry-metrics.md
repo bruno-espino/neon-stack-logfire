@@ -86,3 +86,24 @@ The particle fragment shader represented about 30% of shader cost, with zero rep
 Encoder and shader rankings describe different scopes. Their percentages must not be added together.
 A 262,144-particle scenario timed out even without profiling.
 That heavier case needs its own workload budget. We did not increase the default test deadline to hide it.
+
+## CPU recording and offline analysis
+
+`run --profile cpu` requests Time Profiler samples from the ready app.
+The companion continues host sampling through the recording command's existing poll callback.
+The runner then stops and reaps the app.
+The companion exports XML from the saved recording, validates the original PID and actual interval, and publishes the selected CPU summary.
+The original session/build identity, binary hash, and available symbols remain attached.
+
+The live experiment returned 854 running samples and twenty ranked leaf functions.
+It retained eleven host samples inside the recording span. The largest host sampling gap was 1.05 seconds.
+The recording command took 11.3 seconds, including setup and artifact finalization.
+Its actual recording interval was 5.83 seconds for a five-second request.
+The app lifetime was 18.9 seconds. Offline analysis took another 4.2 seconds.
+Both phase spans and all selected function logs joined the run trace in Logfire.
+These timings come from one development Mac. They are not guaranteed timing budgets.
+
+The scenario and CPU profile tables expose app lifetime, recording-command cost, actual recording duration, and offline-analysis cost separately.
+The scenario deadline remains twenty seconds. Incomplete requested evidence returns an observation gap rather than a fabricated successful profile.
+Standalone `profile` still leaves the manually launched app running.
+Profiling and decoding remain optional. Ordinary development checks do not invoke either phase.

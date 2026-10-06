@@ -387,3 +387,45 @@ Exercise this package on the collaborator's Mac with the same short scenario.
 Use the new queue/CPU distinction before choosing expensive profiler collection.
 Consider splitting CPU recording from offline decoding when continuous host sampling matters.
 Keep full wait timelines and shader compilation diagnosis in targeted native captures.
+
+2026-10-06 CPU recording and offline analysis follow-up
+
+Why
+CPU recording needs the live process. XML export, decoding, ranking, checksums, and publication need only the retained artifact and identity.
+Processing the artifact during gameplay competes with the app and hides profiler overhead inside its lifetime.
+
+Changed
+Split InstrumentsProfile into recording and analysis phases. Standalone profile retains its single-command interface.
+Scenario run records after readiness, stops/reaps its owned app, then analyzes the recording.
+The capture retains the original session/build identity, binary hash, trace, and available symbols.
+Added development.cpu.record and development.cpu.analysis spans under the run root.
+The recording command's existing poll callback now collects one-second host samples. No observer, daemon, or background command runner was added.
+The recorder is bounded by the remaining scenario budget. Export keeps its separate existing command bounds.
+Scenario and CPU profile dashboard tables expose app lifetime, recording cost, actual interval, and offline analysis cost.
+
+Experiments
+Game Performance Overview did not finish its five-second recording and artifact finalization within the remaining short-run budget.
+The game passed, but the requested profile was correctly marked incomplete. We did not extend the default deadline.
+Selected Time Profiler for the CPU command. Apple's responsiveness guidance starts CPU-busy investigations with Time Profiler.
+Broader Game Performance Overview remains useful in Instruments for longer combined CPU/Metal investigations.
+Time Profiler passed the normal scenario with 18.9 seconds of app lifetime and 4.2 seconds of offline analysis.
+Its actual recording interval was 5.83 seconds. Recording-command wall time was 11.3 seconds.
+Logfire received 854 running samples, forty-two unresolved samples, and twenty ranked leaf functions.
+Eleven host samples belong to the recording span. The maximum live host gap was 1.05 seconds.
+The recording and analysis spans and selected CPU logs share the run trace.
+App and runner telemetry reported zero export failures.
+
+Cancellation and validation
+Interrupting recording returns 130 and reaps the owned app.
+The first offline-analysis interrupt incorrectly returned 2. Added explicit profiler interruption handling to preserve 130/143.
+CPU and GPU analysis use the same exit-status handling. An interrupted run skips subsequent analysis and retains local recordings.
+Fifty Swift tests pass. The two modified hosted dashboard queries pass and match the reusable template.
+The installed Release companion passes with 1,217 CPU samples, twenty ranked functions, and zero delivery failures.
+Its app lifetime is 18.5 seconds. Offline analysis takes 4.3 seconds.
+CPU recording and analysis interrupts return 130 and leave no owned app alive. The GPU analysis interrupt also returns 130.
+
+Limits
+Recording still has startup/finalization cost and perturbs the app. These recordings are diagnostic, not baselines.
+App completion and profiler artifact availability remain separate outcomes.
+Standalone profile leaves the user's existing app running. Only the scenario runner stops an app it launched.
+System Trace, Swift Concurrency, and CPU hardware counters remain targeted investigations outside this CPU sampling summary.

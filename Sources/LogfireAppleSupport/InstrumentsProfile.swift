@@ -111,6 +111,16 @@ enum InstrumentsXML {
     }
 }
 
+/// The saved recording retains process identity after the app stops.
+struct CapturedCPURecording {
+    let options: Companion.Options
+    let session: NativeSession
+    let folder: URL
+    let trace: URL
+    let binaryHash: String
+    let commandDuration: Double
+}
+
 enum InstrumentsProfile {
     static func timeLimit(seconds: Double) -> String { "\(Int((seconds * 1000).rounded()))ms" }
 
@@ -119,6 +129,11 @@ enum InstrumentsProfile {
             print("Usage: logfire-apple profile [--seconds 5] [--service NAME] [--no-telemetry] [--sessions DIRECTORY] [--output DIRECTORY]")
             return 0
         }
+        do { return try analyze(record(arguments)) }
+        catch CompanionError.interrupted(let code) { return code }
+    }
+
+    static func record(_ arguments: [String], timeout: Double? = nil, onTick: (() throws -> Bool)? = nil) throws -> CapturedCPURecording {
         guard !arguments.contains("--last") else { throw CompanionError.message("CPU profiling records a live interval. Use --seconds instead of --last.") }
         var options = try Companion.parse(arguments)
         if !arguments.contains("--seconds") { options.seconds = 5 }
@@ -134,18 +149,28 @@ enum InstrumentsProfile {
             try FileManager.default.copyItem(at: symbols, to: folder.appendingPathComponent(symbols.lastPathComponent))
         }
         try session.validate()
-        let result = try HostCommand.run("/usr/bin/xcrun", ["xctrace", "record", "--template", "Game Performance Overview",
+        let began = ProcessInfo.processInfo.systemUptime
+        let result = try HostCommand.run("/usr/bin/xcrun", ["xctrace", "record", "--template", "Time Profiler",
             "--attach", String(session.pid), "--time-limit", timeLimit(seconds: options.seconds), "--output", trace.path, "--no-prompt"],
-            output: folder.appendingPathComponent("record.stdout"), errors: folder.appendingPathComponent("record.stderr"), seconds: options.seconds + 60)
-        guard result == 0 else { throw CompanionError.message("Instruments recording failed. Inspect \(folder.path)") }
+            output: folder.appendingPathComponent("record.stdout"), errors: folder.appendingPathComponent("record.stderr"),
+            seconds: min(options.seconds + 60, timeout ?? .infinity), onTick: onTick)
+        try HostCommand.requireSuccess(result, message: "Instruments recording failed. Inspect \(folder.path)")
+        guard FileManager.default.fileExists(atPath: trace.path) else { throw CompanionError.message("Instruments recording failed. Inspect \(folder.path)") }
         if kill(session.pid, 0) == 0 { try session.validate() }
+        return CapturedCPURecording(options: options, session: session, folder: folder, trace: trace, binaryHash: binaryHash,
+            commandDuration: ProcessInfo.processInfo.systemUptime - began)
+    }
+
+    static func analyze(_ capture: CapturedCPURecording) throws -> Int32 {
+        let options = capture.options, session = capture.session, folder = capture.folder, trace = capture.trace
+        let analysisStarted = ProcessInfo.processInfo.systemUptime
         let toc = folder.appendingPathComponent("toc.xml")
         let cpu = folder.appendingPathComponent("cpu.xml")
         for (output, selection) in [(toc, ["--toc"]), (cpu, ["--xpath", "/trace-toc/run[@number='1']/data/table[@schema='time-profile']"])] {
             let status = try HostCommand.run("/usr/bin/xcrun", ["xctrace", "export", "--input", trace.path] + selection + ["--output", output.path],
                 output: folder.appendingPathComponent(output.lastPathComponent + ".stdout"),
                 errors: folder.appendingPathComponent(output.lastPathComponent + ".stderr"), seconds: 30)
-            guard status == 0 else { throw CompanionError.message("Instruments export failed. Recording remains at \(trace.path)") }
+            try HostCommand.requireSuccess(status, message: "Instruments export failed. Recording remains at \(trace.path)")
         }
         let recording = try InstrumentsXML.recording(Data(contentsOf: toc), pid: session.pid)
         var summary = CPUProfileSummary()
@@ -154,8 +179,10 @@ enum InstrumentsProfile {
         catch { summaryAvailable = false; print("CPU summary unavailable. Inspect the retained export at \(cpu.path)") }
         var details: [String: Any] = recording.merging([
             "capture.id": folder.lastPathComponent, "capture.path": folder.path, "capture.storage": "local",
-            "capture.kind": "instruments-cpu", "capture.tool": "apple.xctrace", "binary.sha256": binaryHash,
-            "profile.template": "Game Performance Overview", "profile.requested_seconds": options.seconds,
+            "capture.kind": "instruments-cpu", "capture.tool": "apple.xctrace", "binary.sha256": capture.binaryHash,
+            "profile.record.command_duration_seconds": capture.commandDuration,
+            "profile.analysis.duration_seconds": ProcessInfo.processInfo.systemUptime - analysisStarted,
+            "profile.template": "Time Profiler", "profile.requested_seconds": options.seconds,
             "profile.instrumented": true, "measurement.source": "apple.xctrace.time-profile",
             "measurement.scope": "process_cpu_samples", "cpu.samples": summary.samples,
             "cpu.sampled_weight_ms": summary.weightNanoseconds / 1_000_000,

@@ -144,3 +144,11 @@ Automated runs propagate W3C trace context into the app. Builds remain separate 
 Run summaries remain children of their run. Native result files remain local.
 The dashboard has 20 panels, including raw distributions, queue stalls, CPU, GPU stages, and task totals.
 The short development check still excludes the Simulator and optional profiler captures.
+
+CPU profiling stages
+run --profile cpu records targeted Time Profiler samples after readiness.
+Host sampling continues through the existing command poll callback during recording.
+The runner stops/reaps the app, then exports and decodes the saved trace and sends selected CPU records.
+CPU record/analysis spans expose separate wall costs. The original session/build identity and symbols remain attached.
+Requested sampling duration differs from recording setup/finalization wall time and the actual recorded interval.
+Standalone profile keeps its single-command interface and leaves the manually launched app running.
