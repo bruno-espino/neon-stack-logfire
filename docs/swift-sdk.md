@@ -198,3 +198,39 @@ Handle file-write failures. The runner treats absent assertions as failures.
 Keep details compact. The status limit is 64 KiB.
 All SDK spans include the supplied scenario ID during a runner launch.
 The [native runner guide](native-workflow.md#run-an-app-owned-scenario) shows the command and JSON definition.
+
+## Native development metrics and responsiveness
+
+A configured client exports traces and metrics through the same runtime credentials.
+The metrics endpoint is `/v1/metrics`. The reader exports every five seconds.
+`client.metrics?.delivery` reports acknowledged and failed instrument exports.
+These counts describe attempted exports, not unique observations or durable delivery.
+
+`FrameRecorder` records individual frame intervals, preparation durations, and GPU command durations into delta histograms.
+It records these values after a complete window, outside the renderer callback.
+Incomplete warmup or final windows do not enter these histograms.
+Histograms have finer bounds around 60 Hz and 120 Hz frame budgets.
+Histogram quantiles remain estimates. Window reports retain their exact sampled percentiles.
+
+Use `RenderContext(..., gpuTimeScope: .commandBufferSum)` for a sum of multiple command buffers.
+A command-buffer sum is not display latency or hardware utilization.
+Metric labels retain the GPU timing scope.
+
+Enable `AppleMonitoring(responsiveness: true)` to observe the main queue independently.
+The monitor posts at most one probe every 100 milliseconds.
+A stalled queue cannot accumulate more than one outstanding probe.
+Completed probe delays enter `app.main_queue.delay`.
+`app.main_queue.pending_age.max` records the oldest pending probe age within each five-second window.
+The monitor also samples main-thread CPU time and macOS process CPU time and footprint.
+CPU ratios use one core and wall time. Process CPU can exceed 1.
+Queue delay includes OS scheduling and does not identify the function or resource responsible.
+The first window can include startup. Physical iOS behavior remains unverified.
+
+`event` emits a Logfire log record. `window` emits a measurement log at its end time.
+Window records retain `measurement.started_at` and `measurement.ended_at`.
+`withSpan` remains a timed operation with matching native signposts.
+Automated app runs inherit the launcher's W3C parent context across threads.
+The runner keeps its completion summary inside the run span.
+An ordinary Command-R launch has separate operation traces and correlated session records.
+
+See `examples/responsiveness-probe` for a controlled sleep-versus-busy-work experiment.

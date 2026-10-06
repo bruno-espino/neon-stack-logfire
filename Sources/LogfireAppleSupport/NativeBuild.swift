@@ -93,8 +93,9 @@ enum NativeBuild {
                             ("-destination", "build.destination"), ("-project", "build.project"), ("-workspace", "build.workspace")] {
             if let entry = value(command, flag) { metadata[key] = ["-project", "-workspace"].contains(flag) ? URL(fileURLWithPath: entry).lastPathComponent : entry }
         }
+        metadata["build.task_timing.scope"] = "aggregate_task_totals_not_critical_path"
         if let run = options.runID { metadata["walkthrough.run_id"] = run }
-        let client = Companion.client(local: options.local, service: "logfire-apple-build")
+        let client = Companion.client(local: options.local, service: "logfire-apple-build", resource: metadata)
         var report: [String: Any] = ["schema_version": 1, "build_id": id, "metadata": metadata]
         var samples: [[String: Any]] = []; var observerErrors: [String] = []
         var host = HostSamples(); let began = ProcessInfo.processInfo.systemUptime
@@ -115,6 +116,8 @@ enum NativeBuild {
                         if now >= nextSample {
                             let sample = host.sample(elapsed: now - began)
                             samples.append(sample)
+                            if let cpu = sample["cpu_utilization"] as? Double { client.metrics?.record(.hostCPU, value: cpu) }
+                            if let memory = sample["memory_nonfree_bytes"] as? UInt64 { client.metrics?.record(.hostMemory, value: Double(memory)) }
                             client.event("xcode.host.sample", attributes: Companion.attributes(metadata.merging(sample) { _, measured in measured }))
                             nextSample = now + options.sampleInterval
                         }
@@ -144,6 +147,11 @@ enum NativeBuild {
             }
             report["duration_seconds"] = duration; report["exit_code"] = result.timedOut ? 124 : result.exitCode
             report["timings"] = parser.timings; report["warnings"] = warnings; report["errors"] = errors
+            let outcome = result.timedOut ? "timeout" : result.exitCode == 0 ? "passed" : "failed"
+            let labels: [String: LogfireAttribute] = ["build.configuration": .string(metadata["build.configuration"] as? String ?? "default"),
+                "build.cache_state": .string(options.cache), "outcome": .string(outcome)]
+            client.metrics?.record(.buildDuration, value: duration, attributes: labels)
+            client.metrics?.record(.builds, value: 1, attributes: labels)
             for (name, value) in ["build.duration_seconds": duration, "build.exit_code": Double(result.exitCode),
                                   "build.warnings": Double(warnings), "build.errors": Double(errors)] {
                 span?.setAttribute(key: name, value: value)
@@ -196,6 +204,7 @@ struct HostSamples {
             }
         }
         if status == KERN_SUCCESS {
+            result["memory_nonfree_bytes"] = ProcessInfo.processInfo.physicalMemory - min(ProcessInfo.processInfo.physicalMemory, UInt64(memory.free_count) * UInt64(vm_kernel_page_size))
             result["memory_free_bytes"] = UInt64(memory.free_count) * UInt64(vm_kernel_page_size)
             result["memory_wired_bytes"] = UInt64(memory.wire_count) * UInt64(vm_kernel_page_size)
             result["memory_compressed_bytes"] = UInt64(memory.compressor_page_count) * UInt64(vm_kernel_page_size)

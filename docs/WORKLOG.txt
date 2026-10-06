@@ -339,3 +339,51 @@ Next
 Add the independent main-thread measurement after its timing contract is validated.
 Consider asynchronous profiler orchestration when continuous host sampling is needed during diagnostics.
 Add retained finished-session import and package distribution without expanding ordinary developer checks.
+
+2026-10-06 Native metrics, responsiveness, and trace assessment
+
+Why
+The hosted metrics table contained only five legacy Python instruments.
+The Swift SDK published performance attributes without native metrics.
+Thousands of renderer reports appeared as independent root traces.
+
+Changed
+Added fifteen fixed native OTel instruments with delta histograms/counters and gauges.
+Raw renderer samples export from the existing writer queue. Histogram exemplars retain report trace context.
+Added opt-in independent main-queue probes, main-thread CPU, process CPU, and macOS footprint.
+The reference game enables the monitor. One pending probe bounds its scheduling cost.
+SDK events/windows are logs. Timed operations remain spans and native signposts.
+W3C context groups app, host, profiler, and completion evidence under one scenario root.
+Build traces remain separate and join through embedded build identity.
+Build task totals explicitly describe aggregate parallel costs.
+Added two maze-clear events so scenario progress is visible without per-frame traces.
+Expanded the dashboard from fourteen to twenty panels and validated every query against live Logfire data.
+The optional Python relay forwards metrics as well as traces.
+
+Experiments and corrections
+A controlled sleep and CPU loop both produce about 1.2 seconds of queue delay.
+Only the CPU loop raises main-thread CPU activity, to about 24% over its five-second window.
+Mach resource time units differed on this machine. Replaced the initial process calculation with getrusage timevals.
+Rejected dispatchMain for the probe because it exits the captured main thread. The probe uses CFRunLoopRun.
+The pinned OTel metric registry required an explicit aggregation view. Without it, instruments exported no observations.
+A heavy particle scenario timed out with and without profiling. It is not a passing performance baseline.
+GPU workload capture took about 0.6 seconds. Replay analysis took about 25 seconds.
+Moved replay after the runner stops and reaps the app. The ordinary scenario still meets its 20-second deadline.
+The staged run passed in about 12 seconds and exported six ranked measurements plus capture metadata.
+Added separate timed capture/analysis spans and app/analysis durations.
+The reusable metric catalog records the measured results and interpretation limits.
+
+Validation and gaps
+Fifty Swift tests pass. Release and cached macOS Debug game builds pass.
+The optional relay passes two endpoint tests and Ruff checks.
+Live queries confirm fifteen metric names, matching frame counts, CPU units, and parented game/build evidence.
+All twenty saved dashboard queries pass. Browser rendering was not verified because the UI requires OAuth login.
+CPU profiling still blocks host polling during its collection/decoding. GPU capture can leave a brief polling gap.
+The development exporter has no durable offline queue. MetricKit delivery and physical iOS remain unverified here.
+No Simulator, profiler, controlled probe, or long benchmark is added to the default development check.
+
+Next
+Exercise this package on the collaborator's Mac with the same short scenario.
+Use the new queue/CPU distinction before choosing expensive profiler collection.
+Consider splitting CPU recording from offline decoding when continuous host sampling matters.
+Keep full wait timelines and shader compilation diagnosis in targeted native captures.

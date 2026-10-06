@@ -176,7 +176,7 @@ enum InstrumentsProfile {
         manifest["artifacts"] = checksums
         manifest["cpu.summary"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(summary))
         try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted]).write(to: folder.appendingPathComponent("manifest.json"), options: .atomic)
-        let client = Companion.client(local: options.local, service: session.metadata["service.name"] as? String ?? "apple-native")
+        let client = Companion.client(local: options.local, service: session.metadata["service.name"] as? String ?? "apple-native", resource: context)
         client.event("game.profile.capture", attributes: Companion.attributes(context))
         client.event("game.cpu.profile", attributes: Companion.attributes(context))
         for (index, function) in summary.functions.enumerated() {

@@ -1,5 +1,6 @@
 import Foundation
 import OpenTelemetryProtocolExporterHttp
+import OpenTelemetrySdk
 
 public enum LogfireConfigurationError: Error, CustomStringConvertible {
     case missingCredentials, invalidEndpoint, invalidToken, unreadableCredentials
@@ -65,6 +66,15 @@ public struct LogfireConfiguration {
             throw LogfireConfigurationError.invalidEndpoint
         }
         return try LogfireConfiguration(endpoint: url.appendingPathComponent("v1/traces"), token: token)
+    }
+
+    public var metricsEndpoint: URL { endpoint.deletingLastPathComponent().appendingPathComponent("metrics") }
+
+    func makeMetricExporter() -> OtlpHttpMetricExporter {
+        OtlpHttpMetricExporter(endpoint: metricsEndpoint,
+            config: .init(timeout: 3, compression: .none, exportAsJson: false),
+            aggregationTemporalitySelector: AggregationTemporality.alwaysDelta(),
+            envVarHeaders: token.map { [("Authorization", "Bearer " + $0)] } ?? [], requeueOnFailure: false)
     }
 
     func makeExporter() -> OtlpHttpTraceExporter {

@@ -77,7 +77,8 @@ Concurrent companions on the same Mac produce overlapping host samples. Do not a
 Native CPU time is a separate process measurement. GPU timing is not hardware utilization.
 
 The exporter batches live records. Sampling once per second does not promise instant network delivery.
-Host samples remain available in `host-samples.json`. All current measurements use span attributes, not OTel metric instruments.
+Host samples remain available in `host-samples.json`. Detailed records retain attributes.
+Native OTel gauges also publish host CPU load and nonfree memory.
 The companion pauses its host sampling while it processes a test capture. It does not promise coverage during that processing phase.
 
 ## Record a short CPU profile
@@ -199,7 +200,10 @@ Malformed status, stale identity, absent required windows, abnormal exit, and la
 A fast app can publish its final assertion between polls. The runner checks its retained marker against the launched PID and process start time.
 
 Add `--profile cpu` for one five-second Instruments recording after readiness.
-Add `--profile gpu` for one capture and replay analysis. The runner enables Metal capture for that diagnostic launch.
+Add `--profile gpu` for one capture during play. The runner enables Metal capture for that diagnostic launch.
+The runner stops and reaps the app before replay analysis uses the device.
+`app.duration_seconds` excludes that analysis. `profile.analysis.duration_seconds` reports its separate cost.
+The trace contains timed `development.gpu.capture` and `development.gpu.analysis` children.
 Only one profiler is selected per run. No profiling runs by default.
 Use a Release build for optimization investigations.
 Profiler collection and decoding have separate bounded durations. They can extend command time beyond the scenario deadline.
@@ -207,7 +211,8 @@ The app must still publish completion within its scenario deadline.
 Instrumented windows must not serve as ordinary performance baselines.
 Native frame-presentation lookback remains available through the separate `capture` command.
 
-Host samples carry their measurement times. Synchronous optional profiling can leave gaps in host sampling.
+Host samples carry their measurement times. GPU capture can briefly interrupt host sampling.
+GPU replay starts after gameplay. CPU collection and decoding remain synchronous and can leave longer host-sampling gaps.
 Readiness time is the runner observation. A terminal assertion supplies an upper bound when an app finishes between polls.
 The private report includes app outcome, session/build identity, binary hash, scenario inputs, renderer-window count, host evidence, profile directory, and delivery counts.
 Raw captures and local reports remain on the developer's Mac. SDK events export directly when credentials are available.
@@ -221,12 +226,14 @@ Renderer windows alone cannot identify expensive SwiftUI or other main-thread co
 Frame reports now include `cpu_frame.scope=frame_preparation_wall_time` and `main_thread.measured=false`.
 Use CPU or SwiftUI profiling to identify code. Timing signals alone cannot name the expensive function.
 
-The next SDK measurement should be a separate main-thread window, independent of renderer completion.
-It should report main-thread CPU-time deltas and main-queue response delay as distinct values.
-Queue delay includes CPU work, blocking, and scheduler contention. It must not be labeled CPU utilization.
-The monitor must report pending delay during a stall and bound itself to one outstanding probe.
-Log Roll sums three GPU stage durations for its SDK window. That sum measures GPU work, not a critical-path frame deadline.
-This monitor is not implemented in this iteration. Its measurement contract must be validated before it is enabled by default.
+The SDK provides an opt-in main-thread window independent of renderer completion.
+Enable it with `AppleMonitoring(responsiveness: true)`. The reference game enables it.
+It measures main-thread CPU-time deltas and main-queue response delay separately.
+Queue delay includes CPU work, blocking, and scheduler contention.
+The monitor retains the maximum pending delay and permits one outstanding probe.
+The controlled [responsiveness example](../examples/responsiveness-probe) validates CPU work against blocking.
+Log Roll sums multiple GPU stage durations for its SDK window.
+`gpu_time.scope=sum_of_command_buffers` identifies that sum. It does not measure a critical-path frame deadline.
 See Apple's [SwiftUI performance analysis](https://developer.apple.com/documentation/xcode/understanding-and-improving-swiftui-performance).
 
 ## Observe a build
@@ -245,7 +252,8 @@ The companion retains stdout, stderr, task totals, issue counts, and timestamped
 Task totals are aggregate work durations. They are not timed compiler spans or a critical-path reconstruction.
 Host samples use macOS APIs for CPU utilization, free/wired/compressed memory, and filesystem free bytes.
 They describe the entire host. They do not establish that the build caused the load.
-These samples and build totals use span attributes. They do not duplicate the older Python metric instruments.
+Detailed samples and task totals retain attributes. Native OTel instruments also publish build duration/outcomes and host gauges.
+The older Python metric names remain historical data.
 Host disk I/O and swap sampling from the earlier Python experiment remain outside this native iteration.
 
 Options include `--output DIRECTORY`, `--scenario NAME`, `--cache-state warm`, `--sample-interval 1`, and `--timeout 3600`.
@@ -426,6 +434,20 @@ The current script runs on every build and hashes package sources beyond the lin
 Measure each change with build timing summaries before replacing the script.
 Follow Apple's [incremental build guidance](https://developer.apple.com/documentation/Xcode/improving-the-speed-of-incremental-builds).
 Then add async span support with task-context tests and finished-session artifact import.
-Evaluate a small metrics exporter separately if standard infrastructure dashboards become a requirement.
-Validate delta temporality and source identity before that migration.
+The native metric exporter is verified for delta temporality and source identity.
+It remains a development prototype alongside the upstream experimental HTTP exporter.
 Keep longer tests, iOS Simulator validation, and the tester report button deferred during this macOS iteration.
+
+## Metric and trace semantics
+
+The configured SDK exports both `/v1/traces` and `/v1/metrics` through native OTLP HTTP.
+The [metric catalog](telemetry-metrics.md) lists the fifteen fixed instruments.
+Events and window summaries use Logfire logs. A window log appears at its measurement end time.
+Its attributes retain the interval start and end. It does not claim that interval as an operation duration.
+Explicit `withSpan` operations keep their real durations and native signposts.
+
+The scenario runner passes W3C trace context to the launched app.
+SDK logs, host samples, profiler evidence, and the final summary belong to the run trace.
+Builds have separate traces. Embedded build ID and build trace ID connect them to sessions.
+A manual Cmd-R session has no runner parent. Its operations remain separate traces with shared session/build identity.
+The build task table reports aggregate parallel task costs. It cannot reconstruct build critical paths.

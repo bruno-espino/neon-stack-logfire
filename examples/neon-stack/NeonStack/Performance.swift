@@ -6,7 +6,7 @@ enum GameTelemetry {
     static let scenario = DevelopmentScenario(client: client)
     static let client: Logfire = {
         do {
-            return try Logfire.development(serviceName: "neon-stack", apple: .init(
+            return try Logfire.development(serviceName: "neon-stack", apple: .init(responsiveness: true,
                 stateDomains: ["dev.example.NeonStack.rendering"],
                 metadataKeys: ["workload", "aurora_layers", "particles"]))
         } catch {
@@ -71,7 +71,7 @@ final class PerformanceRecorder {
         recorder.record(frameMilliseconds: frameMilliseconds, preparationMilliseconds: cpuMilliseconds,
             gpuMilliseconds: total > 0 ? total : nil,
             context: RenderContext(mode: "log-roll", width: width, height: height, workload: workload,
-                metadata: ["game": .string("log-roll"), "particles": .int(particles)]),
+                metadata: ["game": .string("log-roll"), "particles": .int(particles)], gpuTimeScope: .commandBufferSum),
             attributes: attributes)
     }
 

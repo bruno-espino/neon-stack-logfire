@@ -315,8 +315,9 @@ public enum Companion {
         else { print("Export disabled. Measurements remain local.") }
     }
 
-    static func client(local: Bool, service: String) -> Logfire {
-        do { return Logfire(serviceName: service, configuration: local ? nil : try configuration()) }
+    static func client(local: Bool, service: String, resource: [String: Any] = [:]) -> Logfire {
+        let identity = attributes(resource.filter { ["session_id", "build.id", "build.configuration", "build.source_digest", "build.sdk", "git.commit", "scenario.id"].contains($0.key) })
+        do { return Logfire(serviceName: service, configuration: local ? nil : try configuration(), resourceAttributes: identity) }
         catch { print("Telemetry unavailable. Reports remain local."); return Logfire(serviceName: service, configuration: nil) }
     }
 

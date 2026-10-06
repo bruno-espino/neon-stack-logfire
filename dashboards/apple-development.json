@@ -6,7 +6,7 @@
   "spec": {
     "display": {
       "name": "Apple Development Workflow",
-      "description": "Experimental Swift SDK, native Apple measurements, whole-host context, captures, and Xcode builds. Span-backed measurements remain separate by source and scope."
+      "description": "Swift SDK metrics, correlated app runs, Apple CPU/GPU diagnostics, host context, and Xcode builds. Sources and measurement scopes remain separate."
     },
     "datasources": {},
     "variables": [
@@ -60,7 +60,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
                       "callback_hz"
@@ -98,7 +98,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, max(CAST(attributes->>'frame_interval_p95_ms' AS DOUBLE)) AS callback_interval_p95_ms, max(CAST(attributes->>'frame_encode_wall_p95_ms' AS DOUBLE)) AS preparation_p95_ms, max(CAST(attributes->>'gpu_command_p95_ms' AS DOUBLE)) AS gpu_command_p95_ms FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, max(CAST(attributes->>'frame_interval_p95_ms' AS DOUBLE)) AS callback_interval_p95_ms, max(CAST(attributes->>'frame_encode_wall_p95_ms' AS DOUBLE)) AS preparation_p95_ms, max(CAST(attributes->>'gpu_command_p95_ms' AS DOUBLE)) AS gpu_command_p95_ms FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
                       "callback_interval_p95_ms",
@@ -130,7 +130,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'session_id' AS session, attributes->>'build.id' AS build, service_name AS exporter_service, attributes->>'build.configuration' AS configuration, attributes->>'render_mode' AS mode, attributes->>'workload' AS workload, attributes->>'aurora_layers' AS detail, attributes->>'drawable_width' AS width, attributes->>'drawable_height' AS height, attributes->>'game.seed' AS seed, attributes->>'thermal_state' AS thermal, count(*) AS windows, min(start_timestamp) AS first_window, max(start_timestamp) AS last_window FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY session, build, exporter_service, configuration, mode, workload, detail, width, height, seed, thermal ORDER BY last_window DESC LIMIT 100"
+                    "query": "SELECT attributes->>'session_id' AS session, attributes->>'build.id' AS build, service_name AS exporter_service, attributes->>'build.configuration' AS configuration, attributes->>'render_mode' AS mode, attributes->>'workload' AS workload, attributes->>'aurora_layers' AS detail, attributes->>'drawable_width' AS width, attributes->>'drawable_height' AS height, attributes->>'game.seed' AS seed, attributes->>'thermal_state' AS thermal, count(*) AS windows, min(start_timestamp) AS first_window, max(start_timestamp) AS last_window FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY session, build, exporter_service, configuration, mode, workload, detail, width, height, seed, thermal ORDER BY last_window DESC LIMIT 100"
                   }
                 }
               }
@@ -164,7 +164,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'measurement.ended_at' AS TIMESTAMP)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, sum(CAST(attributes->>'presented_frames' AS DOUBLE)) / nullif(sum(CAST(attributes->>'window_seconds' AS DOUBLE)), 0) AS presented_fps FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' GROUP BY time, session_layer ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'measurement.ended_at' AS TIMESTAMP)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, sum(CAST(attributes->>'presented_frames' AS DOUBLE)) / nullif(sum(CAST(attributes->>'window_seconds' AS DOUBLE)), 0) AS presented_fps FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' GROUP BY time, session_layer ORDER BY time LIMIT 10000",
                     "groupBy": "session_layer",
                     "metrics": [
                       "presented_fps"
@@ -202,7 +202,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'measurement.ended_at' AS TIMESTAMP)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, avg(CAST(attributes->>'gpu_wall_mean_ms' AS DOUBLE)) AS gpu_mean_ms, avg(CAST(attributes->>'drawable_wait_mean_ms' AS DOUBLE)) AS drawable_wait_mean_ms FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' GROUP BY time, session_layer ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'measurement.ended_at' AS TIMESTAMP)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, avg(CAST(attributes->>'gpu_wall_mean_ms' AS DOUBLE)) AS gpu_mean_ms, avg(CAST(attributes->>'drawable_wait_mean_ms' AS DOUBLE)) AS drawable_wait_mean_ms FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' GROUP BY time, session_layer ORDER BY time LIMIT 10000",
                     "groupBy": "session_layer",
                     "metrics": [
                       "gpu_mean_ms",
@@ -241,7 +241,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'process.memory_mib' AS DOUBLE)) AS footprint_mib, avg(CAST(attributes->>'process.metal_allocated_mib' AS DOUBLE)) AS metal_allocated_mib FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'process' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'process.memory_mib' AS DOUBLE)) AS footprint_mib, avg(CAST(attributes->>'process.metal_allocated_mib' AS DOUBLE)) AS metal_allocated_mib FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'process' GROUP BY time, session ORDER BY time LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
                       "footprint_mib",
@@ -280,7 +280,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, 100 * avg(CAST(attributes->>'cpu_utilization' AS DOUBLE)) AS host_cpu_percent FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.host.sample' AND attributes->>'measurement.scope' = 'whole_host' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, 100 * avg(CAST(attributes->>'cpu_utilization' AS DOUBLE)) AS host_cpu_percent FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.host.sample' AND attributes->>'measurement.scope' = 'whole_host' GROUP BY time, session ORDER BY time LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
                       "host_cpu_percent"
@@ -318,7 +318,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'memory_free_bytes' AS DOUBLE)) / 1073741824 AS free_gib, avg(CAST(attributes->>'memory_wired_bytes' AS DOUBLE)) / 1073741824 AS wired_gib, avg(CAST(attributes->>'memory_compressed_bytes' AS DOUBLE)) / 1073741824 AS compressed_gib FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.host.sample' AND attributes->>'measurement.scope' = 'whole_host' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket($resolution, CAST(attributes->>'recorded_at' AS TIMESTAMP)) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'memory_free_bytes' AS DOUBLE)) / 1073741824 AS free_gib, avg(CAST(attributes->>'memory_wired_bytes' AS DOUBLE)) / 1073741824 AS wired_gib, avg(CAST(attributes->>'memory_compressed_bytes' AS DOUBLE)) / 1073741824 AS compressed_gib FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.host.sample' AND attributes->>'measurement.scope' = 'whole_host' GROUP BY time, session ORDER BY time LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
                       "free_gib",
@@ -350,7 +350,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp AS exported, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'state.label' AS state, attributes->>'layer_index' AS layer, CAST(attributes->>'presented_fps' AS DOUBLE) AS presented_fps, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'measurement.requested_start' AS requested_start, attributes->>'measurement.requested_end' AS requested_end, attributes->>'capture.path' AS local_artifact FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.capture_summary' ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT start_timestamp AS exported, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'state.label' AS state, attributes->>'layer_index' AS layer, CAST(attributes->>'presented_fps' AS DOUBLE) AS presented_fps, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'measurement.requested_start' AS requested_start, attributes->>'measurement.requested_end' AS requested_end, attributes->>'capture.path' AS local_artifact FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.capture_summary' ORDER BY start_timestamp DESC LIMIT 100"
                   }
                 }
               }
@@ -376,7 +376,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp, attributes->>'build.id' AS build, attributes->>'build.configuration' AS configuration, attributes->>'build.scenario' AS scenario, CAST(attributes->>'build.duration_seconds' AS DOUBLE) AS seconds, CAST(attributes->>'build.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'build.warnings' AS DOUBLE) AS warnings, CAST(attributes->>'build.errors' AS DOUBLE) AS errors, trace_id FROM records WHERE kind = 'span' AND span_name = 'xcode.build' AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT start_timestamp, attributes->>'build.id' AS build, attributes->>'build.configuration' AS configuration, attributes->>'build.scenario' AS scenario, CAST(attributes->>'build.duration_seconds' AS DOUBLE) AS seconds, CAST(attributes->>'build.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'build.warnings' AS DOUBLE) AS warnings, CAST(attributes->>'build.errors' AS DOUBLE) AS errors, trace_id FROM records WHERE kind IN ('span', 'log') AND span_name = 'xcode.build' AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 100"
                   }
                 }
               }
@@ -402,7 +402,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'profile.started_at' AS measured_start, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, CAST(attributes->>'profile.duration_seconds' AS DOUBLE) AS seconds, attributes->>'cpu.summary_available' AS summary_available, CAST(attributes->>'cpu.samples' AS DOUBLE) AS samples, CAST(attributes->>'cpu.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'cpu.main_thread_sampled_weight_ms' AS DOUBLE) AS main_thread_sampled_ms, CAST(attributes->>'cpu.unresolved_samples' AS DOUBLE) AS unresolved_samples, attributes->>'profile.observation_gap' AS observation_gap, attributes->>'capture.path' AS local_artifact FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.profile' ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT attributes->>'profile.started_at' AS measured_start, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, CAST(attributes->>'profile.duration_seconds' AS DOUBLE) AS seconds, attributes->>'cpu.summary_available' AS summary_available, CAST(attributes->>'cpu.samples' AS DOUBLE) AS samples, CAST(attributes->>'cpu.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'cpu.main_thread_sampled_weight_ms' AS DOUBLE) AS main_thread_sampled_ms, CAST(attributes->>'cpu.unresolved_samples' AS DOUBLE) AS unresolved_samples, attributes->>'profile.observation_gap' AS observation_gap, attributes->>'capture.path' AS local_artifact FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.profile' ORDER BY start_timestamp DESC LIMIT 100"
                   }
                 }
               }
@@ -428,7 +428,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'function.sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.function' ORDER BY measured_end DESC, capture, rank ASC LIMIT 100"
+                    "query": "SELECT attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'function.sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.function' ORDER BY measured_end DESC, capture, rank ASC LIMIT 100"
                   }
                 }
               }
@@ -454,7 +454,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'capture.ended_at' AS captured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'gpu.node.label' AS node, attributes->>'gpu.shader.stage' AS stage, CAST(attributes->>'gpu.replay.duration_ms' AS DOUBLE) AS encoder_ms, CAST(attributes->>'gpu.replay.cost_fraction' AS DOUBLE) AS cost_fraction, CAST(attributes->>'gpu.shader.spilled_bytes' AS DOUBLE) AS spilled_bytes, CAST(attributes->>'gpu.shader.wait_instructions' AS DOUBLE) AS wait_instructions FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.gpu.replay' ORDER BY captured_end DESC, capture, scope, cost_fraction DESC LIMIT 100"
+                    "query": "SELECT attributes->>'capture.ended_at' AS captured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'gpu.node.label' AS node, attributes->>'gpu.shader.stage' AS stage, CAST(attributes->>'gpu.replay.duration_ms' AS DOUBLE) AS encoder_ms, CAST(attributes->>'gpu.replay.cost_fraction' AS DOUBLE) AS cost_fraction, CAST(attributes->>'gpu.shader.spilled_bytes' AS DOUBLE) AS spilled_bytes, CAST(attributes->>'gpu.shader.wait_instructions' AS DOUBLE) AS wait_instructions FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.gpu.replay' ORDER BY captured_end DESC, capture, scope, cost_fraction DESC LIMIT 100"
                   }
                 }
               }
@@ -480,7 +480,205 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp AS reported, attributes->>'scenario.id' AS scenario, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'scenario.phase' AS phase, CAST(attributes->>'run.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'run.duration_seconds' AS DOUBLE) AS duration_seconds, CAST(attributes->>'readiness.seconds' AS DOUBLE) AS readiness_observed_seconds, CAST(attributes->>'frame.windows' AS DOUBLE) AS frame_windows, attributes->>'profile.requested' AS profile, CAST(attributes->>'run.observation_gaps' AS DOUBLE) AS observation_gaps, CAST(attributes->>'app.delivery.exported_spans' AS DOUBLE) AS sdk_exported_spans, CAST(attributes->>'app.delivery.failed_spans' AS DOUBLE) AS sdk_failed_spans FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.run.summary' ORDER BY reported DESC LIMIT 100"
+                    "query": "SELECT start_timestamp AS reported, attributes->>'scenario.id' AS scenario, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'scenario.phase' AS phase, CAST(attributes->>'run.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'run.duration_seconds' AS DOUBLE) AS duration_seconds, CAST(attributes->>'readiness.seconds' AS DOUBLE) AS readiness_observed_seconds, CAST(attributes->>'frame.windows' AS DOUBLE) AS frame_windows, attributes->>'profile.requested' AS profile, CAST(attributes->>'run.observation_gaps' AS DOUBLE) AS observation_gaps, CAST(attributes->>'app.delivery.exported_spans' AS DOUBLE) AS sdk_exported_spans, CAST(attributes->>'app.delivery.failed_spans' AS DOUBLE) AS sdk_failed_spans FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.run.summary' ORDER BY reported DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "FrameDistributions": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "SDK raw-frame distribution p95",
+            "description": "Delta histograms contain individual samples from complete five-second windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "ms"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = '' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "MainThreadCPU": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Main-thread and process CPU activity",
+            "description": "One-core wall-time ratios. Process CPU can exceed 1 across multiple cores. The SDK samples outside rendering callbacks. These values do not identify slow functions or blocked resources."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "decimal"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = '' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_thread.cpu.utilization','app.process.cpu.utilization') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "MainQueueDelay": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Main-queue completed delay and pending age",
+            "description": "Worst completed probe delay and the maximum age of an unfinished probe in each five-second window. One outstanding probe bounds queued work. A blocked queue stays observable before that probe completes. Probe delay includes scheduling latency."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "ms"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = '' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_queue.delay','app.main_queue.pending_age.max') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "BuildTaskTotals": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Xcode aggregate task costs",
+            "description": "Task totals can overlap because compilation runs in parallel. This table cannot identify the critical path or reconstruct task ordering. Open the retained result bundle for detailed Xcode inspection."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'build.id' AS build, trace_id, attributes->>'build.task' AS task, CAST(attributes->>'build.task_seconds' AS DOUBLE) AS aggregate_seconds FROM records WHERE kind IN ('span','log') AND span_name='xcode.build.task_summary' AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC, aggregate_seconds DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "LogRollStages": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Log Roll worst window GPU stage p95",
+            "description": "Each point is the worst window p95 for a named command-buffer stage. Stage costs can overlap and must not be added to obtain live frame latency. Compare the same particle count, drawable size, build configuration, and workload."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "ms"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, concat(attributes->>'session_id', ' / particles=', attributes->>'particles') AS series, MAX(CAST(attributes->>'gpu_scene_p95_ms' AS DOUBLE)) AS scene, MAX(CAST(attributes->>'gpu_glow_p95_ms' AS DOUBLE)) AS glow, MAX(CAST(attributes->>'gpu_fire_p95_ms' AS DOUBLE)) AS fire FROM records WHERE kind IN ('span','log') AND span_name='game.performance.window' AND attributes->>'render_mode'='log-roll' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) GROUP BY time_bucket($resolution, start_timestamp), concat(attributes->>'session_id', ' / particles=', attributes->>'particles') ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "scene",
+                      "glow",
+                      "fire"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "SlowFrameShare": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Frames above 25 ms (%)",
+            "description": "The ratio of raw delta counters counts slow observations directly. A rare stall can be absent from p95. Each source instance and render context remains separate. This threshold is 25 ms, not the display refresh budget."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "decimal"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, 100 * SUM(CASE WHEN metric_name='game.frame.over_25ms.count' THEN metric_sum(value) ELSE 0 END) / NULLIF(SUM(CASE WHEN metric_name='game.frame.count' THEN metric_sum(value) ELSE 0 END), 0) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND aggregation_temporality='delta' AND metric_name IN ('game.frame.count','game.frame.over_25ms.count') AND ($session = '' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) GROUP BY time_bucket($resolution, recorded_timestamp), service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
                   }
                 }
               }
@@ -681,6 +879,70 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/ScenarioRuns"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Native metrics and responsiveness"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/FrameDistributions"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/MainThreadCPU"
+              }
+            },
+            {
+              "x": 0,
+              "y": 5,
+              "width": 12,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/MainQueueDelay"
+              }
+            },
+            {
+              "x": 12,
+              "y": 5,
+              "width": 12,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/BuildTaskTotals"
+              }
+            },
+            {
+              "x": 0,
+              "y": 10,
+              "width": 12,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/LogRollStages"
+              }
+            },
+            {
+              "x": 12,
+              "y": 10,
+              "width": 12,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/SlowFrameShare"
               }
             }
           ]

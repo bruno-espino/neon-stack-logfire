@@ -101,6 +101,17 @@ enum GPUJSON {
     }
 }
 
+/// Retained workload identity permits analysis after the original process stops.
+struct CapturedGPUWorkload {
+    let options: GPUCaptureOptions
+    let session: NativeSession
+    let folder: URL
+    let trace: URL
+    let hash: String
+    let start: String
+    let end: String
+}
+
 enum GPUCapture {
     static func run(_ arguments: [String]) throws -> Int32 {
         if arguments.contains("--help") {
@@ -108,7 +119,10 @@ enum GPUCapture {
             print("Launch with MTL_CAPTURE_ENABLED=1 and wait for renderer activity. Counts mean boundary completions, not always frames.")
             return 0
         }
-        let options = try GPUCaptureOptions(arguments)
+        return try analyze(capture(GPUCaptureOptions(arguments)))
+    }
+
+    static func capture(_ options: GPUCaptureOptions, seconds: Double = 30) throws -> CapturedGPUWorkload {
         guard FileManager.default.isExecutableFile(atPath: "/usr/bin/gpucapture"), FileManager.default.isExecutableFile(atPath: "/usr/bin/gpudebug") else {
             throw CompanionError.message("GPU capture and inspection require macOS 27 tools")
         }
@@ -126,12 +140,19 @@ enum GPUCapture {
         var args = ["gpucapture", "start", "--pid", String(session.pid), "--count", String(options.count), "--output", trace.path]
         if let id = options.boundary { args += ["--boundary", id] }
         if let label = options.label { args += ["--label", label] }
-        let code = try HostCommand.run("/usr/bin/xcrun", args, output: folder.appendingPathComponent("capture.stdout"), errors: folder.appendingPathComponent("capture.stderr"), seconds: 30)
+        let code = try HostCommand.run("/usr/bin/xcrun", args, output: folder.appendingPathComponent("capture.stdout"), errors: folder.appendingPathComponent("capture.stderr"), seconds: seconds)
         guard code == 0, FileManager.default.fileExists(atPath: trace.path) else {
             throw CompanionError.message("GPU capture failed. Launch with MTL_CAPTURE_ENABLED=1, wait for renderer activity, and select a boundary if needed. Inspect \(folder.path)")
         }
         let end = formatter.string(from: Date())
         if kill(session.pid, 0) == 0 { try session.validate() }
+        return CapturedGPUWorkload(options: options, session: session, folder: folder, trace: trace, hash: hash, start: start, end: end)
+    }
+
+    static func analyze(_ capture: CapturedGPUWorkload) throws -> Int32 {
+        let options = capture.options, session = capture.session, folder = capture.folder, trace = capture.trace
+        let hash = capture.hash, start = capture.start, end = capture.end
+        let analysisStarted = ProcessInfo.processInfo.systemUptime
         var selected: [[String: Any]] = []; var issues: [String] = []
         func inspect(_ name: String, commands: [String]) throws -> [[String: Any]] {
             let output = folder.appendingPathComponent(name + ".json")
@@ -200,6 +221,7 @@ enum GPUCapture {
             "gpu.replay.state_requested": "default", "gpu.selection": "apple-cost-ranked-v1",
             "gpu.selection_limit_per_scope": 3, "profile.instrumented": true, "measurement.source": "apple.gpudebug",
         ]) { _, actual in actual }
+        context["gpu.analysis.duration_seconds"] = ProcessInfo.processInfo.systemUptime - analysisStarted
         context["gpu.observation_gaps"] = issues.count
         if !issues.isEmpty { context["gpu.failure_stage"] = phase }
         var manifest = context; manifest["gpu.measurements"] = selected; manifest["issues"] = issues
@@ -210,7 +232,7 @@ enum GPUCapture {
         }
         manifest["artifacts"] = checksums
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]).write(to: folder.appendingPathComponent("manifest.json"), options: .atomic)
-        let client = Companion.client(local: options.local, service: session.metadata["service.name"] as? String ?? "apple-native")
+        let client = Companion.client(local: options.local, service: session.metadata["service.name"] as? String ?? "apple-native", resource: context)
         client.event("game.profile.capture", attributes: Companion.attributes(context))
         for row in selected { client.event("game.gpu.replay", attributes: Companion.attributes(context.merging(row) { _, measurement in measurement })) }
         client.flush(); Companion.printDelivery(client)

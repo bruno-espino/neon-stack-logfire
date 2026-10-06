@@ -76,7 +76,7 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:
-        if self.path != "/v1/traces":
+        if self.path not in {"/v1/traces", "/v1/metrics"}:
             self.reply(404, b"{}")
             return
         try:
@@ -100,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
         if encoding := self.headers.get("Content-Encoding"):
             headers["Content-Encoding"] = encoding
         try:
-            response = self.relay.client.post(self.relay.endpoint + "/v1/traces", content=body, headers=headers)
+            response = self.relay.client.post(self.relay.endpoint + self.path, content=body, headers=headers)
         except httpx2.HTTPError:
             self.relay.failed += 1
             self.reply(502, b"{}")
