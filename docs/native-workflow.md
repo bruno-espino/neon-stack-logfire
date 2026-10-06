@@ -167,18 +167,54 @@ Apple can acknowledge profile collection but retain no usable cost tables. This 
 Capture failures retain available output and return a failure. Exporter status remains separate from capture completeness.
 See Apple's [Metal tools for scripts and agents](https://developer.apple.com/metal/tools/).
 
-## Applying the tooling to another game
+## Run an app-owned scenario
 
-The SDK, build, CPU profile, GPU capture, attach, and lookback commands are reusable across instrumented applications.
-`test-game` controls Neon Stack's replay protocol. It cannot drive another game merely because `--app` accepts a path.
-The merged Log Roll game supports `NEON_GAME=log-roll` for its benchmark launch.
-The existing `test-game` command explicitly selects `NEON_GAME=neon-stack`.
-Log Roll GPU capture is verified. Its two-mazes-then-loss scenario is not implemented by the shared runner.
-A new game should own its scenario inputs and completion signals.
-The shared runner should own process lifetime, build/session identity, evidence collection, and export.
-A scenario such as two mazes followed by a loss belongs to the game adapter or its UI test.
-Its report needs scenario identity, expected completion, and explicit failures. Missing reports must not count as a pass.
-A generic launcher and scenario contract remain the next consolidation step.
+The SDK, build, profile, capture, and run commands work across instrumented macOS applications.
+The new `run` command does not select a game or generate its inputs.
+A JSON definition selects the app's scenario, arguments, environment, and renderer-evidence requirement.
+The app owns the actions and success assertions. The runner owns process lifetime, identity, host samples, and evidence collection.
+
+```sh
+logfire-apple run --app tmp/DerivedData-macos/Build/Products/Debug/NeonStack.app \
+  --scenario examples/neon-stack/scenarios/log-roll-two-mazes.json
+```
+
+This Log Roll adapter uses seed 777 and 65,536 particles.
+It clears two mazes with the existing autopilot. It then rolls onto a fire grate and waits for the normal loss rule.
+The adapter does not set the score or force game-over. Its assertions require two clears and the expected loss location.
+The verified SDK-only run completes in about 12 seconds. This is a workflow check, not an optimization baseline.
+
+The runner defaults to a 20-second scenario deadline. It stops early after a valid terminal assertion.
+The app publishes SDK identity into a private directory for this run.
+`DevelopmentScenario.record(window)` declares renderer readiness after a complete SDK window.
+Other apps can call `markReady()` when their own startup condition is satisfied.
+The app calls `finish(passed:details:)` on a background queue after it checks its scenario assertions.
+The SDK flushes queued telemetry before it publishes completion. The runner then terminates and reaps its process group.
+Ordinary Command-R does not activate this protocol.
+
+The definition uses schema version 1, `id`, `arguments`, `environment`, and `require_frame_windows`.
+The runner reserves telemetry credentials, session identity, and Metal injection settings.
+An unrecognized scenario or missing assertion cannot pass because the process exits successfully.
+Malformed status, stale identity, absent required windows, abnormal exit, and late completion fail the run.
+A fast app can publish its final assertion between polls. The runner checks its retained marker against the launched PID and process start time.
+
+Add `--profile cpu` for one five-second Instruments recording after readiness.
+Add `--profile gpu` for one capture and replay analysis. The runner enables Metal capture for that diagnostic launch.
+Only one profiler is selected per run. No profiling runs by default.
+Use a Release build for optimization investigations.
+Profiler collection and decoding have separate bounded durations. They can extend command time beyond the scenario deadline.
+The app must still publish completion within its scenario deadline.
+Instrumented windows must not serve as ordinary performance baselines.
+Native frame-presentation lookback remains available through the separate `capture` command.
+
+Host samples carry their measurement times. Synchronous optional profiling can leave gaps in host sampling.
+Readiness time is the runner observation. A terminal assertion supplies an upper bound when an app finishes between polls.
+The private report includes app outcome, session/build identity, binary hash, scenario inputs, renderer-window count, host evidence, profile directory, and delivery counts.
+Raw captures and local reports remain on the developer's Mac. SDK events export directly when credentials are available.
+The companion exports host samples and `development.run` / `development.run.summary` records with the same app session and scenario IDs.
+Missing credentials or incomplete optional profiling produce observation gaps with exit 2. Use `--no-telemetry` for an intentional local run.
+Timeout uses exit 124. App or protocol failures return nonzero. Successful assertions and complete requested evidence return 0.
+The existing `test-game` action remains the Neon Stack performance-comparison adapter.
 
 Renderer windows alone cannot identify expensive SwiftUI or other main-thread code.
 `cpu_frame_p95_ms` remains a compatibility alias for preparation wall time. It does not measure the whole CPU or main thread.

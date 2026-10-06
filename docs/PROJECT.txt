@@ -119,3 +119,11 @@ Test physical iOS delivery with development credentials.
 Await a real MetricKit report and verify its historical version and state context.
 Investigate background-task protection and abrupt-stop delivery behavior.
 Extend finished-session capture without weakening process/build attribution.
+
+Scenario runner
+logfire-apple run --app APP --scenario FILE
+App-owned assertions -> SDK readiness/completion -> runner report and correlated Logfire records.
+Optional --profile cpu or gpu. Default deadline 20 seconds. No default profiler or Simulator.
+Log Roll scenario clears two mazes, reaches a fire grate, and loses through ordinary game rules.
+DevelopmentScenario: SDK helper for a private atomic handshake and completion flush.
+Scenario success and telemetry/profile availability remain separate outcomes.

@@ -12,6 +12,7 @@ public final class Logfire {
     public let sessionID: String
     private let buildAttributes: [String: AttributeValue]
     private let serviceName: String
+    private let scenarioID: String?
     private var appleReports: AnyObject?
     private var lifecycle: AppleLifecycle?
     let stateReporterLock = NSLock()
@@ -34,7 +35,8 @@ public final class Logfire {
 
     init(serviceName: String, exporter: SpanExporter?) {
         self.serviceName = serviceName
-        sessionID = ProcessInfo.processInfo.environment["NEON_SESSION_ID"].flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
+        scenarioID = ProcessInfo.processInfo.environment["LOGFIRE_SCENARIO_ID"]
+        sessionID = (ProcessInfo.processInfo.environment["LOGFIRE_SESSION_ID"] ?? ProcessInfo.processInfo.environment["NEON_SESSION_ID"]).flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
         buildAttributes = Self.buildMetadata(bundle: .main).mapValues { .string($0) }
         if let exporter {
             let processor = BatchSpanProcessor(spanExporter: ObservedExporter(exporter, counters: deliveryCounters), scheduleDelay: 1,
@@ -89,6 +91,7 @@ public final class Logfire {
         let builder = tracer.spanBuilder(spanName: name).setStartTime(time: started)
         builder.setAttribute(key: "session_id", value: sessionID)
         builder.setAttribute(key: "logfire.msg", value: name)
+        if let scenarioID { builder.setAttribute(key: "scenario.id", value: scenarioID) }
         for (key, value) in buildAttributes { builder.setAttribute(key: key, value: value) }
         for (key, value) in attributes { builder.setAttribute(key: key, value: value) }
         return builder.startSpan()
@@ -114,7 +117,7 @@ public final class Logfire {
 #endif
         lifecycle = AppleLifecycle { [weak self] in self?.flush() }
 #if os(macOS)
-        publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["NEON_OBSERVER_DIR"]
+        publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["LOGFIRE_SESSION_DIR"] ?? ProcessInfo.processInfo.environment["NEON_OBSERVER_DIR"]
             ?? Self.developmentSessionsDirectory.path, stateDomains: options.stateDomains)
 #endif
         if !buildAttributes.isEmpty { event("xcode.build.identity", attributes: ["measurement.source": .string("app.build_resource")]) }

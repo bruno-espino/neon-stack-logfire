@@ -57,7 +57,7 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes thirteen panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, GPU replay costs, captures, and builds.
+It includes fourteen panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, GPU replay costs, scenario outcomes, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
@@ -144,6 +144,18 @@ tools/check-dev.sh --smoke  # Also run a 12-second SDK-only session
 
 Ordinary game edits use Command-R. iOS Simulator checks and performance-budget calibration are deferred during this macOS workflow iteration.
 The unit tests remain available independently with `swift test`.
+
+Run Log Roll's short two-maze regression scenario with the reusable app runner:
+
+```sh
+logfire-apple run --app tmp/DerivedData-macos/Build/Products/Debug/NeonStack.app \
+  --scenario examples/neon-stack/scenarios/log-roll-two-mazes.json
+```
+
+The app supplies readiness and completion through the SDK. The runner stops after the expected loss and retains one report.
+Add `--profile cpu` or `--profile gpu` for a targeted investigation. Profiling adds time and is absent from default checks.
+See [the scenario workflow](docs/native-workflow.md#run-an-app-owned-scenario) for the reusable definition and SDK protocol.
+
 Manual sessions gain native and host telemetry when you run `logfire-apple attach`.
 Automated sessions stream host samples while the app runs. Their SDK and capture summaries export after measurement.
 

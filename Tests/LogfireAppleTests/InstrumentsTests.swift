@@ -42,6 +42,16 @@ final class InstrumentsTests: XCTestCase {
         XCTAssertThrowsError(try InstrumentsXML.cpu(Data(samples.replacingOccurrences(of: "<weight>2000000</weight>", with: "<weight id=\"w\">2000000</weight>").utf8), pid: 42))
     }
 
+    func testUnavailableBacktraceRetainsCPUWeightWithoutInventingAFunction() throws {
+        let row = "<row><process ref=\"p\"/><thread-state ref=\"s\"/><thread ref=\"t\"/><weight ref=\"w\"/><sentinel/></row>"
+        let summary = try InstrumentsXML.cpu(Data(samples.replacingOccurrences(of: "</node>", with: row + "</node>").utf8), pid: 42)
+        XCTAssertEqual(summary.samples, 5)
+        XCTAssertEqual(summary.weightNanoseconds, 6_000_000)
+        XCTAssertEqual(summary.mainThreadWeightNanoseconds, 4_000_000)
+        XCTAssertEqual(summary.unresolvedSamples, 2)
+        XCTAssertEqual(summary.functions.map(\.symbol), ["render", "update"])
+    }
+
     func testRecordingIdentityUsesActualDatesWithoutExportingEnvironment() throws {
         let toc = """
         <trace-toc><run number="1"><info><target><process pid="42"/><environment><item key="SECRET" value="private"/></environment></target>

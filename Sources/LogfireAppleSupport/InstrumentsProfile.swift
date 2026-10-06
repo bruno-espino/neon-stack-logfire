@@ -69,7 +69,12 @@ enum InstrumentsXML {
             if thread.attribute(forName: "fmt")?.stringValue?.hasPrefix("Main Thread (") == true {
                 result.mainThreadWeightNanoseconds += nanoseconds
             }
-            let stack = try resolve(row.elements(forName: "tagged-backtrace").first)
+            guard let stackElement = row.elements(forName: "tagged-backtrace").first else {
+                guard row.elements(forName: "sentinel").count == 1 else { throw CompanionError.message("Instruments CPU sample is missing its backtrace field") }
+                result.unresolvedSamples += 1
+                continue
+            }
+            let stack = try resolve(stackElement)
             guard let first = stack.elements(forName: "frame").first else { result.unresolvedSamples += 1; continue }
             let leaf = try resolve(first)
             guard let symbol = leaf.attribute(forName: "name")?.stringValue, !symbol.isEmpty,

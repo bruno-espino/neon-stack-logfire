@@ -98,6 +98,7 @@ public enum Companion {
         }
         if action == "build" { return try NativeBuild.run(values) }
         if action == "test-game" { return try GameTest.run(values) }
+        if action == "run" { return try ScenarioRun.run(values) }
         if action == "analyze" { return try SessionAnalysis.run(values) }
         if action == "profile" { return try InstrumentsProfile.run(values) }
         if action == "gpu-capture" { return try GPUCapture.run(values) }
@@ -328,6 +329,7 @@ public enum Companion {
            logfire-apple gpu-capture [--profile] [--count 1] [--service NAME] [--no-telemetry]
            logfire-apple build [--scenario NAME] [--no-telemetry] -- [xcodebuild arguments]
            logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
+           logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu] [--no-telemetry]
            logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
     Capture, attach, and profile select the latest verified live SDK session automatically.
     Optional overrides: --sessions DIRECTORY --output DIRECTORY.

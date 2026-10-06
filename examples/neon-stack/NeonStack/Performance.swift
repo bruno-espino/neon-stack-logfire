@@ -3,6 +3,7 @@ import LogfireSwift
 import Metal
 
 enum GameTelemetry {
+    static let scenario = DevelopmentScenario(client: client)
     static let client: Logfire = {
         do {
             return try Logfire.development(serviceName: "neon-stack", apple: .init(
@@ -27,6 +28,8 @@ final class PerformanceRecorder {
         stateDomain: "dev.example.NeonStack.rendering") { [weak self] window in
             guard let self else { return }
             lock.lock(); latest = (window.callbackFPS, window.gpuMeanMilliseconds ?? 0); lock.unlock()
+            do { try GameTelemetry.scenario?.record(window) }
+            catch { print("Scenario renderer report failed: \(error)") }
             guard let output else { return }
             do {
                 let url = URL(fileURLWithPath: output)

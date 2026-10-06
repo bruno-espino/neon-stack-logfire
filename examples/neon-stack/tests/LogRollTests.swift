@@ -82,6 +82,17 @@ import Foundation
                          "Autopilot must turn mazes and reach the water mazes (seed \(seed), score \(engine.score))")
             precondition(engine.heat == 1 && engine.water, "After enough mazes the log is ablaze")
         }
+        for seed: UInt64 in [42, 777] {
+            var engine = LogRollEngine(seed: seed), scenario = LogRollScenario()
+            for _ in 0..<(30 * 60) where scenario.outcome == nil { scenario.advance(1.0 / 60, engine: &engine) }
+            precondition(scenario.outcome == true && engine.score == 2 && engine.gameOver,
+                         "Scenario must clear two mazes and lose through normal game rules (seed \(seed), \(scenario.failure))")
+            print("Scenario seed \(seed) completes after \(engine.seconds) simulation seconds")
+        }
+        var crashed = LogRollEngine(seed: 777), rejected = LogRollScenario()
+        crashed.gameOver = true
+        rejected.advance(1.0 / 60, engine: &crashed)
+        precondition(rejected.outcome == false, "An early crash must fail the scenario")
         print("Log Roll mazes, gates, fire, water, determinism, and autopilot passed")
     }
 }
