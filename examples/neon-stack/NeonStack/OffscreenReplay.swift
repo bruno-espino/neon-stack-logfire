@@ -9,6 +9,7 @@ enum ReplayError: Error { case unavailable }
 enum OffscreenReplay {
     static func run() throws {
         let environment = ProcessInfo.processInfo.environment
+        if environment["NEON_GAME"] == "log-roll" { try LogRollOffscreenReplay.run(); return }
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
               let library = device.makeDefaultLibrary() else { throw ReplayError.unavailable }
         let descriptor = MTLRenderPipelineDescriptor()
@@ -96,7 +97,7 @@ enum OffscreenReplay {
         print("Offscreen replay completed. Frames: \(frame), lines: \(engine.lines), score: \(engine.score)")
     }
 
-    private static func savePreview(_ texture: MTLTexture, at url: URL) throws {
+    static func savePreview(_ texture: MTLTexture, at url: URL) throws {
         var bytes = Array(repeating: UInt8(0), count: texture.width * texture.height * 4)
         texture.getBytes(&bytes, bytesPerRow: texture.width * 4,
                          from: MTLRegionMake2D(0, 0, texture.width, texture.height), mipmapLevel: 0)
