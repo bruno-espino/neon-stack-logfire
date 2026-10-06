@@ -2,7 +2,8 @@
 > [Swift integration](../../docs/swift-sdk.md).
 > Press Command-R with the NeonStack scheme. Ordinary runs require no Python host-tool setup.
 > Use an explicit native attach or capture command when you need Apple profiler evidence.
-> The build and replay workflows below remain available.
+> Use [the native workflow](../../docs/native-workflow.md) for observed builds and automated tests.
+> The earlier Python experiments below remain available for comparison.
 
 # Observe a Metal game build
 
@@ -19,10 +20,11 @@ Apple game and app developers who need to investigate build performance on Macs.
 
 - macOS with Xcode 27 or later selected by `xcode-select`.
 - The Xcode Metal toolchain. If unavailable, run `xcodebuild -downloadComponent MetalToolchain`.
-- `uv`, Python 3.14, and a Logfire project write token.
+- A Logfire project write token for export. Native workflows require no Python.
+- `uv` and Python 3.14 only for the earlier experiment below.
 - An iOS Simulator SDK. Signing is disabled for this development example.
 
-## Optional build and replay setup
+## Earlier Python build and replay experiment
 
 From the repository root, install the standalone observer:
 

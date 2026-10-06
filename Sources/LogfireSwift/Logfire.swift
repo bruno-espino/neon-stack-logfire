@@ -14,6 +14,8 @@ public final class Logfire {
     private let serviceName: String
     private var appleReports: AnyObject?
     private var lifecycle: AppleLifecycle?
+    let stateReporterLock = NSLock()
+    var stateReporters: [String: AnyObject] = [:]
     private let deliveryCounters = DeliveryCounters()
     public var delivery: DeliveryStatus { deliveryCounters.snapshot(enabled: provider != nil) }
 
@@ -101,7 +103,6 @@ public final class Logfire {
     }
 
     func startAppleMonitoring(serviceName: String, configuration: LogfireConfiguration?, options: AppleMonitoring) {
-        guard configuration != nil else { return }
 #if canImport(MetricKit)
         if #available(macOS 27.0, iOS 27.0, *), options.metricKit {
             let reports = MetricKitReports(serviceName: serviceName,

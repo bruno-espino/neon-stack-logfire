@@ -42,17 +42,27 @@ extension Logfire {
 #if canImport(StateReporting)
         if #available(macOS 27.0, iOS 27.0, *) {
             let stable = SDKStateMetadata(values: metadata)
-            let volatile = SDKStateMetadata(values: ["sessionID": .string(sessionID),
-                "buildID": .string(Self.buildMetadata(bundle: .main)["build.id"] ?? "unknown")])
-            StateReporter.reporter(for: domain, stableMetadata: SDKStateMetadata.self,
-                volatileMetadata: SDKStateMetadata.self).reportTransition(to: label,
-                    stableMetadata: stable, volatileMetadata: volatile)
+            let volatile = SDKSessionMetadata(sessionID: sessionID,
+                buildID: Self.buildMetadata(bundle: .main)["build.id"] ?? "unknown")
+            stateReporterLock.lock()
+            let reporter = (stateReporters[domain] as? StateReporter<SDKStateMetadata, SDKSessionMetadata>)
+                ?? StateReporter.reporter(for: domain, stableMetadata: SDKStateMetadata.self, volatileMetadata: SDKSessionMetadata.self)
+            stateReporters[domain] = reporter
+            stateReporterLock.unlock()
+            reporter.reportTransition(to: label, stableMetadata: stable, volatileMetadata: volatile)
         }
 #endif
     }
 }
 
 #if canImport(StateReporting)
+@available(macOS 27.0, iOS 27.0, *)
+@ReportableMetadata
+private struct SDKSessionMetadata {
+    let sessionID: String
+    let buildID: String
+}
+
 @available(macOS 27.0, iOS 27.0, *)
 private struct SDKStateMetadata: ReportableMetadata {
     let values: [String: LogfireAttribute]
@@ -61,13 +71,14 @@ private struct SDKStateMetadata: ReportableMetadata {
             switch value {
             case .string(let value): return .string(value)
             case .int(let value): return .integer(Int128(value))
-            case .double(let value): return .floatingPoint(value)
+            case .double(let value): return value.isFinite ? .floatingPoint(value) : nil
             case .bool(let value): return ReportableMetadataValue(value)
             default: return nil
             }
         }
     }
 }
+
 #endif
 
 final class AppleLifecycle {
