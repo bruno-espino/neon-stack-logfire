@@ -41,14 +41,20 @@ public final class Logfire {
         remoteParent = Self.traceContext(environment["LOGFIRE_TRACE_PARENT"])
         self.serviceName = serviceName
         scenarioID = environment["LOGFIRE_SCENARIO_ID"]
-        sessionID = (environment["LOGFIRE_SESSION_ID"] ?? environment["NEON_SESSION_ID"]).flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
+        let suppliedSession: UUID?
+        if case .string(let value) = resourceAttributes["session_id"] { suppliedSession = UUID(uuidString: value) }
+        else { suppliedSession = nil }
+        sessionID = suppliedSession?.uuidString ?? (environment["LOGFIRE_SESSION_ID"] ?? environment["NEON_SESSION_ID"])
+            .flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
         buildAttributes = Self.buildMetadata(bundle: .main).mapValues { .string($0) }
+        var suppliedResource = resourceAttributes
+        suppliedResource["session_id"] = .string(sessionID)
         let resource = Resource(attributes: [
             "service.name": .string(serviceName), "service.instance.id": .string(sessionID),
             "deployment.environment": .string("development"), "os.type": .string("darwin"),
             "os.description": .string(ProcessInfo.processInfo.operatingSystemVersionString),
             "logfire.integration": .string("swift-prototype"), "logfire.metric_schema.version": .string("1"), "session_id": .string(sessionID),
-        ].merging(buildAttributes) { _, build in build }.merging(resourceAttributes) { _, supplied in supplied })
+        ].merging(buildAttributes) { _, build in build }.merging(suppliedResource) { _, supplied in supplied })
         metrics = metricExporter.map { DevelopmentMetrics(exporter: $0, resource: resource) }
         if let exporter {
             let processor = BatchSpanProcessor(spanExporter: ObservedExporter(exporter, counters: deliveryCounters), scheduleDelay: 1,

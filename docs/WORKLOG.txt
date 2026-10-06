@@ -429,3 +429,17 @@ Recording still has startup/finalization cost and perturbs the app. These record
 App completion and profiler artifact availability remain separate outcomes.
 Standalone profile leaves the user's existing app running. Only the scenario runner stops an app it launched.
 System Trace, Swift Concurrency, and CPU hardware counters remain targeted investigations outside this CPU sampling summary.
+
+
+2026-10-06: CPU caller paths and unified scenario diagnosis
+Next steps were richer CPU context and one report for agents. Checked current Apple call-tree/responsiveness guidance, installed xctrace 27, and Logfire structured-attribute/SQL drilldown guidance.
+Added up to twenty caller paths per main/background scope. Paths retain recursion, scope denominators, unresolved frames, and truncation. Raw addresses and source paths are excluded.
+The run report now combines findings, measured windows, observation gaps, caller paths, and local artifact locations. Diagnosis selects an investigation. It does not claim a regression or root cause.
+Added local diagnose --report. It can rebuild older CPU summaries from checksummed exports without another gameplay run. It preserves the original outcome and does not upload or recover unrecorded stacks.
+Real exports revealed binary-less unresolved callers. Fixed the decoder and added a regression test. Logfire queries revealed inconsistent child-span session identity. Fixed SDK/resource identity and phase build context.
+Verified 62 Swift tests, the Release game, and the installed Release companion. An unprofiled run passed in 12.3 seconds. A complete profiled run used 18.1 seconds in the app and 4.1 seconds for offline analysis.
+Logfire queries verified 99 correlated records, forty structured caller paths, exact scope fractions, matching session/build identity, and diagnostic data. A later unprofiled run verified structured measurement intervals with zero reported export failures.
+Saved twenty-two dashboard panels. Added caller paths and findings. Five updated queries were validated. Trace/span IDs provide native drilldown. Browser rendering was not part of this validation.
+Rejected interpreting low window CPU as a proven lock wait, GPU command sums as utilization, or profiled windows as baselines. Default checks still omit profilers and the iOS Simulator.
+Issue: cold xctrace setup/finalization sometimes exhausts the remaining twenty-second app budget. Requested evidence becomes incomplete with exit 2. The budget remains unchanged.
+Next: targeted waiting/concurrency evidence, startup capture coverage, shared artifact access, SDK async/lifecycle hardening, and a clean second-Mac setup. Real MetricKit delivery and physical iOS remain unverified.

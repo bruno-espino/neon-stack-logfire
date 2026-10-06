@@ -11,6 +11,28 @@ struct CPUFunction: Codable {
     var weightNanoseconds: Double
 }
 
+struct CPUFrame: Codable, Hashable {
+    let symbol: String
+    let image: String
+    let imageUUID: String
+}
+
+/// Frames run from the oldest caller to the sampled leaf. Paths describe running CPU work.
+struct CPUCallPath: Codable {
+    let threadScope: String
+    let frames: [CPUFrame]
+    let truncated: Bool
+    let unresolvedFrames: Int
+    var samples: Int
+    var weightNanoseconds: Double
+}
+
+private struct CPUPathKey: Hashable {
+    let threadScope: String
+    let frames: [CPUFrame]
+    let truncated: Bool
+}
+
 struct CPUProfileSummary: Codable {
     var samples = 0
     var otherProcessSamples = 0
@@ -19,6 +41,9 @@ struct CPUProfileSummary: Codable {
     var weightNanoseconds: Double = 0
     var mainThreadWeightNanoseconds: Double = 0
     var functions: [CPUFunction] = []
+    var callPaths: [CPUCallPath] = []
+    var pathSamples = 0
+    var partialPathSamples = 0
 }
 
 /// xctrace weights describe sampled CPU work. They do not measure wall time or blocked threads.
@@ -53,6 +78,7 @@ enum InstrumentsXML {
         }
         var result = CPUProfileSummary()
         var functions: [String: CPUFunction] = [:]
+        var paths: [CPUPathKey: CPUCallPath] = [:]
         for case let row as XMLElement in try root.nodes(forXPath: "node/row") {
             let process = try resolve(row.elements(forName: "process").first)
             let processPID = try resolve(process.elements(forName: "pid").first)
@@ -66,7 +92,8 @@ enum InstrumentsXML {
             result.samples += 1; result.weightNanoseconds += nanoseconds
             guard result.weightNanoseconds.isFinite else { throw CompanionError.message("Instruments CPU sample weights exceed the numeric range") }
             let thread = try resolve(row.elements(forName: "thread").first)
-            if thread.attribute(forName: "fmt")?.stringValue?.hasPrefix("Main Thread (") == true {
+            let mainThread = thread.attribute(forName: "fmt")?.stringValue?.hasPrefix("Main Thread (") == true
+            if mainThread {
                 result.mainThreadWeightNanoseconds += nanoseconds
             }
             guard let stackElement = row.elements(forName: "tagged-backtrace").first else {
@@ -75,7 +102,27 @@ enum InstrumentsXML {
                 continue
             }
             let stack = try resolve(stackElement)
-            guard let first = stack.elements(forName: "frame").first else { result.unresolvedSamples += 1; continue }
+            let stackFrames = stack.elements(forName: "frame")
+            guard let first = stackFrames.first else { result.unresolvedSamples += 1; continue }
+            var frames: [CPUFrame] = []
+            var unresolved = 0
+            for element in stackFrames.prefix(256) {
+                let frame = try resolve(element)
+                let rawSymbol = frame.attribute(forName: "name")?.stringValue ?? ""
+                let symbol = !rawSymbol.isEmpty && !rawSymbol.hasPrefix("0x") && rawSymbol.count <= 512 ? rawSymbol : "<unresolved>"
+                if symbol == "<unresolved>" { unresolved += 1 }
+                let binary = try frame.elements(forName: "binary").first.map { try resolve($0) }
+                frames.append(CPUFrame(symbol: symbol, image: binary?.attribute(forName: "name")?.stringValue ?? "unknown",
+                    imageUUID: binary?.attribute(forName: "UUID")?.stringValue ?? "unknown"))
+            }
+            let truncated = stackFrames.count > 256
+            let pathKey = CPUPathKey(threadScope: mainThread ? "main" : "background", frames: Array(frames.reversed()), truncated: truncated)
+            guard paths[pathKey] != nil || paths.count < 50_000 else { throw CompanionError.message("Instruments export exceeds 50000 distinct call paths") }
+            var path = paths[pathKey] ?? CPUCallPath(threadScope: pathKey.threadScope, frames: pathKey.frames,
+                truncated: truncated, unresolvedFrames: unresolved, samples: 0, weightNanoseconds: 0)
+            path.samples += 1; path.weightNanoseconds += nanoseconds; paths[pathKey] = path
+            result.pathSamples += 1
+            if truncated || unresolved > 0 { result.partialPathSamples += 1 }
             let leaf = try resolve(first)
             guard let symbol = leaf.attribute(forName: "name")?.stringValue, !symbol.isEmpty,
                   !symbol.hasPrefix("0x"), symbol.count <= 512 else { result.unresolvedSamples += 1; continue }
@@ -90,6 +137,14 @@ enum InstrumentsXML {
             if $0.weightNanoseconds != $1.weightNanoseconds { return $0.weightNanoseconds > $1.weightNanoseconds }
             return "\($0.image)/\($0.symbol)" < "\($1.image)/\($1.symbol)"
         }.prefix(20))
+        // Keep main-thread paths even when background work dominates the process total.
+        result.callPaths = ["main", "background"].flatMap { scope in
+            Array(paths.values.filter { $0.threadScope == scope }.sorted {
+                if $0.weightNanoseconds != $1.weightNanoseconds { return $0.weightNanoseconds > $1.weightNanoseconds }
+                return $0.frames.map { "\($0.image)/\($0.symbol)/\($0.imageUUID)" }.joined(separator: "\0") <
+                    $1.frames.map { "\($0.image)/\($0.symbol)/\($0.imageUUID)" }.joined(separator: "\0")
+            }.prefix(20))
+        }
         return result
     }
 
@@ -189,6 +244,8 @@ enum InstrumentsProfile {
             "cpu.main_thread_sampled_weight_ms": summary.mainThreadWeightNanoseconds / 1_000_000,
             "cpu.unresolved_samples": summary.unresolvedSamples, "cpu.other_process_samples": summary.otherProcessSamples,
             "cpu.non_running_samples": summary.nonRunningSamples,
+            "cpu.path_samples": summary.pathSamples, "cpu.partial_path_samples": summary.partialPathSamples,
+            "cpu.call_paths": summary.callPaths.count,
             "cpu.summary_available": summaryAvailable,
         ]) { _, actual in actual }
         if !summaryAvailable { details["profile.observation_gap"] = "CPU export could not be decoded" }
@@ -214,8 +271,26 @@ enum InstrumentsProfile {
                 "function.sampled_weight_fraction": function.weightNanoseconds / summary.weightNanoseconds]
             client.event("game.cpu.function", attributes: Companion.attributes(context.merging(values) { _, function in function }))
         }
+        for scope in ["main", "background"] {
+            let denominator = scope == "main" ? summary.mainThreadWeightNanoseconds : summary.weightNanoseconds - summary.mainThreadWeightNanoseconds
+            for (index, path) in summary.callPaths.filter({ $0.threadScope == scope }).enumerated() {
+                let frames = try JSONSerialization.jsonObject(with: JSONEncoder().encode(path.frames))
+                let display = path.frames.map(\.symbol).joined(separator: " → ")
+                let values: [String: Any] = ["measurement.scope": "cpu_sampled_call_path", "cpu.thread_scope": scope,
+                    "call_path.rank": index + 1, "call_path.samples": path.samples,
+                    "call_path.sampled_weight_ms": path.weightNanoseconds / 1_000_000,
+                    "call_path.sampled_weight_fraction": path.weightNanoseconds / denominator,
+                    "call_path.denominator": "all_running_weight_in_thread_scope", "call_path.frame_order": "caller_to_leaf",
+                    "call_path.partial": path.truncated || path.unresolvedFrames > 0, "call_path.truncated": path.truncated,
+                    "call_path.unresolved_frames": path.unresolvedFrames,
+                    "call_path.display": display.count > 8192 ? "… " + String(display.suffix(8192)) : display,
+                    "call_path.display_truncated": display.count > 8192]
+                client.event("game.cpu.call_path", attributes: try Companion.attributes(context.merging(values) { _, path in path })
+                    .merging(Companion.structuredAttribute("call_path.frames", value: frames, type: "array")) { _, structured in structured })
+            }
+        }
         client.flush(); Companion.printDelivery(client)
-        print("CPU samples: \(summary.samples). Top leaf functions: \(summary.functions.count).")
+        print("CPU samples: \(summary.samples). Top leaf functions: \(summary.functions.count). Call paths: \(summary.callPaths.count).")
         print("Profile manifest: \(folder.appendingPathComponent("manifest.json").path)")
         print("Open \(trace.path) in Instruments. Profiling overhead makes this unsuitable for baseline comparisons.")
         return summary.samples == 0 ? 2 : 0

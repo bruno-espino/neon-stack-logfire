@@ -402,7 +402,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'profile.started_at' AS measured_start, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, CAST(attributes->>'profile.duration_seconds' AS DOUBLE) AS seconds, attributes->>'profile.template' AS template, CAST(attributes->>'profile.record.command_duration_seconds' AS DOUBLE) AS recording_command_seconds, CAST(attributes->>'profile.analysis.duration_seconds' AS DOUBLE) AS export_decode_seconds, attributes->>'cpu.summary_available' AS summary_available, CAST(attributes->>'cpu.samples' AS DOUBLE) AS samples, CAST(attributes->>'cpu.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'cpu.main_thread_sampled_weight_ms' AS DOUBLE) AS main_thread_sampled_ms, CAST(attributes->>'cpu.unresolved_samples' AS DOUBLE) AS unresolved_samples, attributes->>'profile.observation_gap' AS observation_gap, attributes->>'capture.path' AS local_artifact FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.profile' ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT trace_id, span_id, attributes->>'profile.started_at' AS measured_start, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, CAST(attributes->>'profile.duration_seconds' AS DOUBLE) AS seconds, attributes->>'profile.template' AS template, CAST(attributes->>'profile.record.command_duration_seconds' AS DOUBLE) AS recording_command_seconds, CAST(attributes->>'profile.analysis.duration_seconds' AS DOUBLE) AS export_decode_seconds, attributes->>'cpu.summary_available' AS summary_available, CAST(attributes->>'cpu.samples' AS DOUBLE) AS samples, CAST(attributes->>'cpu.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'cpu.main_thread_sampled_weight_ms' AS DOUBLE) AS main_thread_sampled_ms, CAST(attributes->>'cpu.unresolved_samples' AS DOUBLE) AS unresolved_samples, attributes->>'profile.observation_gap' AS observation_gap, attributes->>'capture.path' AS local_artifact FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.profile' ORDER BY start_timestamp DESC LIMIT 100"
                   }
                 }
               }
@@ -428,7 +428,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'function.sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.function' ORDER BY measured_end DESC, capture, rank ASC LIMIT 100"
+                    "query": "SELECT trace_id, span_id, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'function.sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.function' ORDER BY measured_end DESC, capture, rank ASC LIMIT 100"
                   }
                 }
               }
@@ -480,7 +480,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp AS reported, attributes->>'scenario.id' AS scenario, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'scenario.phase' AS phase, CAST(attributes->>'run.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'run.duration_seconds' AS DOUBLE) AS duration_seconds, CAST(attributes->>'app.duration_seconds' AS DOUBLE) AS app_seconds, CAST(attributes->>'profile.analysis.duration_seconds' AS DOUBLE) AS offline_analysis_seconds, CAST(attributes->>'readiness.seconds' AS DOUBLE) AS readiness_observed_seconds, CAST(attributes->>'frame.windows' AS DOUBLE) AS frame_windows, attributes->>'profile.requested' AS profile, CAST(attributes->>'run.observation_gaps' AS DOUBLE) AS observation_gaps, CAST(attributes->>'app.delivery.exported_spans' AS DOUBLE) AS sdk_exported_spans, CAST(attributes->>'app.delivery.failed_spans' AS DOUBLE) AS sdk_failed_spans FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.run.summary' ORDER BY reported DESC LIMIT 100"
+                    "query": "SELECT trace_id, span_id, start_timestamp AS reported, attributes->>'scenario.id' AS scenario, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'scenario.phase' AS phase, CAST(attributes->>'run.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'run.duration_seconds' AS DOUBLE) AS duration_seconds, CAST(attributes->>'app.duration_seconds' AS DOUBLE) AS app_seconds, CAST(attributes->>'profile.analysis.duration_seconds' AS DOUBLE) AS offline_analysis_seconds, CAST(attributes->>'readiness.seconds' AS DOUBLE) AS readiness_observed_seconds, CAST(attributes->>'frame.windows' AS DOUBLE) AS frame_windows, attributes->>'profile.requested' AS profile, CAST(attributes->>'run.observation_gaps' AS DOUBLE) AS observation_gaps, CAST(attributes->>'app.delivery.exported_spans' AS DOUBLE) AS sdk_exported_spans, CAST(attributes->>'app.delivery.failed_spans' AS DOUBLE) AS sdk_failed_spans FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.run.summary' ORDER BY reported DESC LIMIT 100"
                   }
                 }
               }
@@ -685,6 +685,58 @@
             }
           ]
         }
+      },
+      "CPUCallPaths": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Sampled CPU caller paths",
+            "description": "Up to 20 paths per main/background thread scope. Frames run from caller to sampled leaf. Fractions use all running weight in that scope, including unresolved samples. Partial paths stay explicit. These are sampled stacks, not blocked time or a chronological timeline."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'profile.ended_at' AS measured_end, attributes->>'capture.id' AS capture, attributes->>'cpu.thread_scope' AS thread_scope, CAST(attributes->>'call_path.rank' AS DOUBLE) AS rank, CAST(attributes->>'call_path.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'call_path.sampled_weight_fraction' AS DOUBLE) AS fraction, attributes->>'call_path.partial' AS partial, attributes->>'call_path.display' AS caller_path FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.call_path' ORDER BY measured_end DESC, capture, thread_scope, rank LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Diagnostics": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Session diagnostic findings",
+            "description": "Investigation hints from available frame and responsiveness windows. Thresholds do not establish a regression or a root cause. Open the trace for the diagnostic summary, observation gaps, and related CPU/GPU evidence."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, start_timestamp AS reported, attributes->>'session_id' AS session, attributes->>'diagnostic.finding_id' AS finding, attributes->>'diagnostic.observation' AS observation, attributes->'diagnostic.intervals' AS measured_intervals, attributes->>'diagnostic.next_investigation' AS next_investigation FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.diagnostic.finding' ORDER BY reported DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -814,6 +866,15 @@
               "content": {
                 "$ref": "#/spec/panels/CPUFunctions"
               }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPUCallPaths"
+              }
             }
           ]
         }
@@ -879,6 +940,15 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/ScenarioRuns"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Diagnostics"
               }
             }
           ]

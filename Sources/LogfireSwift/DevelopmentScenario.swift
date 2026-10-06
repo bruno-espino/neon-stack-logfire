@@ -47,6 +47,34 @@ public final class DevelopmentScenario {
         try markReady()
     }
 
+    /// The monitor retains these windows only for an explicitly identified development scenario.
+    func recordResponsiveness(_ values: [String: LogfireAttribute], ended: Date = Date()) throws {
+        lock.lock(); defer { lock.unlock() }
+        var report: [String: Any] = values.compactMapValues { value in
+            switch value {
+            case .string(let value): return value
+            case .int(let value): return value
+            case .double(let value): return value
+            case .bool(let value): return value
+            default: return nil
+            }
+        }
+        report["schema_version"] = 1; report["session_id"] = client.sessionID
+        report["pid"] = ProcessInfo.processInfo.processIdentifier
+        report["recorded_at"] = ended.timeIntervalSince1970
+        let file = output.deletingLastPathComponent().appendingPathComponent("responsiveness.jsonl")
+        if !FileManager.default.fileExists(atPath: file.path) {
+            guard FileManager.default.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) + Data([10])
+        guard data.count <= 65536 else { throw DevelopmentScenarioError.reportTooLarge }
+        let handle = try FileHandle(forWritingTo: file)
+        defer { try? handle.close() }
+        try handle.seekToEnd(); try handle.write(contentsOf: data)
+    }
+
     /// Call on a background queue. Flush queued telemetry before the runner sees completion.
     public func finish(passed: Bool, details: [String: String] = [:]) throws {
         lock.lock(); defer { lock.unlock() }

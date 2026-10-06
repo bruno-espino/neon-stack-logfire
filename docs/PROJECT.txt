@@ -25,6 +25,8 @@ Apple display/resource measurements -> optional Swift companion -> Logfire.
 Mac CPU/memory/filesystem samples -> attach or test companion -> live game.host.sample records.
 Native capture -> local recording, symbols, checksums, and Logfire metadata.
 Optional Instruments recording -> selected running CPU samples and top leaf functions -> Logfire.
+CPU caller paths -> separate main/background rankings -> structured Logfire records and local report.
+Scenario evidence -> diagnostic findings, missing evidence, and suggested native investigations.
 Optional GPU workload capture -> replay profiling -> selected encoder/shader measurements -> Logfire.
 Host Swift build step -> embedded build identity -> app startup identity record.
 Swift companion build action -> complete build trace, task totals, selected host samples, and .xcresult.
@@ -37,6 +39,8 @@ For live measurements, run:
 logfire-apple attach --seconds 30
 For a short live CPU recording on a Release app, run:
 logfire-apple profile --seconds 5
+After a scenario run, rebuild its retained diagnosis without launching the app:
+logfire-apple diagnose --report PATH/TO/report.json
 For GPU inspection, enable MTL_CAPTURE_ENABLED=1 in a diagnostic launch and run:
 logfire-apple gpu-capture --profile
 Use --service neon-stack when multiple instrumented apps run.
@@ -119,7 +123,11 @@ Verify setup and direct export on another tester Mac.
 Test physical iOS delivery with development credentials.
 Await a real MetricKit report and verify its historical version and state context.
 Investigate background-task protection and abrupt-stop delivery behavior.
-Extend finished-session capture without weakening process/build attribution.
+Extend finished-session native capture without weakening process/build attribution.
+Use diagnose to reanalyze retained scenario reports without another gameplay run.
+CPU reanalysis can recover caller paths from existing checksummed exports. It cannot recover unrecorded CPU stacks.
+Check current Apple guidance and installed tool schemas before each native integration change.
+Check Logfire structured attributes, SQL drilldown, and MCP capabilities before adding custom analysis infrastructure.
 
 Scenario runner
 logfire-apple run --app APP --scenario FILE

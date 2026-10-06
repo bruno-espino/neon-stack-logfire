@@ -4,6 +4,20 @@ import XCTest
 
 #if os(macOS)
 final class CompanionTests: XCTestCase {
+    func testStructuredAttributesKeepBooleansDistinctFromZeroAndOneCounts() throws {
+        let values = Companion.attributes(["partial": true, "samples": 1, "gaps": 0])
+        XCTAssertEqual(values["partial"], .bool(true))
+        XCTAssertEqual(values["samples"], .double(1))
+        XCTAssertEqual(values["gaps"], .double(0))
+        let structured = try Companion.structuredAttribute("diagnostic.details", value: ["gaps": ["missing CPU"]], type: "object")
+        guard case .string(let schema) = structured["logfire.json_schema"], case .string(let payload) = structured["diagnostic.details"] else {
+            return XCTFail("Structured attributes require JSON and schema metadata")
+        }
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(schema.utf8)) as? [String: Any])
+        let properties = try XCTUnwrap(object["properties"] as? [String: [String: String]])
+        XCTAssertEqual(properties["diagnostic.details"]?["type"], "object")
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: [String]])?["gaps"], ["missing CPU"])
+    }
     func testCredentialSetupKeepsFilePrivateAndRejectsInvalidReplacement() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
