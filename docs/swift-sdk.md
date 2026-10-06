@@ -3,6 +3,40 @@
 This package uses the upstream OpenTelemetry Swift SDK and its experimental HTTP exporter.
 It supports trusted developer and manual tester builds.
 
+## Add the SDK to an app
+
+In Xcode, add `https://github.com/bruno-espino/neon-stack-logfire.git` as a package dependency.
+Select the `native-analysis-workflow` branch for the current consolidation pilot.
+Link only the `LogfireSwift` library product to the application target.
+This branch can change. The project has no version tags yet.
+Use a reviewed revision for a reproducible pilot. Use a semantic version after the first release.
+The game and companion executable do not become application dependencies.
+
+Swift package consumers can add this dependency and target product:
+
+```swift
+.package(url: "https://github.com/bruno-espino/neon-stack-logfire.git",
+         branch: "native-analysis-workflow")
+
+.product(name: "LogfireSwift", package: "neon-stack-logfire")
+```
+
+The companion is optional for SDK telemetry.
+Supply `LOGFIRE_DEV_DIRECT=1`, `LOGFIRE_TOKEN`, and `LOGFIRE_BASE_URL` through a private runtime environment.
+Use `https://logfire-us.pydantic.dev` or `https://logfire-eu.pydantic.dev` for the base URL.
+The SDK appends `/v1/traces`. Do not put the token in source code or a shared scheme.
+Alternatively, use the companion's hidden-input configuration command below.
+
+Operation spans work without build integration.
+Build correlation requires an application resource named `LogfireBuild.json`.
+The current embedding script is a NeonStack example. It is not a generic project installer.
+Capture and attach can use another instrumented macOS app's verified session marker.
+The automated `test-game` action controls only the NeonStack reference game.
+
+The package currently supports synchronous `withSpan` operations.
+It does not provide an async span API or automatic URLSession instrumentation.
+Retain one client. Do not create a client for each frame or operation.
+
 ## Configure once
 
 Install the companion with [the native setup guide](native-workflow.md#install-once).

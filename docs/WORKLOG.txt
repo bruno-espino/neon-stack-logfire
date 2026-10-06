@@ -165,3 +165,31 @@ A scoped Logfire query confirms 16 host samples alongside SDK and native records
 Host CPU fractions remain distinct from the native process CPU-time fields.
 The live verification game stops after its bounded attach.
 No longer game run or iOS Simulator check is required for these companion-only changes.
+
+Packaging and Logfire visualization
+Kept the source Swift SDK and optional native companion as separate installation choices.
+Documented package installation without the companion and the current pilot branch.
+Separated ordinary SDK use from NeonStack-only automated inputs and example build embedding.
+Recorded release gaps. The repository has no license, version tags, package CI, or signed binary distribution.
+The tested upstream 2.6.0 pin is a prerelease. Its HTTP exporter remains experimental.
+Prioritized generic build identity, async spans, short package CI, and second-Mac installation checks.
+Kept longer tests, routine iOS Simulator validation, and the tester report button deferred.
+
+Added dashboards/apple-development.json as a reusable project-independent template.
+Created Apple Development Workflow in the authorized Logfire project through MCP.
+Its ten panels cover SDK windows, native presentation, process memory, whole-host context, captures, and builds.
+Session and build filters connect an investigation without confusing build-command and app-session identities.
+The charts distinguish measurement dates from export dates and interval means from window percentiles.
+Capture scopes remain separate. The charts do not sum overlapping capture aggregates.
+Rejected a mandatory collector and a metrics migration for this iteration.
+Custom record queries already visualize the selected evidence without changing the native development flow.
+An OTel metrics path remains a separate experiment for standard infrastructure dashboard compatibility.
+
+Verification
+All ten panel queries return real data from the authorized project.
+Exact smoke-session filters return one SDK window, eleven host samples, and the matching observed build.
+The saved dashboard contains ten panels, two filters, and SQL identical to the checked-in template.
+The MCP validates and saves the dashboard definition.
+Browser rendering remains unverified. The browser is signed out, and API-key credentials cannot supply an OAuth browser handoff.
+Local JSON, layout, documentation links, whitespace, credential, and private-reference checks pass.
+No app code changed. No additional game session, native recording, or Simulator run was needed.

@@ -50,6 +50,20 @@ telemetry.withSpan("app.load") {
 The client manages operation spans, native operation signposts, lifecycle flush requests, and optional MetricKit reports.
 See [the SDK guide](docs/swift-sdk.md) for frame recording and shared rendering context.
 Apple controls MetricKit report delivery. Its metric reports do not provide live frame telemetry.
+The SDK guide includes package installation without the companion.
+The [distribution plan](docs/native-workflow.md#package-and-distribution) separates reusable integration from the reference game.
+
+## Visualize the native workflow
+
+Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
+It includes ten panels for SDK windows, Apple presentation timings, process memory, host context, captures, and builds.
+Leave Session and Build empty to show all records. Paste exact IDs to filter.
+Copy a session's build ID into Build to connect runtime evidence to an observed build.
+The Session filter does not apply to the build table. Builds and app runs have different session IDs.
+
+The dashboard uses `records` and span attributes. No Python collector or OTel metrics migration is required.
+Capture aggregates remain separate from live measurements. Full recordings remain local.
+See [dashboard setup and query limits](docs/native-workflow.md#logfire-dashboard).
 
 ## Capture native evidence
 

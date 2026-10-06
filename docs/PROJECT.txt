@@ -71,6 +71,7 @@ Capture: Apple recording artifact, distinct from an OpenTelemetry trace.
 Build ID: identifies the app build and joins its runtime records and captures.
 Session ID: identifies one app run and joins independent operation and measurement records.
 Source digest: fingerprints source, package inputs, and project settings.
+Dashboard: reusable JSON panels for SDK windows, Apple measurements, host context, captures, and builds.
 Regression gate: compares matched reports and rejects missing or incompatible evidence.
 dSYM: retained debug symbols for native analysis.
 
@@ -90,6 +91,10 @@ Capture currently requires a live verified SDK session. Finished-session capture
 Physical iOS runtime, real MetricKit delivery, and a second tester Mac remain unverified.
 
 Next steps
+Import dashboards/apple-development.json. Filter investigations by session and build IDs.
+Package the SDK, optional companion, and dashboard separately. Keep the game as the reference example.
+Select a license, publish version tags, and add short package CI before a reusable release.
+Measure build-script overhead before a generic compiled build-identity helper replaces it.
 Defer the tester report button until the native consolidation workflow is validated.
 Verify setup and direct export on another tester Mac.
 Test physical iOS delivery with development credentials.

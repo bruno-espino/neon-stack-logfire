@@ -200,3 +200,71 @@ A second tester Mac, physical iOS delivery, and performance-budget calibration r
 Add an artifact-import path for finished sessions and iOS captures.
 Evaluate a smaller compiled build-identity helper to reduce the script's incremental build overhead.
 Keep the tester report button deferred until this workflow is stable.
+
+## Logfire dashboard
+
+Import [apple-development.json](../dashboards/apple-development.json) through Logfire's custom dashboard JSON option.
+An assistant with Logfire MCP dashboard permissions can also pass this definition to `dashboard_create`.
+Use `Apple Development Workflow` as the name and `apple-development-workflow` as the slug.
+Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
+Management credentials belong to the dashboard client. The application needs only its project write token.
+
+The ten panels query `records`. They cover SDK windows, live Apple measurements, whole-host context, captures, and builds.
+Session and Build accept exact IDs. Empty values disable the filter.
+Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
+The build table ignores Session because the build command and application have different session IDs.
+
+SDK charts use the recorded window end. Apple layer charts use the native measurement end.
+Host charts use the host sample date. Process-memory charts use export time because native process dates are absent.
+The SDK timing chart shows the worst window p95 per bucket. It is not a session percentile.
+Apple timing points average reported interval means. They are not per-frame session means.
+The live FPS chart divides presented frames by measured duration within each session and layer.
+Capture tables retain process, layer, and state-layer scopes separately. Overlapping captures are not summed.
+Missing attach data means no observation occurred. It does not mean zero load or zero FPS.
+The tables show at most 100 rows. Charts show at most 10,000 buckets. Narrow the time range for detailed investigation.
+
+The dashboard is an editable copy. Reimport an updated template under a new slug or update the existing definition through MCP.
+It does not receive automatic standard-dashboard updates.
+Logfire supports [JSON dashboard imports](https://pydantic.dev/docs/logfire/observe/dashboards/)
+and [MCP dashboard management](https://pydantic.dev/docs/logfire/guides/mcp-server/).
+Standard infrastructure dashboards require their expected metric instruments and names.
+Our custom dashboard does not convert span attributes into OTel metrics.
+
+## Package and distribution
+
+Keep one repository during the pilot. Distribute three independent parts:
+
+| Part | Installation | Required for ordinary app telemetry |
+| --- | --- | --- |
+| `LogfireSwift` | Source Swift package with a versioned library product | Yes |
+| `logfire-apple` | Optional native executable for configuration, builds, attach, capture, and analysis | No |
+| Dashboard definition | Logfire JSON import or MCP creation | No |
+
+Keep NeonStack under `examples`. It demonstrates the integration and supplies a repeatable workload.
+Do not require users to adopt the game, its Xcode project, a relay, Python, or a daemon.
+The SDK installation instructions are in [the SDK guide](swift-sdk.md#add-the-sdk-to-an-app).
+The library supports macOS 14 and iOS 17. StateReporting and the new MetricKit path require OS 27.
+Native lookback requires macOS 27 and its Apple tools.
+
+Before a reusable release, select a license, retain dependency notices, and publish a semantic version tag with release notes.
+Add a short package-validation CI job. Keep native performance comparisons opt-in.
+Verify installation on a second Mac before claiming a supported distribution.
+Then distribute a signed, notarized companion archive with checksums and an installation path such as Homebrew.
+The current installer builds from source. No signed download or release pipeline exists.
+Follow Apple's [macOS distribution guidance](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
+
+The upstream Swift 2.6.0 release is marked as a prerelease.
+Its HTTP exporter remains experimental. Swift traces are stable; metrics and logs remain under development.
+Keep the tested exact pins for this pilot. Review upstream changes before each dependency update and release.
+See the [release list](https://github.com/open-telemetry/opentelemetry-swift/releases),
+[exporter status](https://github.com/open-telemetry/opentelemetry-swift/blob/2.6.0/README.md),
+and [language status](https://opentelemetry.io/docs/languages/swift/).
+
+Prioritize a generic build-identity helper and explicit build-script dependencies to reduce Command-R overhead.
+The current script runs on every build and hashes package sources beyond the linked SDK.
+Measure each change with build timing summaries before replacing the script.
+Follow Apple's [incremental build guidance](https://developer.apple.com/documentation/Xcode/improving-the-speed-of-incremental-builds).
+Then add async span support with task-context tests and finished-session artifact import.
+Evaluate a small metrics exporter separately if standard infrastructure dashboards become a requirement.
+Validate delta temporality and source identity before that migration.
+Keep longer tests, iOS Simulator validation, and the tester report button deferred during this macOS iteration.
