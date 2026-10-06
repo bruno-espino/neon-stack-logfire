@@ -9,6 +9,8 @@ import Foundation
         precondition(effect.uniforms(at: 10.2, reducedMotion: true).w == 1)
         precondition(ClearAnimation(rows: [19], allClear: false, started: 0).title == "1 LINE")
         precondition(ClearAnimation(rows: [16, 17, 18, 19], allClear: false, started: 0).title == "FOUR ROWS!")
+        let burn = ClearAnimation(rows: [18, 19], allClear: false, started: 0, burned: true)
+        precondition(burn.title == "LOG BURNED 2 ROWS!" && burn.rowMask == (1 << 31 | 0xC0000), "Burned rows must flag fire")
         for cue in SoundCue.allCases {
             let wave = cue.waveData()
             let player = try AVAudioPlayer(data: wave, fileTypeHint: AVFileType.wav.rawValue)

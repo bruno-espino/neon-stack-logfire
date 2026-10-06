@@ -48,10 +48,10 @@ final class PerformanceRecorder {
             attributes: ["lines": .int(lines), "score": .int(score)])
     }
 
-    /// Log Roll submits three command buffers per frame. Each window reports their summed GPU time and,
+    /// Log Roll and Flappy Log submit three command buffers per frame. Each window reports their summed GPU time and,
     /// for each stage, the p95 over the last five seconds, which matches the recorder's window length.
     func record(gpuStages: [String: Double], frameMilliseconds: Double, cpuMilliseconds: Double,
-                score: Int, width: Int, height: Int, workload: String = "onscreen", particles: Int) {
+                score: Int, width: Int, height: Int, workload: String = "onscreen", game: String = "log-roll", particles: Int) {
         let now = ProcessInfo.processInfo.systemUptime
         var attributes: [String: LogfireAttribute] = ["score": .int(score)]
         lock.lock()
@@ -67,8 +67,8 @@ final class PerformanceRecorder {
         let total = gpuStages.values.reduce(0, +)
         recorder.record(frameMilliseconds: frameMilliseconds, preparationMilliseconds: cpuMilliseconds,
             gpuMilliseconds: total > 0 ? total : nil,
-            context: RenderContext(mode: "log-roll", width: width, height: height, workload: workload,
-                metadata: ["game": .string("log-roll"), "particles": .int(particles)]),
+            context: RenderContext(mode: game, width: width, height: height, workload: workload,
+                metadata: ["game": .string(game), "particles": .int(particles)]),
             attributes: attributes)
     }
 

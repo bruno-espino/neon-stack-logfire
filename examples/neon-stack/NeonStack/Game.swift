@@ -1,6 +1,29 @@
 import MetalKit
 import SwiftUI
+import LogfireSwift
 import os
+
+/// A game event as it appears in the live log panel. The same event goes to Logfire.
+struct LogLine: Identifiable, Equatable {
+    enum Level: String {
+        case info, notice, warn, error
+        /// Logfire's level numbers, so Logfire colors the events the same way.
+        var number: Int { ["info": 9, "notice": 10, "warn": 13, "error": 17][rawValue]! }
+        var color: Color {
+            switch self {
+            case .info: Color(red: 0.35, green: 0.6, blue: 1.0)
+            case .notice: Color(red: 0.3, green: 0.85, blue: 0.55)
+            case .warn: Color(red: 1.0, green: 0.62, blue: 0.2)
+            case .error: Color(red: 1.0, green: 0.3, blue: 0.3)
+            }
+        }
+    }
+    let id: Int
+    let time: Date
+    let level: Level
+    let message: String
+    let detail: String
+}
 
 final class GameState: ObservableObject {
     @Published var engine: GameEngine
@@ -12,6 +35,9 @@ final class GameState: ObservableObject {
     @Published var gpuMilliseconds = 0.0
     @Published var soundEnabled = true
     @Published var clearAnimation: ClearAnimation?
+    @Published private(set) var logFeed: [LogLine] = []
+    private var logCount = 0
+    private var warnedHigh = false
     var reducedMotion = false
     private lazy var audio = GameAudio()
     let benchmark = ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1"
@@ -24,11 +50,26 @@ final class GameState: ObservableObject {
            let demo = GameEngine.clearDemo(scenario, seed: seed) { engine = demo }
         renderMode = ProcessInfo.processInfo.environment["NEON_RENDER_MODE"] ?? "neon"
         auroraLayers = min(48, max(1, ProcessInfo.processInfo.environment["NEON_AURORA_LAYERS"].flatMap(Int.init) ?? 24))
-        GameTelemetry.client.event("game.session.started", attributes: ["render_mode": .string(renderMode)])
+        log(.info, "game.session.started", "new game started", ["render_mode": .string(renderMode)])
+    }
+    /// Sends a game event to Logfire with a readable message and level, and shows it in the log panel.
+    func log(_ level: LogLine.Level, _ name: String, _ message: String, _ attributes: [String: LogfireAttribute] = [:]) {
+        var values = attributes
+        values["logfire.msg"] = .string(message); values["logfire.level_num"] = .int(level.number)
+        GameTelemetry.client.event(name, attributes: values)
+        logCount += 1
+        let detail = attributes.filter { $0.key != "render_mode" }.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value.description)" }.joined(separator: " ")
+        logFeed.append(LogLine(id: logCount, time: Date(), level: level, message: message, detail: detail))
+        if logFeed.count > 9 { logFeed.removeFirst(logFeed.count - 9) }
     }
     func action(_ key: String) {
         guard !benchmark else { return }
-        if key == "restart" { audio.stop(); engine = GameEngine(); clearAnimation = nil; paused = false; return }
+        if key == "restart" {
+            audio.stop(); engine = GameEngine(); clearAnimation = nil; paused = false; warnedHigh = false
+            log(.info, "game.session.started", "new game started", ["render_mode": .string(renderMode)])
+            return
+        }
         if key == "pause" { paused.toggle(); if paused { audio.stop() }; return }
         guard !paused && !engine.gameOver else { return }
         if ["drop", "hold", "rotate"].contains(key) {
@@ -73,15 +114,13 @@ final class GameState: ObservableObject {
     }
     private func feedback(after previousLocks: Int) {
         guard engine.piecesLocked != previousLocks else { return }
+        logEvents()
         if engine.lastClear > 0 {
-            GameTelemetry.client.event("game.line_clear", attributes: [
-                "cleared_lines": .int(engine.lastClear), "all_clear": .bool(engine.lastAllClear),
-                "score": .int(engine.score), "render_mode": .string(renderMode),
-            ])
             signposter.emitEvent("LineClear")
             if engine.lastAllClear { signposter.emitEvent("AllClear") }
             else if engine.lastClear == 4 { signposter.emitEvent("FourLineClear") }
-            let effect = ClearAnimation(rows: engine.lastClearRows, allClear: engine.lastAllClear, started: CACurrentMediaTime())
+            let effect = ClearAnimation(rows: engine.lastClearRows, allClear: engine.lastAllClear, started: CACurrentMediaTime(),
+                                        burned: !engine.lastBurnedRows.isEmpty)
             clearAnimation = effect
             play(engine.lastAllClear ? .allClear : (engine.lastClear == 4 ? .four : .line))
             DispatchQueue.main.asyncAfter(deadline: .now() + effect.duration) { [weak self] in
@@ -89,11 +128,38 @@ final class GameState: ObservableObject {
             }
         } else { play(engine.gameOver ? .gameOver : .lock) }
     }
+    /// What just happened after a piece locked, as log lines.
+    private func logEvents() {
+        let score: LogfireAttribute = .int(engine.score), mode: LogfireAttribute = .string(renderMode)
+        if !engine.lastBurnedRows.isEmpty {
+            signposter.emitEvent("LogBurned")
+            log(.notice, "game.log_burned", "log burned \(engine.lastClear) \(engine.lastClear == 1 ? "row" : "rows")",
+                ["burned_rows": .int(engine.lastBurnedRows.count), "cleared_lines": .int(engine.lastClear),
+                 "score": score, "render_mode": mode])
+        } else if engine.lastClear > 0 {
+            log(.info, "game.line_clear", engine.lastAllClear ? "all clear!" : "cleared \(engine.lastClear) \(engine.lastClear == 1 ? "line" : "lines")",
+                ["cleared_lines": .int(engine.lastClear), "all_clear": .bool(engine.lastAllClear), "score": score, "render_mode": mode])
+        }
+        if engine.gameOver {
+            log(.error, "game.over", "stack overflow!", ["score": score, "lines": .int(engine.lines), "render_mode": mode])
+            return
+        }
+        let top = (0..<GameEngine.height).first { row in (0..<GameEngine.width).contains { engine.board[row * GameEngine.width + $0] != 0 } }
+            ?? GameEngine.height
+        if top <= 6 && !warnedHigh {
+            warnedHigh = true
+            log(.warn, "game.stack_high", "stack is getting high", ["rows_left": .int(top), "render_mode": mode])
+        } else if top > 9 { warnedHigh = false }
+        if engine.piece.burning {
+            log(.warn, "game.burning_log", "burning log incoming", ["pieces_locked": .int(engine.piecesLocked), "render_mode": mode])
+        }
+    }
 }
 
 @main struct NeonStackApp: App {
     @StateObject private var game = GameState()
     @StateObject private var logRoll = LogRollState()
+    @StateObject private var flappy = FlappyState()
     init() {
         if ProcessInfo.processInfo.environment["NEON_OFFSCREEN"] == "1" {
             do { try OffscreenReplay.run(); exit(0) }
@@ -102,7 +168,7 @@ final class GameState: ObservableObject {
     }
     var body: some Scene {
         WindowGroup {
-            GameSwitcher(game: game, logRoll: logRoll)
+            GameSwitcher(game: game, logRoll: logRoll, flappy: flappy)
                 .onAppear {
                     #if os(macOS)
                     if game.benchmark,
@@ -118,10 +184,11 @@ final class GameState: ObservableObject {
     }
 }
 
-/// Chooses between Neon Stack and Log Roll. Benchmarks pick the game with NEON_GAME and hide the switcher.
+/// Chooses between Neon Stack, Log Roll, and Flappy Log. Benchmarks pick the game with NEON_GAME and hide the switcher.
 struct GameSwitcher: View {
     @ObservedObject var game: GameState
     let logRoll: LogRollState
+    let flappy: FlappyState
     @State private var selection = ProcessInfo.processInfo.environment["NEON_GAME"]
         ?? (ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1" ? "neon-stack" : "log-roll")
     var body: some View {
@@ -129,10 +196,15 @@ struct GameSwitcher: View {
             if !game.benchmark {
                 Picker("Game", selection: $selection) {
                     Text("Log Roll").tag("log-roll")
+                    Text("Flappy Log").tag("flappy-log")
                     Text("Neon Stack").tag("neon-stack")
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 260).padding(.top, 10)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 380).padding(.top, 10)
             }
-            if selection == "log-roll" { LogRollScreen(game: logRoll) } else { GameScreen(game: game) }
+            switch selection {
+            case "log-roll": LogRollScreen(game: logRoll)
+            case "flappy-log": FlappyScreen(game: flappy)
+            default: GameScreen(game: game)
+            }
         }.background(Color.black)
     }
 }
@@ -144,11 +216,12 @@ struct GameScreen: View {
     var body: some View {
         GeometryReader { geometry in
             let wide = geometry.size.width > 600
+            let showFeed = geometry.size.width > 800
             VStack(spacing: wide ? 22 : 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("NEON STACK").font(.system(size: wide ? 32 : 24, weight: .black, design: .monospaced)).tracking(3)
-                        Text("FALL INTO THE FLOW").font(.system(size: 10, design: .monospaced)).tracking(3).foregroundStyle(cyan)
+                        Text("LOGFIRE EDITION · EVERY 8TH PIECE BURNS").font(.system(size: 10, design: .monospaced)).tracking(3).foregroundStyle(cyan)
                     }
                     Spacer()
                     if wide { renderingControls() }
@@ -164,7 +237,7 @@ struct GameScreen: View {
                     HStack { stat("SCORE", game.engine.score); Spacer(); stat("LINES", game.engine.lines)
                         Spacer(); stat("LEVEL", game.engine.level) }
                     HStack(spacing: 12) {
-                        preview("NEXT", kind: game.engine.nextKind)
+                        preview("NEXT", kind: game.engine.nextKind, burning: game.engine.piecesUntilFire == 1)
                         preview(holdTitle, kind: game.engine.heldKind)
                     }.frame(height: 65)
                 }
@@ -173,10 +246,11 @@ struct GameScreen: View {
                         VStack(alignment: .leading, spacing: 12) {
                             stat("SCORE", game.engine.score); stat("LINES", game.engine.lines); stat("LEVEL", game.engine.level)
                             Rectangle().fill(cyan.opacity(0.2)).frame(height: 1)
-                            preview("NEXT UP", kind: game.engine.nextKind).frame(height: 70)
+                            preview("NEXT UP", kind: game.engine.nextKind, burning: game.engine.piecesUntilFire == 1).frame(height: 70)
                             preview(holdTitle, kind: game.engine.heldKind).frame(height: 70)
+                            fireCountdown
                             Spacer()
-                            Text("← →  MOVE\n↑     ROTATE\n↓     SOFT DROP\nSPACE HARD DROP\nC     HOLD / SWAP\nP     PAUSE\nR     RESTART")
+                            Text("← →  MOVE\n↑     ROTATE\n↓     SOFT DROP\nSPACE HARD DROP\nC     HOLD / SWAP\nP     PAUSE\nR     RESTART\n\nBURNING LOGS BURN\nEVERY ROW THEY TOUCH")
                                 .font(.system(size: 10, design: .monospaced)).lineSpacing(4).foregroundStyle(.white.opacity(0.45))
                                 .fixedSize(horizontal: false, vertical: true)
                         }.frame(width: 155)
@@ -199,7 +273,12 @@ struct GameScreen: View {
                     }.aspectRatio(0.5, contentMode: .fit)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(cyan.opacity(0.3), lineWidth: 1))
                         .shadow(color: cyan.opacity(game.glow ? 0.25 : 0), radius: 25)
+                    if showFeed { LogFeed(lines: game.logFeed).frame(width: 230) }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                if !showFeed {
+                    if !wide { fireCountdown }
+                    if let last = game.logFeed.last { LogRow(line: last).frame(maxWidth: .infinity, alignment: .leading) }
+                }
                 HStack(spacing: 8) {
                     control("←", "left"); control("↻", "rotate"); control("→", "right")
                     control("↓", "down"); control("DROP", "drop"); control("HOLD", "hold")
@@ -227,10 +306,16 @@ struct GameScreen: View {
         if game.engine.holdUsed { return "HOLD · DROP TO SWAP" }
         return game.engine.heldKind == nil ? "HOLD · C TO STORE" : "HOLD · C TO SWAP"
     }
-    func preview(_ title: String, kind: Int?) -> some View {
+    var fireCountdown: some View {
+        let count = game.engine.piecesUntilFire
+        return Text(count == 0 ? "🔥 BURNING LOG · NO HOLD" : "🔥 BURNING LOG IN \(count)")
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(Color(red: 1.0, green: 0.55, blue: 0.18).opacity(count <= 1 ? 1 : 0.6))
+    }
+    func preview(_ title: String, kind: Int?, burning: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.55))
-            PiecePreview(kind: kind).opacity(title.hasPrefix("HOLD") && game.engine.holdUsed ? 0.45 : 1)
+            PiecePreview(kind: kind, burning: burning).opacity(title.hasPrefix("HOLD") && game.engine.holdUsed ? 0.45 : 1)
         }.accessibilityElement(children: .combine)
             .accessibilityLabel("\(title). \(kind.map { ["I", "O", "T", "S", "Z", "L", "J"][$0] + " piece" } ?? "Empty")")
     }
@@ -279,8 +364,50 @@ struct ClearBanner: View {
     }
 }
 
+/// The live log panel: the same events the SDK sends to Logfire, newest at the bottom.
+struct LogFeed: View {
+    let lines: [LogLine]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle().fill(Color(red: 1.0, green: 0.45, blue: 0.15)).frame(width: 6, height: 6)
+                Text("LOGFIRE · LIVE").font(.system(size: 10, weight: .bold, design: .monospaced)).tracking(2)
+            }
+            Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
+            if lines.isEmpty {
+                Text("Waiting for the first event...").font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
+            }
+            ForEach(lines) { LogRow(line: $0) }
+            Spacer()
+            Text("Sent with the Logfire Swift SDK").font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.35))
+        }.padding(12).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.08), lineWidth: 1))
+    }
+}
+
+struct LogRow: View {
+    let line: LogLine
+    static let clock: DateFormatter = { let format = DateFormatter(); format.dateFormat = "HH:mm:ss"; return format }()
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(Self.clock.string(from: line.time)).foregroundStyle(.white.opacity(0.4))
+                Text(line.level.rawValue.uppercased()).font(.system(size: 8, weight: .heavy, design: .monospaced))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(line.level.color.opacity(0.2), in: RoundedRectangle(cornerRadius: 3))
+                    .foregroundStyle(line.level.color)
+                Text(line.message).foregroundStyle(.white.opacity(0.9)).lineLimit(2)
+            }
+            if !line.detail.isEmpty {
+                Text(line.detail).foregroundStyle(.white.opacity(0.4)).lineLimit(1).truncationMode(.tail)
+            }
+        }.font(.system(size: 9, design: .monospaced))
+    }
+}
+
 struct PiecePreview: View {
     let kind: Int?
+    var burning = false
     var body: some View {
         Canvas { context, size in
             guard let kind else {
@@ -298,7 +425,7 @@ struct PiecePreview: View {
             for cell in cells {
                 let rect = CGRect(x: origin.x + CGFloat(cell.x - minX) * unit, y: origin.y + CGFloat(cell.y - minY) * unit,
                                   width: unit - 2, height: unit - 2)
-                context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(colors[kind]))
+                context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(burning ? .orange : colors[kind]))
             }
         }.background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
     }

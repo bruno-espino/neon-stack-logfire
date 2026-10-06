@@ -10,6 +10,20 @@ float3 palette(int value) {
         float3(0.26, 0.94, 0.58), float3(1.0, 0.32, 0.48), float3(1.0, 0.57, 0.24), float3(0.28, 0.52, 1.0)};
     return colors[clamp(value - 1, 0, 6)];
 }
+static float stackHash(float2 p) {
+    uint v = uint(int(p.x) * 73856093) ^ uint(int(p.y) * 19349663);
+    v = v * 747796405u + 2891336453u; v = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return float((v >> 22u) ^ v) / 4294967295.0;
+}
+static float stackNoise(float2 p) {
+    float2 i = floor(p), f = fract(p), w = f * f * (3 - 2 * f);
+    return mix(mix(stackHash(i), stackHash(i + float2(1, 0)), w.x), mix(stackHash(i + float2(0, 1)), stackHash(i + 1), w.x), w.y);
+}
+/// Flames rising through a burning cell. `p` is in board cells, so neighbouring cells flow together.
+static float flames(float2 p, float time) {
+    float rise = stackNoise(float2(p.x * 2.2, p.y * 1.6 + time * 3.2)) * 0.65 + stackNoise(float2(p.x * 5, p.y * 4 + time * 5.5)) * 0.35;
+    return smoothstep(0.35, 0.85, rise);
+}
 float blockDistance(float2 p) {
     float2 q = abs(p - 0.5) - 0.35;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.055;
@@ -45,14 +59,27 @@ fragment float4 neonStack(VertexOutput in [[stage_in]], constant float4 &state [
             int2 neighbor = cell + int2(x, y);
             if (neighbor.x < 0 || neighbor.x >= 10 || neighbor.y < 0 || neighbor.y >= 20) continue;
             int value = cells[neighbor.y * 10 + neighbor.x];
-            if (value > 0 && value < 10) color += palette(value) * exp(-max(0.0, blockDistance(local - float2(x, y))) * 3.8) * 0.32;
+            float halo = exp(-max(0.0, blockDistance(local - float2(x, y))) * 3.8);
+            if (value > 0 && value < 10) color += palette(value) * halo * 0.32;
+            if (value > 20 && value < 30) color += float3(1.0, 0.4, 0.08) * halo * (0.5 + 0.2 * sin(state.z * 13 + float(neighbor.x)));
         }
     }
-    int value = cells[cell.y * 10 + cell.x];
+    int raw = cells[cell.y * 10 + cell.x];
+    // Values above 20 belong to a burning log: charred wood with flames licking up through it.
+    bool burning = raw > 20;
+    int value = burning ? raw - 20 : raw;
     float distance = blockDistance(local);
     if (value > 10) {
         float outline = 1 - smoothstep(0.015, 0.04, abs(distance));
-        color = mix(color, palette(value - 10) * 0.6, outline * 0.55);
+        color = mix(color, burning ? float3(1.0, 0.45, 0.1) * 0.8 : palette(value - 10) * 0.6, outline * 0.55);
+    } else if (value > 0 && burning) {
+        float fill = 1 - smoothstep(-0.015, 0.025, distance);
+        float2 board = grid * float2(1, -1);
+        float bark = stackNoise(float2(grid.x * 3, grid.y * 14));
+        float3 wood = mix(float3(0.12, 0.06, 0.03), float3(0.32, 0.18, 0.08), bark);
+        float fire = neon ? flames(board, state.z) : 0.5;
+        float3 block = wood + float3(1.0, 0.42, 0.08) * fire * (neon ? 1.9 : 0.8) + float3(1.0, 0.8, 0.4) * pow(fire, 4.0) * 0.6;
+        color = mix(color, block, fill);
     } else if (value > 0) {
         float fill = 1 - smoothstep(-0.015, 0.025, distance);
         float rim = 1 - smoothstep(0.01, 0.05, abs(distance));
@@ -63,13 +90,18 @@ fragment float4 neonStack(VertexOutput in [[stage_in]], constant float4 &state [
     if (effect.x >= 0) {
         float progress = effect.x;
         float fade = (1 - progress) * (1 - progress);
-        bool special = effect.z > 0.5 || effect.y == 4;
-        float3 accent = effect.z > 0.5 ? float3(1.0, 0.8, 0.3) : float3(0.3, 0.95, 1.0);
+        bool fire = (clearedRows >> 31) != 0;
+        bool special = effect.z > 0.5 || effect.y == 4 || fire;
+        float3 accent = effect.z > 0.5 ? float3(1.0, 0.8, 0.3) : fire ? float3(1.0, 0.45, 0.1) : float3(0.3, 0.95, 1.0);
         bool cleared = (clearedRows & (1u << uint(cell.y))) != 0;
         if (effect.w > 0.5) {
             if (cleared) color = mix(color, accent, fade * 0.35);
         } else {
-            if (cleared) {
+            if (cleared && fire) {
+                // Burned rows go up in flames that fade as the rows above fall.
+                float flame = flames(grid * float2(1, -1), state.z + progress * 2);
+                color += accent * fade * (0.5 + flame * 2.2) + float3(1.0, 0.85, 0.5) * pow(flame, 3.0) * fade;
+            } else if (cleared) {
                 float sweep = exp(-pow((uv.x - progress * 1.4 + 0.2) * 8, 2.0));
                 color += accent * fade * (0.3 + sweep * 1.4);
                 float sparks = pow(max(0.0, sin(uv.x * 180 + float(cell.y) * 7 - progress * 24)), 24.0);

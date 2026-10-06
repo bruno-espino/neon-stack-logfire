@@ -79,6 +79,23 @@ import Foundation
         for _ in 0..<100 { first.autoplay(); second.autoplay() }
         precondition(first.board == second.board && first.score == second.score, "Seeded replays must match")
         precondition(first.lines > 10 && !first.gameOver, "Benchmark replay must exercise line clears")
-        print("Hold, movement, scoring, line-clear, and replay checks passed. Replay lines: \(first.lines), score: \(first.score)")
+        var kindling = GameEngine(seed: 777)
+        for _ in 0..<(GameEngine.fireEvery - 1) { kindling.autoplay() }
+        precondition(kindling.piece.burning && !kindling.canHold && kindling.piecesUntilFire == 0,
+                     "Every eighth piece must be a burning log that can't be held")
+        kindling.autoplay()
+        precondition(!kindling.lastBurnedRows.isEmpty, "The autopilot must land a burning log as a burning log")
+        precondition(!kindling.piece.burning && kindling.piecesUntilFire == GameEngine.fireEvery - 1,
+                     "The piece after a burning log must not burn")
+        var burner = GameEngine(seed: 1)
+        burner.board[190] = 3; burner.board[181] = 4; burner.board[170] = 5
+        burner.piece = Piece(kind: 1, x: 6, burning: true)
+        burner.hardDrop()
+        precondition(burner.lastBurnedRows == [18, 19] && burner.lastClear == 2 && burner.lastClearRows == [18, 19],
+                     "A burning log must burn away every row it touches")
+        precondition(burner.board[190] == 5 && burner.board.filter { $0 != 0 }.count == 1,
+                     "Rows above burned rows must fall, and burned rows must leave nothing behind")
+        precondition(GameEngine.points(clearing: 6) == 1200, "Burning more than four rows must keep scoring")
+        print("Hold, movement, scoring, line-clear, burning-log, and replay checks passed. Replay lines: \(first.lines), score: \(first.score)")
     }
 }

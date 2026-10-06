@@ -10,6 +10,7 @@ enum OffscreenReplay {
     static func run() throws {
         let environment = ProcessInfo.processInfo.environment
         if environment["NEON_GAME"] == "log-roll" { try LogRollOffscreenReplay.run(); return }
+        if environment["NEON_GAME"] == "flappy-log" { try FlappyOffscreenReplay.run(); return }
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
               let library = device.makeDefaultLibrary() else { throw ReplayError.unavailable }
         let descriptor = MTLRenderPipelineDescriptor()
@@ -24,6 +25,8 @@ enum OffscreenReplay {
         guard let texture = device.makeTexture(descriptor: textureDescriptor) else { throw ReplayError.unavailable }
         var engine = GameEngine(seed: environment["NEON_SEED"].flatMap(UInt64.init) ?? 777)
         let demo = environment["NEON_FEEDBACK_SCENARIO"].flatMap { GameEngine.clearDemo($0) }
+        // The burning log hangs in the air for a moment so the preview can show it before it lands.
+        let dropFrame = environment["NEON_FEEDBACK_SCENARIO"] == "burn" ? 21 : 0
         if let demo { engine = demo }
         let duration = environment["NEON_BENCHMARK_SECONDS"].flatMap(Double.init) ?? 20
         let mode = environment["NEON_RENDER_MODE"] ?? "neon"
@@ -42,9 +45,11 @@ enum OffscreenReplay {
                 previous = now
                 if frame % 21 == 0 {
                     let previousLocks = engine.piecesLocked
-                    if demo != nil && frame == 0 { engine.hardDrop() } else { engine.autoplay() }
+                    if demo != nil && frame == dropFrame { engine.hardDrop() }
+                    else if demo == nil || frame > dropFrame { engine.autoplay() }
                     if engine.piecesLocked != previousLocks && engine.lastClear > 0 {
-                        effect = ClearAnimation(rows: engine.lastClearRows, allClear: engine.lastAllClear, started: now)
+                        effect = ClearAnimation(rows: engine.lastClearRows, allClear: engine.lastAllClear, started: now,
+                                                burned: !engine.lastBurnedRows.isEmpty)
                         signposter.emitEvent("LineClear")
                         if engine.lastAllClear { signposter.emitEvent("AllClear") }
                         else if engine.lastClear == 4 { signposter.emitEvent("FourLineClear") }
@@ -76,9 +81,12 @@ enum OffscreenReplay {
                 let cpu = (CACurrentMediaTime() - now) * 1000
                 command.commit(); command.waitUntilCompleted()
                 if command.status == .error { throw command.error ?? ReplayError.unavailable }
+                if demo != nil, frame == 10, engine.piece.burning, let output = environment["NEON_PERF_REPORT"] {
+                    try savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent().appendingPathComponent("burning-log.png"))
+                }
                 if demo != nil, let effect, now - effect.started >= 0.12, now - effect.started < 0.3,
                    let output = environment["NEON_PERF_REPORT"] {
-                    let name = effect.allClear ? "all-clear" : (effect.rows.count == 4 ? "four-lines" : "line-clear")
+                    let name = effect.burned ? "log-burn" : effect.allClear ? "all-clear" : (effect.rows.count == 4 ? "four-lines" : "line-clear")
                     if previews.insert(name).inserted {
                         try savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent().appendingPathComponent(name + ".png"))
                     }
