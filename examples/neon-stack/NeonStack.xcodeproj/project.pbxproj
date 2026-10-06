@@ -14,7 +14,7 @@
             name = "Embed Logfire build identity";
             runOnlyForDeploymentPostprocessing = 0;
             shellPath = /bin/sh;
-            shellScript = "\"$SRCROOT/../../tools/xcode-observe/.venv/bin/xcode-build-identity\" --source \"$SRCROOT\" --package \"$SRCROOT/../..\" --output \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/LogfireBuild.json\"";
+            shellScript = "xcrun --sdk macosx swift -sdk \"$(xcrun --sdk macosx --show-sdk-path)\" \"$SRCROOT/../../tools/embed-build.swift\" \"$SRCROOT\" \"$SRCROOT/../..\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/LogfireBuild.json\"";
         };
 
         A00000000000000000000028 = {isa = PBXBuildFile; productRef = A00000000000000000000029;};

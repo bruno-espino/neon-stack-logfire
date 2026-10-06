@@ -1,208 +1,134 @@
 # Logfire Swift prototype
 
-This experimental package connects native Apple development to Logfire through
-the OpenTelemetry Swift SDK. It uses the upstream OTLP HTTP exporter.
-The package does not implement a separate telemetry protocol.
+This package uses the upstream OpenTelemetry Swift SDK and its experimental HTTP exporter.
+It supports trusted developer and manual tester builds.
 
-## Run the working example
+## Configure once
 
-Install Xcode 27 and the standalone observer dependencies.
-Run this command from the repository root.
+Run `swift run logfire-apple configure --region us` from the repository root.
+Use `--region eu` for a European project. Supply a project write token, not a management API key.
+The command hides input and saves `~/.config/logfire-swift/credentials.env` with permissions of `0600`.
+The SDK also accepts the earlier `~/.config/xcode-observe/credentials.env` location.
+The app reads credentials at runtime. The build never copies them into the application.
 
-```sh
-uv sync --project tools/xcode-observe
-"$(xcode-select -p)/../MacOS/Xcode" examples/neon-stack/NeonStack.xcodeproj &
-```
+Set `LOGFIRE_DEV_DIRECT=1` in the development scheme.
+Runtime `LOGFIRE_TOKEN` and `LOGFIRE_BASE_URL` variables can replace the file. Set both together.
+Set `LOGFIRE_DEV_CREDENTIALS` for another private file. Keep credentials out of shared schemes.
+Without opt-in, the SDK disables export and does not read the private file.
+An enabled run with invalid credentials throws a sanitized configuration error.
 
-Select the NeonStack scheme and the My Mac destination. Press Command-R.
-The command opens the selected Xcode application directly.
-This scheme retains LLDB debugging and enables direct HTTPS export with `LOGFIRE_DEV_DIRECT=1`.
-It starts no relay or live Metal observer. Capture Apple's retained history on demand.
-Use the host attach command when you need continuous Apple Metal summaries.
-The game exports operation spans and performance windows during the session.
-The first complete window follows two seconds of warmup and five seconds of measurements.
-The export worker batches spans approximately every second.
-
-The app reads `~/.config/xcode-observe/credentials.env` at runtime on the Mac.
-This private file must contain `LOGFIRE_TOKEN` and `LOGFIRE_BASE_URL`.
-Use a project write token and the HTTPS endpoint for its region.
-Keep the directory private and give the file permissions of `0600`.
-The file stores the token on each trusted development or tester machine.
-The build does not copy the token or credential file into the application.
-`LOGFIRE_TOKEN` and `LOGFIRE_BASE_URL` runtime variables can replace the file.
-Set both variables together. Do not put their values in a shared Xcode scheme.
-Set `LOGFIRE_DEV_CREDENTIALS` to use a different private file.
-
-## Optional relay
-
-The relay remains available for transport comparisons. No Xcode scheme starts it.
-Disable direct opt-in and set the explicit loopback endpoint to use that transport.
-
-Inspect or stop the relay from the repository root.
-
-```sh
-tools/xcode-observe/.venv/bin/xcode-dev-relay status
-tools/xcode-observe/.venv/bin/xcode-dev-relay stop
-```
-
-The relay listens only on the Mac loopback interface.
-It exits after one hour without an export request.
-The relay log stays in the private configuration directory.
-Its health response contains request counters and its process ID.
-The relay forwards OTLP bytes and adds the write token on the host.
-It has no disk buffer or retry queue.
-This relay is a local development tool. It is not a production ingest service.
-
-## Use the package
-
-Add this repository root as a local Swift package dependency.
-Alternatively, add its private GitHub URL in Xcode with a GitHub account that has access.
-Link its `LogfireSwift` product to the application target.
+## One retained client
 
 ```swift
 import LogfireSwift
 
-let telemetry = Logfire(serviceName: "my-game", configuration: try .development())
-let level = telemetry.withSpan("game.load_level", attributes: ["level": .int(1)]) {
+let telemetry = try Logfire.development(serviceName: "my-game", apple: .init(
+    stateDomains: ["dev.example.my-game.rendering"],
+    metadataKeys: ["quality"]))
+
+let level = telemetry.withSpan("game.load", attributes: ["level": .int(1)]) {
     loadLevel(1)
 }
 ```
 
-Set `LOGFIRE_DEV_DIRECT=1` in the development scheme and configure runtime credentials.
-The package throws a sanitized configuration error if an enabled direct run lacks valid credentials.
-Without direct opt-in or an explicit relay endpoint, the package disables network telemetry.
-It does not read the private file in that disabled mode.
-For the relay, set `LOGFIRE_DEV_ENDPOINT=http://127.0.0.1:4318/v1/traces` instead.
-The relay endpoint helper accepts only an explicit loopback URL.
-The Swift package itself needs no Python process or host CLI for direct export.
-The package uses a private tracer provider and preserves nested span context.
-An operation failure marks its span as an error without exporting the error text.
-The same operation creates an Instruments signpost under `dev.logfire.swift`.
-Existing game signposts remain available under `dev.example.NeonStack`.
-The integration creates signposts from instrumented operations.
-It does not import arbitrary system signposts.
+The client starts optional MetricKit collection on OS 27 and requests lifecycle flushes.
+It publishes a private macOS session marker for the companion.
+It emits identity when the app includes `LogfireBuild.json`.
+Set `apple: .init(metricKit: false)` to disable report collection.
+Retain one client rather than starting multiple MetricKit managers for the same app.
 
-The background batch queue holds at most 256 waiting spans.
-Exports use batches of at most 64 spans and a three-second network timeout.
-Failed batches are dropped. The game continues when Logfire or the relay is unavailable.
-Call `flush()` from a background queue before suspending the application.
-An abrupt stop can lose the last batch.
+The low-level `Logfire(serviceName:configuration:)` initializer remains available.
+It does not start Apple report collection or publish a marker automatically.
+Instrumented operations produce native signposts and Logfire spans over the same interval.
+The package does not import arbitrary system signposts.
 
-## Measurement contract
-
-| Data | Measurement producer | Delivery to Logfire |
-| --- | --- | --- |
-| Gameplay operations and instrumented failures | Game calls the Swift SDK | Runtime operation spans |
-| Callback cadence and frame preparation wall time | Game renderer instrumentation | Five-second span attributes through the SDK |
-| GPU command duration | Game reads completed Metal command-buffer timestamps | Five-second span attributes through the SDK |
-| Render mode, drawable size, detail, and thermal state | Game and Apple runtime APIs | Context on the SDK windows |
-| Presented FPS, skipped frames, and drawable waits | Apple metalperftrace | Host attach or capture command exports selected summaries |
-| Daily Metal frame-rate reports | Apple MetricKit through the Swift bridge | Delayed spans. Synthetic export passes. Real delivery is pending. |
-| Build duration, task totals, warnings, and errors | xcodebuild and the host build wrapper | Build traces and selected metric instruments |
-| Machine CPU, memory, and free disk during builds | Host sampler | Host metrics and build sample records |
-| Native signposts and profiler recordings | Game/SDK and Apple profiling tools | Recordings remain local. Capture metadata and selected summaries arrive in Logfire. |
-
-The SDK transports the game measurements. It does not pull all measurements from Xcode.
-Xcode debugger gauges and detailed native profiler views do not automatically export through the SDK.
-Ordinary Cmd-R exports build identity. The build wrapper supplies full build timing.
-
-The game exports `game.session.started`, `game.drop`, `game.hold`,
-`game.rotate`, `game.line_clear`, and `game.performance.window`.
-Operation spans use their actual start and end times.
-Each performance span covers its five-second measurement interval.
-Every span carries a random session ID.
-Nested operations share a trace. Independent windows use the session ID for correlation.
-Performance windows are span attributes, not OpenTelemetry metric instruments.
-
-GPU command duration comes from completed Metal command buffers.
-Frame intervals come from renderer callbacks.
-`frame_encode_wall_p95_ms` measures elapsed frame preparation time.
-The legacy `cpu_frame_p95_ms` attribute carries the same value.
-Neither attribute measures CPU utilization.
-Windows restart when the render mode, drawable size, workload, or Aurora detail changes.
-This avoids mixing different rendering conditions in one window.
-
-The app reads build context from its embedded `LogfireBuild.json` resource.
-Every operation and window carries that build ID and build trace relationship.
-The build phase passes wrapped build identity through to the app.
-Ordinary Xcode builds export an identity record from the host.
-The app publishes a development session marker with its PID and executable path.
-The macOS 27 observer verifies that marker before collecting Apple measurements.
-Native signposts include the session ID for capture correlation.
-See [the compact project guide](PROJECT.txt) for capture commands.
-The build observer still emits build telemetry separately.
-The replay wrapper strips native export configuration from its child process.
-Thus, a replay does not export the same windows through both paths.
-Instruments captures still require an explicit profiling run.
-No `.trace` file is uploaded or decoded by this package.
-
-## Verify and inspect
-
-```sh
-swift test
-uv run --project tools/xcode-observe pytest tools/xcode-observe/tests
-```
-
-Query the project for native spans.
-
-```sql
-SELECT start_timestamp, end_timestamp, span_name, attributes, trace_id
-FROM records
-WHERE service_name = 'neon-stack' AND kind = 'span'
-ORDER BY start_timestamp DESC
-LIMIT 100
-```
-
-The `neon-stack-performance` dashboard contains native operations and windows.
-Its replay comparison panel retains the controlled replay cohorts.
-Use live windows for diagnosis. Use matched replays for optimization comparisons.
-
-## Prototype limits and adoption
-
-The upstream Swift tracing SDK is stable. Its HTTP exporter is experimental.
-This package is an experimental development integration, not a released Logfire SDK.
-It does not provide automatic Metal capture, MetricKit diagnostic stacks, production
-mobile credential management, persistent offline delivery, or shared capture artifact hosting.
-The macOS example provides the runtime verification path.
-An iOS Simulator build is a compilation check, not device runtime verification.
-
-The product question is whether ordinary Xcode runs can produce useful native telemetry.
-Adoption means a session emits an operation and a performance window before the app exits.
-Bruno owns this prototype measure and the `neon-stack-performance` dashboard.
-Existing Logfire records provide the source of truth. This prototype adds no PostHog event.
-The producer emits one window per five seconds and selected gameplay operations.
-Its properties contain numeric measurements, bounded mode names, and random session IDs.
-They contain no player identity, free-form content, or credentials.
-Export failures can create gaps. The prototype does not promise exactly-once delivery.
-
-
-## MetricKit 27 experiment
-
-`MetricKitReports` consumes Apple's asynchronous daily metric reports on OS 27.
-The game retains this reader when its development configuration is enabled.
-It exports `game.field.metal_frame_rate` for the full day and selected rendering states.
-The bridge converts Apple frequency and duration units to hertz and seconds.
+## Frame measurement and state
 
 ```swift
-let fieldReports = MetricKitReports(serviceName: "my-game",
-    configuration: try .development(),
-    stateDomains: ["my-game.rendering"], metadataKeys: ["quality"])
+let frames = FrameRecorder(client: telemetry, stateDomain: "dev.example.my-game.rendering")
+let context = RenderContext(mode: "high", width: 600, height: 1200,
+    metadata: ["quality": .string("high")])
+
+// Call after the command buffer completes.
+frames.record(commandBuffer: commandBuffer,
+    frameMilliseconds: callbackIntervalMilliseconds,
+    preparationMilliseconds: framePreparationMilliseconds,
+    context: context)
 ```
 
-Retain the reader while the app runs. Call `stop()` to cancel it.
-Reports carry their historical measurement interval and reported application version.
-They omit the current build ID and session ID. Reports can cover multiple versions.
-The deterministic `report.id` helps identify repeated deliveries. The client does not deduplicate them.
-Full-day and state records overlap. Compare their scopes separately.
-The reader does not export diagnostic stacks, player identities, region, or arbitrary state metadata.
+The renderer supplies callback intervals and elapsed preparation time.
+The Metal adapter reads completed command-buffer timestamps.
+The recorder excludes two seconds of warmup and exports five-second windows.
+Context changes reset an incomplete window. Modes, sizes, and workloads do not share a window.
+The recorder reports the same context through Apple StateReporting and Logfire.
+Use a dedicated domain. The SDK owns its metadata types for that domain.
+Do not register that domain through direct StateReporting calls with other types.
 
-Tests decode a synthetic report through Apple's real Codable API and the OTLP span pipeline.
-Real daily delivery and physical iOS runtime remain unverified. Apple controls report timing.
-Direct export removes the Mac relay requirement. Physical iOS delivery remains unverified.
-The current scope covers trusted developer and manual tester builds. Public player telemetry is outside this experiment.
-The reader produces historical structured spans. It does not create OpenTelemetry metric instruments.
+Use `telemetry.state(domain:label:metadata:)` for other application states.
+`onWindow` receives values for a local report or display on the recorder's serial worker.
+Call `frames.finish()` after the renderer stops submitting frames. Do not call it inside `onWindow`.
 
-The **NeonStack** scheme supports ordinary debugging and direct app telemetry.
-Disable **Debug executable** in the scheme editor for runs without LLDB.
-Use matched Release replays for performance comparisons. Debugger pauses can distort frame windows.
-Use `xcode-native-observe attach --latest` for selected live Apple measurements.
+Callback FPS is not presented FPS. Preparation wall time is not CPU utilization.
+GPU command duration is not hardware utilization or a full presentation timeline.
+Absent GPU timestamps stay absent. Do not combine window percentiles into a session percentile.
+The recorder retains at most 10,000 samples per window.
+
+## MetricKit inside the SDK
+
+The adapter consumes Apple's metric and diagnostic report sequences.
+It exports selected CPU time, instruction counts, GPU time, disk writes, and hitch durations.
+It retains launch, resume, and hang distributions as histogram buckets with seconds as the unit.
+It exports daily Metal frame rates and selected rendering-state metadata.
+Peak memory and memory-exception summaries use the iOS path.
+Diagnostic summaries identify kinds, selected durations, signal numbers, and crash categories.
+Raw exception text and diagnostic stacks are not exported by this prototype.
+
+Reports retain historical measurement dates and the reported application build version.
+They omit the current build ID and session ID. A report can cover multiple app versions.
+Full-day and state records can overlap. Compare their scopes separately.
+The report ID identifies repeated reports. The client does not deduplicate them.
+The adapter exports the full-day interval and selected state entries.
+It does not export every smaller interval from the report.
+
+The existing `MetricKitReports` API remains available for manual report processing.
+The unified client keeps its historical exporter separate from current-session resources.
+Synthetic Apple reports verify decoding, units, timestamps, and context filtering.
+Real Apple report delivery and physical iOS runtime remain unverified.
+
+## Build and capture correlation
+
+The example build phase runs `tools/embed-build.swift` with the macOS host SDK.
+It embeds a build ID, source fingerprint, Git commit, configuration, SDK, and Xcode version.
+It reads no credentials and performs no network request.
+The app exports identity when it starts. Command-B alone creates local identity.
+The optional observer supplies full build timing and a build trace relationship.
+
+```sh
+swift run logfire-apple capture --last 10s
+swift run logfire-apple attach --seconds 30
+```
+
+The companion selects a verified live SDK session and retains artifacts locally.
+Logfire receives selected native display/resource summaries and capture metadata.
+A recording can contain other processes. The exported overview selects our PID.
+Neither `.atrc` nor Instruments `.trace` files become ordinary OpenTelemetry traces.
+See [the compact guide](PROJECT.txt) for the workflow.
+
+## Delivery and lifecycle
+
+```swift
+telemetry.flush() // Call from a background queue.
+let status = telemetry.delivery
+```
+
+The status reports acknowledged and failed spans from attempted batches, including the client's MetricKit path.
+It does not count queue-overflow or abrupt-process losses.
+Acknowledgement does not independently verify that a record appears in a Logfire query.
+Queues hold at most 256 spans. Batches hold at most 64 spans. HTTP requests have a three-second timeout.
+Failed batches are dropped. Export failure does not replace the operation's result.
+Lifecycle notifications request a flush outside the UI thread.
+They do not guarantee delivery before suspension or termination. An abrupt debugger stop can lose the last batch.
+
+The optional loopback relay remains available for transport comparisons.
+Set `LOGFIRE_DEV_ENDPOINT=http://127.0.0.1:4318/v1/traces` without direct opt-in to use it.
+The relay and advanced host tools require the optional Python environment.

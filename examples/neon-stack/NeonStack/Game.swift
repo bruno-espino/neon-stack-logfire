@@ -24,7 +24,6 @@ final class GameState: ObservableObject {
            let demo = GameEngine.clearDemo(scenario, seed: seed) { engine = demo }
         renderMode = ProcessInfo.processInfo.environment["NEON_RENDER_MODE"] ?? "neon"
         auroraLayers = min(48, max(1, ProcessInfo.processInfo.environment["NEON_AURORA_LAYERS"].flatMap(Int.init) ?? 24))
-        _ = GameTelemetry.fieldReports
         GameTelemetry.client.event("game.session.started", attributes: ["render_mode": .string(renderMode)])
     }
     func action(_ key: String) {
@@ -374,10 +373,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         let detail = Int(auroraLayers)
         command.addCompletedHandler { [weak self] buffer in
             guard let self else { return }
-            let gpu = buffer.gpuStartTime > 0 && buffer.gpuEndTime >= buffer.gpuStartTime
-                ? (buffer.gpuEndTime - buffer.gpuStartTime) * 1000 : nil
-            self.performance.record(frameMilliseconds: delta * 1000, cpuMilliseconds: cpu,
-                                    gpuMilliseconds: gpu, mode: mode, lines: lines, score: score,
+            self.performance.record(commandBuffer: buffer, frameMilliseconds: delta * 1000, cpuMilliseconds: cpu,
+                                    mode: mode, lines: lines, score: score,
                                     width: Int(size.width), height: Int(size.height), auroraLayers: detail)
         }
         command.present(drawable); command.commit()

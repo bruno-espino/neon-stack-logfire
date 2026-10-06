@@ -18,8 +18,6 @@
       <EnvironmentVariables>
          <EnvironmentVariable key="LOGFIRE_DEV_DIRECT" value="1" isEnabled="YES">
          </EnvironmentVariable>
-         <EnvironmentVariable key="NEON_OBSERVER_DIR" value="$(PROJECT_DIR)/.xcode-observe/sessions" isEnabled="YES">
-         </EnvironmentVariable>
       </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES">

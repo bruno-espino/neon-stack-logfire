@@ -1,3 +1,6 @@
+> Ordinary Xcode runs and native captures now use Swift only. See [the root guide](../../README.md).
+> Install this optional Python package for full build observation, controlled replays, or relay comparisons.
+
 # xcode-observe
 
 An experimental CLI for Apple build observation. It wraps `xcodebuild`, retains
@@ -107,7 +110,7 @@ Read [PROJECT.txt](../../docs/PROJECT.txt) for the compact project guide and ter
 The ordinary NeonStack scheme exports directly without a relay or live observer.
 Each build embeds `LogfireBuild.json`. Each app run publishes a private session marker.
 Wrapped builds share the observer build ID and trace ID with the app.
-Cmd-R creates an `xcode.build.identity` record without full build duration.
+Cmd-R embeds build identity through a host Swift script. The app exports it at startup without full build duration.
 The session marker connects native Apple measurements to app operation spans.
 The observer checks the executable, process start time, and current build identity.
 
@@ -120,10 +123,7 @@ Use the `attach` action instead of `capture` for explicit live Apple measurement
 Set its `--seconds` option to bound that observation.
 
 ```bash
-tools/xcode-observe/.venv/bin/xcode-native-observe capture \
-  --sessions examples/neon-stack/.xcode-observe/sessions \
-  --artifact-dir examples/neon-stack/.xcode-observe/native \
-  --latest --seconds 10
+swift run logfire-apple capture --last 10s
 ```
 
 Apple's `metalperftrace` supplies presented FPS, frame-on-glass intervals,
@@ -137,7 +137,7 @@ Logfire receives capture metadata and selected `game.native.capture_summary` mea
 Shared artifact hosting is not implemented.
 StateReporting adds render-mode and workload context with an OS and SDK 27 build.
 Older targets retain native signposts and app operation telemetry.
-The Swift package includes a MetricKit 27 bridge for delayed daily Metal reports.
+The Swift package includes a MetricKit 27 adapter for selected daily metrics and diagnostic summaries.
 It exports selected state metadata and historical timestamps without current-session attribution.
 A synthetic Apple-format report passes. Real daily delivery remains unverified.
 

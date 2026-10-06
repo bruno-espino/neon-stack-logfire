@@ -1,6 +1,6 @@
 > Ordinary Xcode runs now stream native telemetry through the experimental
 > [Swift integration](../../docs/swift-sdk.md).
-> Press Command-R with the NeonStack scheme after the host-tool setup.
+> Press Command-R with the NeonStack scheme. Ordinary runs require no Python host-tool setup.
 > Use an explicit native attach or capture command when you need Apple profiler evidence.
 > The build and replay workflows below remain available.
 
@@ -22,7 +22,7 @@ Apple game and app developers who need to investigate build performance on Macs.
 - `uv`, Python 3.14, and a Logfire project write token.
 - An iOS Simulator SDK. Signing is disabled for this development example.
 
-## Setup
+## Optional build and replay setup
 
 From the repository root, install the standalone observer:
 
@@ -210,26 +210,23 @@ if you no longer need it. Telemetry follows the project's retention policy.
 
 ## Native monitoring workflow
 
-Install the observer with `uv sync --project tools/xcode-observe` from the repository root.
+Configure runtime credentials as described in [the SDK guide](../../docs/swift-sdk.md).
 Open `NeonStack.xcodeproj`. Select **NeonStack**, **My Mac**, and press Command-R.
 The scheme retains LLDB debugging. It starts no relay or native observer.
 The build embeds identity metadata. The app publishes a private session marker.
 Open **Neon Stack Performance** in the target project's dashboards.
 Check **Apple display delivery**, **App build identities**, and **Native captures attached to sessions**.
-Run the capture command in [the compact project guide](../../docs/PROJECT.txt).
+Run `swift run logfire-apple capture --last 10s` from the repository root.
 The capture manifest and Logfire record must contain the same session ID and build ID.
 Open the local `.atrc` artifact in Instruments for native analysis.
 
 For live Apple measurements, run this command from the repository root while the game runs.
 
 ```sh
-tools/xcode-observe/.venv/bin/xcode-native-observe attach \
-  --sessions examples/neon-stack/.xcode-observe/sessions \
-  --artifact-dir examples/neon-stack/.xcode-observe/native \
-  --latest --seconds 30
+swift run logfire-apple attach --seconds 30 --service neon-stack
 ```
 
-The native observer ends when its app process ends, or after the selected duration.
+The native companion observes for the selected duration and checks the app identity during updates.
 Capture files stay local. They can include other processes in the Apple recording.
 The exported overview and live measurements select the game PID.
 This scheme sets `LOGFIRE_DEV_DIRECT=1`. The app reads the private runtime credential file on the Mac.
@@ -237,7 +234,7 @@ The build does not embed credentials. Configure each trusted tester machine sepa
 Capture recent Apple history with `--latest`.
 Logfire receives selected lookback measurements after that command.
 StateReporting context requires an SDK and OS 27 build.
-The MetricKit 27 bridge awaits daily reports and exports selected Metal measurements.
+The SDK owns MetricKit 27 report collection and exports selected resource, Metal, and diagnostic summaries.
 Physical iOS runtime monitoring and real MetricKit delivery remain unverified.
 Use matched Release replays for optimization comparisons. Debugger pauses distort frame windows.
 Disable **Debug executable** in the scheme editor when you need a run without LLDB.

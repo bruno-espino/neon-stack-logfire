@@ -48,3 +48,42 @@ Add bounded delivery diagnostics and test application lifecycle flushing.
 Compare matched Aurora Release replays and inspect native presentation evidence.
 Verify a physical iOS run. Await and validate a real daily MetricKit report.
 Assess a supported Swift SDK only after these developer workflow checks succeed.
+
+Native setup simplification
+Added one Logfire.development client that owns MetricKit startup and lifecycle flush requests.
+Moved frame windows and reusable Metal timing into the Swift package.
+Added one state API that reports context to Logfire and Apple StateReporting.
+Replaced the Python build phase with a host Swift identity script.
+The script reads no credentials. The app exports identity when it starts.
+Added the Swift logfire-apple companion with configure, doctor, capture, attach, and build actions.
+Native sessions use a shared private marker directory. Capture resolves the latest verified live app.
+Configure hides token input and writes a private runtime file. Existing credential files remain compatible.
+Added exporter acknowledgement/failure counters. They do not promise complete delivery.
+Expanded MetricKit selection to resource metrics, distributions, and diagnostic summaries.
+Historical reports keep a separate exporter context. They do not inherit the current build or session.
+Native summaries now include selected process memory, CPU times, disk I/O, and rendering state.
+Full build observation remains optional and routes to the existing Python observer.
+
+Experiments and issues
+A Swift build tool plugin was considered for identity generation.
+Kept the explicit host script for this iteration to avoid extra plugin/resource integration and trust setup.
+The SDK itself does not require that script. Apps without it still export operation telemetry.
+The initial iOS script inherited the Simulator sysroot. Explicit macOS host SDK selection fixes it.
+Kept the existing Python build observer rather than duplicating its tested process and artifact handling in Swift.
+Lifecycle flushing remains best effort. Background-task protection is not yet implemented.
+Native capture still requires a live session. Historical PID reuse and rebuilt binaries need a separate attribution design.
+
+Verification for the simplified workflow
+All 20 Swift SDK/companion tests pass. All 21 Python host tests pass.
+The diagnostic fixture decodes through Apple APIs and preserves historical context.
+macOS Debug and iOS Simulator Release builds pass with the optional Python environment removed.
+A live Swift companion attach emits 19 acknowledged records without export failures.
+A native capture retains recordings, symbols, checksums, and matching session/build IDs.
+A Logfire query confirms runtime windows, native measurements, captures, and build identity in one session.
+The verification app was stopped. Other game processes remain untouched.
+The companion preserves the expected exit 65 for a missing scheme.
+A successful wrapped build embeds the exact observer build ID in the app.
+Canonical lowercase build IDs preserve joins across the Python observer and Swift resource.
+A twelve-second offscreen replay uses the SDK Metal adapter and retains a valid GPU window.
+Repository and app credential scans report no findings.
+The user chose public repository visibility for game design collaboration.
