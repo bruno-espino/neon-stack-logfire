@@ -8,6 +8,9 @@ import os
 public final class Logfire {
     private let tracer: Tracer
     private let provider: TracerProviderSdk?
+    public let metrics: DevelopmentMetrics?
+    private let remoteParent: SpanContext?
+    private var responsiveness: MainThreadMonitor?
     private let signposter = OSSignposter(subsystem: "dev.logfire.swift", category: .pointsOfInterest)
     public let sessionID: String
     private let buildAttributes: [String: AttributeValue]
@@ -20,8 +23,8 @@ public final class Logfire {
     private let deliveryCounters = DeliveryCounters()
     public var delivery: DeliveryStatus { deliveryCounters.snapshot(enabled: provider != nil) }
 
-    public convenience init(serviceName: String, configuration: LogfireConfiguration?) {
-        self.init(serviceName: serviceName, exporter: configuration?.makeExporter())
+    public convenience init(serviceName: String, configuration: LogfireConfiguration?, resourceAttributes: [String: LogfireAttribute] = [:]) {
+        self.init(serviceName: serviceName, exporter: configuration?.makeExporter(), metricExporter: configuration?.makeMetricExporter(), resourceAttributes: resourceAttributes)
     }
 
     public convenience init(serviceName: String, endpoint: URL? = nil) {
@@ -33,23 +36,25 @@ public final class Logfire {
         self.init(serviceName: serviceName, exporter: exporter)
     }
 
-    init(serviceName: String, exporter: SpanExporter?) {
+    init(serviceName: String, exporter: SpanExporter?, metricExporter: MetricExporter? = nil,
+         environment: [String: String] = ProcessInfo.processInfo.environment, resourceAttributes: [String: LogfireAttribute] = [:]) {
+        remoteParent = Self.traceContext(environment["LOGFIRE_TRACE_PARENT"])
         self.serviceName = serviceName
-        scenarioID = ProcessInfo.processInfo.environment["LOGFIRE_SCENARIO_ID"]
-        sessionID = (ProcessInfo.processInfo.environment["LOGFIRE_SESSION_ID"] ?? ProcessInfo.processInfo.environment["NEON_SESSION_ID"]).flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
+        scenarioID = environment["LOGFIRE_SCENARIO_ID"]
+        sessionID = (environment["LOGFIRE_SESSION_ID"] ?? environment["NEON_SESSION_ID"]).flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
         buildAttributes = Self.buildMetadata(bundle: .main).mapValues { .string($0) }
+        let resource = Resource(attributes: [
+            "service.name": .string(serviceName), "service.instance.id": .string(sessionID),
+            "deployment.environment": .string("development"), "os.type": .string("darwin"),
+            "os.description": .string(ProcessInfo.processInfo.operatingSystemVersionString),
+            "logfire.integration": .string("swift-prototype"), "logfire.metric_schema.version": .string("1"), "session_id": .string(sessionID),
+        ].merging(buildAttributes) { _, build in build }.merging(resourceAttributes) { _, supplied in supplied })
+        metrics = metricExporter.map { DevelopmentMetrics(exporter: $0, resource: resource) }
         if let exporter {
             let processor = BatchSpanProcessor(spanExporter: ObservedExporter(exporter, counters: deliveryCounters), scheduleDelay: 1,
                 exportTimeout: 3, maxQueueSize: 256, maxExportBatchSize: 64)
             let provider = TracerProviderBuilder()
-                .with(resource: Resource(attributes: [
-                    "service.name": .string(serviceName),
-                    "service.instance.id": .string(sessionID),
-                    "deployment.environment": .string("development"),
-                    "os.type": .string("darwin"),
-                    "os.description": .string(ProcessInfo.processInfo.operatingSystemVersionString),
-                    "logfire.integration": .string("swift-prototype"),
-                ].merging(buildAttributes) { _, build in build }))
+                .with(resource: resource)
                 .add(spanProcessor: processor).build()
             self.provider = provider
             tracer = provider.get(instrumentationName: "logfire.swift", instrumentationVersion: "0.1.0")
@@ -77,18 +82,39 @@ public final class Logfire {
     }
 
     public func event(_ name: String, attributes: [String: AttributeValue] = [:]) {
-        let span = begin(name, attributes: attributes)
+        let values = attributes.merging(["logfire.span_type": .string("log"), "logfire.level_num": .int(9)]) { supplied, _ in supplied }
+        let span = begin(name, attributes: values)
         span.end()
     }
 
+    public var activeTraceParent: String? {
+        guard let context = OpenTelemetry.instance.contextProvider.activeSpan?.context, context.isValid else { return nil }
+        return "00-\(context.traceId.hexString)-\(context.spanId.hexString)-\(context.traceFlags.hexString)"
+    }
+
+    static func traceContext(_ parent: String?) -> SpanContext? {
+        guard let parent, parent.range(of: "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$", options: .regularExpression) != nil else { return nil }
+        return W3CTraceContextPropagator().extract(carrier: ["traceparent": parent], getter: TraceParentGetter())
+    }
+
     /// Window timestamps describe measurement time rather than upload time.
-    public func window(_ name: String, started: Date, ended: Date, attributes: [String: AttributeValue]) {
-        let span = begin(name, attributes: attributes, started: started)
+    public func window(_ name: String, started: Date, ended: Date, attributes: [String: AttributeValue], observations: () -> Void = {}) {
+        var values = attributes
+        values["measurement.started_at"] = .double(started.timeIntervalSince1970)
+        values["measurement.ended_at"] = .double(ended.timeIntervalSince1970)
+        values["logfire.span_type"] = .string("log")
+        values["logfire.level_num"] = .int(9)
+        let span = begin(name, attributes: values, started: ended)
+        OpenTelemetry.instance.contextProvider.withActiveSpan(span, observations)
         span.end(time: ended)
     }
 
     private func begin(_ name: String, attributes: [String: AttributeValue], started: Date = Date()) -> Span {
         let builder = tracer.spanBuilder(spanName: name).setStartTime(time: started)
+        if OpenTelemetry.instance.contextProvider.activeSpan?.context.isValid != true,
+           let parent = remoteParent {
+            builder.setParent(parent)
+        }
         builder.setAttribute(key: "session_id", value: sessionID)
         builder.setAttribute(key: "logfire.msg", value: name)
         if let scenarioID { builder.setAttribute(key: "scenario.id", value: scenarioID) }
@@ -100,6 +126,7 @@ public final class Logfire {
     /// Call from a background queue when the application enters the background.
     public func flush() {
         provider?.forceFlush(timeout: 3)
+        metrics?.flush()
 #if canImport(MetricKit)
         if #available(macOS 27.0, iOS 27.0, *) { (appleReports as? MetricKitReports)?.flush() }
 #endif
@@ -115,6 +142,7 @@ public final class Logfire {
             appleReports = reports
         }
 #endif
+        if options.responsiveness { responsiveness = MainThreadMonitor(client: self) }
         lifecycle = AppleLifecycle { [weak self] in self?.flush() }
 #if os(macOS)
         publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["LOGFIRE_SESSION_DIR"] ?? ProcessInfo.processInfo.environment["NEON_OBSERVER_DIR"]
@@ -156,3 +184,7 @@ public final class Logfire {
 }
 
 public typealias LogfireAttribute = AttributeValue
+
+private struct TraceParentGetter: Getter {
+    func get(carrier: [String: String], key: String) -> [String]? { carrier[key].map { [$0] } }
+}

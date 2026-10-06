@@ -48,7 +48,7 @@ telemetry.withSpan("app.load") {
 }
 ```
 
-The client manages operation spans, native operation signposts, lifecycle flush requests, and optional MetricKit reports.
+The client manages operation spans, native signposts, OTel metrics, lifecycle flush requests, and optional Apple monitoring.
 See [the SDK guide](docs/swift-sdk.md) for frame recording and shared rendering context.
 Apple controls MetricKit report delivery. Its metric reports do not provide live frame telemetry.
 The SDK guide includes package installation without the companion.
@@ -57,14 +57,15 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes fourteen panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, GPU replay costs, scenario outcomes, captures, and builds.
+It includes twenty panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, GPU replay costs, scenario outcomes, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
 
-The dashboard uses `records` and span attributes. No Python collector or OTel metrics migration is required.
+The dashboard combines native OTel metrics with diagnostic records. Direct Swift export uses no Python collector.
 Capture aggregates remain separate from live measurements. Full recordings remain local.
 See [dashboard setup and query limits](docs/native-workflow.md#logfire-dashboard).
+The [metric catalog and verified experiments](docs/telemetry-metrics.md) explain what each signal measures.
 
 ## Capture native evidence
 
@@ -80,7 +81,8 @@ logfire-apple profile --seconds 5
 Capture collects Apple's retained history and saves recordings and symbols locally.
 Logfire receives selected summaries and capture metadata.
 Attach streams selected native measurements and whole-host load during its bounded observation period.
-Profile records a short Instruments interval and exports selected CPU samples and the top 20 leaf functions.
+Profile records a short Time Profiler interval and exports selected CPU samples and the top 20 leaf functions.
+For automated scenarios, `run --profile cpu` records during the app run, then exports and decodes the recording after the runner stops the app.
 Use a Release build for optimization. The full `.trace` and symbols remain local.
 All three commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.
@@ -92,6 +94,7 @@ This captures one boundary by default and profiles its replay. It is separate fr
 | Source | Data | Logfire delivery |
 | --- | --- | --- |
 | Game + SDK frame recorder | Callback cadence, frame preparation time, Metal command duration, render context | Five-second windows during gameplay |
+| SDK responsiveness monitor | Main-queue delay, pending probe age, main-thread/process CPU ratios, macOS process footprint | Opt-in independent probes and five-second reports |
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
 | Apple GPU debugger | Captured render/compute workload, selected replay encoder/shader costs, register and spill properties | Optional `gpu-capture --profile`. Raw resources and shader sources stay local. |
@@ -101,7 +104,7 @@ This captures one boundary by default and profiles its replay. It is separate fr
 | Xcode build tools | Build duration, task totals, warnings, errors, selected host samples | Swift companion build action |
 | Native captures | Apple recordings and symbols | Files remain local. Selected measurements and metadata arrive in Logfire. |
 
-Performance windows and Apple reports use span attributes. They are not OpenTelemetry metric instruments.
+The SDK exports raw frame histograms and development gauges/counters to `/v1/metrics`. Diagnostic reports retain detailed attributes in `records`.
 Callback FPS differs from presented FPS. GPU command duration does not measure GPU utilization.
 Native resource CPU times are not CPU utilization percentages.
 Frame preparation timings exclude other main-thread and SwiftUI work. `main_thread.measured=false` makes that gap explicit.

@@ -63,7 +63,9 @@ final class LogfireTests: XCTestCase {
         let window = spans.first { $0.name == "window" }!
         XCTAssertEqual(inner.traceId, outer.traceId)
         XCTAssertEqual(inner.parentSpanId, outer.spanId)
-        XCTAssertEqual(window.startTime, started)
+        XCTAssertEqual(window.startTime, started.addingTimeInterval(5))
+        XCTAssertEqual(window.attributes["measurement.started_at"], .double(started.timeIntervalSince1970))
+        XCTAssertEqual(window.attributes["logfire.span_type"], .string("log"))
         XCTAssertEqual(window.endTime, started.addingTimeInterval(5))
         XCTAssertEqual(window.attributes["frames"], .int(300))
         XCTAssertEqual(window.attributes["session_id"], .string(client.sessionID))

@@ -63,7 +63,11 @@ public final class DevelopmentScenario {
             "pid": ProcessInfo.processInfo.processIdentifier, "ready": isReady, "phase": phase,
             "recorded_at": Date().timeIntervalSince1970, "details": details,
             "delivery": ["enabled": client.delivery.enabled, "exported_spans": client.delivery.exportedSpans, "failed_spans": client.delivery.failedSpans]]
-        let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        var report = value
+        if let delivery = client.metrics?.delivery {
+            report["metric_delivery"] = ["enabled": delivery.enabled, "exported_metrics": delivery.exportedMetrics, "failed_metrics": delivery.failedMetrics]
+        }
+        let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
         guard data.count <= 65536 else { throw DevelopmentScenarioError.reportTooLarge }
         try data.write(to: output, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: output.path)

@@ -1,5 +1,6 @@
 import Foundation
 import LogfireSwift
+import OpenTelemetryApi
 #if os(macOS)
 import Darwin
 
@@ -82,10 +83,17 @@ struct ScenarioSignal: Decodable {
     let phase: String
     let recordedAt: Double
     let details: [String: String]
+    struct MetricDelivery: Decodable {
+        let enabled: Bool
+        let exportedMetrics: Int
+        let failedMetrics: Int
+        enum CodingKeys: String, CodingKey { case enabled, exportedMetrics = "exported_metrics", failedMetrics = "failed_metrics" }
+    }
     let delivery: Delivery?
+    let metricDelivery: MetricDelivery?
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version", scenarioID = "scenario_id", sessionID = "session_id"
-        case pid, ready, phase, recordedAt = "recorded_at", details, delivery
+        case pid, ready, phase, recordedAt = "recorded_at", details, delivery, metricDelivery = "metric_delivery"
     }
     static func read(_ url: URL, id: String, session: NativeSession) throws -> ScenarioSignal {
         let data = try Data(contentsOf: url)
@@ -125,7 +133,7 @@ enum ScenarioRun {
         let sessions = folder.appendingPathComponent("sessions")
         try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let status = folder.appendingPathComponent("scenario.json")
-        let client = Companion.client(local: options.local, service: "logfire-apple-run")
+        let client = Companion.client(local: options.local, service: "logfire-apple-run", resource: build.merging(["session_id": id, "scenario.id": definition.id]) { _, run in run })
         let context: [String: Any] = build.merging(["scenario.id": definition.id, "binary.sha256": try Companion.fileHash(executable)]) { _, value in value }
             .reduce(into: [String: Any]()) { $0[$1.key] = $1.value }
             .merging(["session_id": id, "measurement.source": "native.scenario_runner"]) { _, value in value }
@@ -148,6 +156,13 @@ enum ScenarioRun {
         var readyElapsed: Double?
         var readinessObservation = "polled"
         var profiled = false
+        var capturedGPU: CapturedGPUWorkload?
+        var capturedCPU: CapturedCPURecording?
+        var appDuration: Double = 0
+        var analysisDuration: Double = 0
+        var analysisInterruption: Int32?
+        var retained: [String: Any] = [:]
+        var finalCode: Int32 = 127
         let began = ProcessInfo.processInfo.systemUptime
         let beganDate = Date()
         func readSession(verify: Bool) throws -> NativeSession {
@@ -161,7 +176,10 @@ enum ScenarioRun {
             return candidate
         }
         var result = CommandResult(exitCode: 127, timedOut: false, requestedStop: false)
-        client.withSpan("development.run", attributes: Companion.attributes(context)) {
+        try client.withSpan("development.run", attributes: Companion.attributes(context)) {
+            let runSpan = OpenTelemetry.instance.contextProvider.activeSpan
+            let runParent = client.activeTraceParent
+            if let runParent { environment["LOGFIRE_TRACE_PARENT"] = runParent }
             do {
                 result = try CommandRunner.run(executable.path, definition.arguments, output: folder.appendingPathComponent("console.log"),
                     errors: folder.appendingPathComponent("console.stderr"), environment: environment, seconds: options.seconds,
@@ -187,8 +205,19 @@ enum ScenarioRun {
                             var args = ["--sessions", sessions.path, "--output", folder.appendingPathComponent("profile").path]
                             if options.local { args += ["--no-telemetry"] }
                             do {
-                                let code = profile == "cpu" ? try InstrumentsProfile.run(args + ["--seconds", "5"]) : try GPUCapture.run(args + ["--profile"])
-                                if code != 0 { issues.append("Optional \(profile) profile is incomplete. Inspect retained profile evidence.") }
+                                let remaining = max(0.1, options.seconds - (ProcessInfo.processInfo.systemUptime - began))
+                                if profile == "cpu" {
+                                    capturedCPU = try client.withSpan("development.cpu.record") {
+                                        try InstrumentsProfile.record(args + ["--seconds", "5"], timeout: remaining, onTick: {
+                                            host.tick(client: client, context: context.merging(["process.pid": pid]) { _, value in value })
+                                            return false
+                                        })
+                                    }
+                                } else {
+                                    capturedGPU = try client.withSpan("development.gpu.capture") {
+                                        try GPUCapture.capture(GPUCaptureOptions(args + ["--profile"]), seconds: min(30, remaining))
+                                    }
+                                }
                             } catch { issues.append("Optional \(profile) profile failed. Inspect retained profile evidence.") }
                             // Profiling may span scenario completion. Read the app's latest assertion before stopping it.
                             signal = try ScenarioSignal.read(status, id: definition.id, session: session)
@@ -196,67 +225,119 @@ enum ScenarioRun {
                         return signal?.phase == "passed" || signal?.phase == "failed"
                     })
             } catch { failure = "Run identity or scenario protocol failed. Inspect retained SDK marker, status, and console output." }
-        }
-        // The process can exit between polls. Its final atomic assertion still needs validation.
-        if failure == nil, FileManager.default.fileExists(atPath: status.path) {
-            do {
-                let retainedSession = try session ?? readSession(verify: false)
-                signal = try ScenarioSignal.read(status, id: definition.id, session: retainedSession)
-                if readyElapsed == nil {
-                    readyElapsed = signal!.recordedAt - beganDate.timeIntervalSince1970
-                    readinessObservation = "terminal-assertion"
-                }
+            appDuration = ProcessInfo.processInfo.systemUptime - began
+            // The runner reaps the app before either profiler analyzes its recording.
+            let interruptedRun = !result.requestedStop && [130, 143].contains(result.exitCode)
+            if interruptedRun, capturedCPU != nil || capturedGPU != nil {
+                issues.append("Profile analysis was skipped after run interruption. The recording remains local.")
             }
-            catch { failure = "Final scenario assertion is invalid." }
+            if let capturedCPU, !interruptedRun {
+                let analysisStarted = ProcessInfo.processInfo.systemUptime
+                do {
+                    let code = try client.withSpan("development.cpu.analysis") { try InstrumentsProfile.analyze(capturedCPU) }
+                    if code != 0 {
+                        issues.append("Optional CPU profile is incomplete. Inspect retained profile evidence.")
+                    }
+                } catch CompanionError.interrupted(let code) {
+                    analysisInterruption = code
+                    issues.append("CPU analysis was interrupted. The recording remains local.")
+                } catch { issues.append("Optional CPU analysis failed. Inspect retained profile evidence.") }
+                analysisDuration = ProcessInfo.processInfo.systemUptime - analysisStarted
+            }
+            if let capturedGPU, !interruptedRun {
+                let analysisStarted = ProcessInfo.processInfo.systemUptime
+                do {
+                    let code = try client.withSpan("development.gpu.analysis") { try GPUCapture.analyze(capturedGPU) }
+                    if code != 0 {
+                        issues.append("Optional GPU profile is incomplete. Inspect retained profile evidence.")
+                    }
+                } catch CompanionError.interrupted(let code) {
+                    analysisInterruption = code
+                    issues.append("GPU analysis was interrupted. The recording remains local.")
+                } catch { issues.append("Optional GPU analysis failed. Inspect retained profile evidence.") }
+                analysisDuration = ProcessInfo.processInfo.systemUptime - analysisStarted
+            }
+            // The process can exit between polls. Its final atomic assertion still needs validation.
+            if failure == nil, FileManager.default.fileExists(atPath: status.path) {
+                do {
+                    let retainedSession = try session ?? readSession(verify: false)
+                    signal = try ScenarioSignal.read(status, id: definition.id, session: retainedSession)
+                    if readyElapsed == nil {
+                        readyElapsed = signal!.recordedAt - beganDate.timeIntervalSince1970
+                        readinessObservation = "terminal-assertion"
+                    }
+                }
+                catch { failure = "Final scenario assertion is invalid." }
+            }
+            if signal?.phase != "passed", failure == nil { failure = result.timedOut ? "Scenario deadline expired." : "No successful scenario completion." }
+            if readyElapsed == nil, failure == nil { failure = "No readiness signal was observed." }
+            let completedLate = signal.map { $0.phase != "ready" && $0.recordedAt > beganDate.timeIntervalSince1970 + options.seconds } ?? false
+            if completedLate { failure = "Scenario completion exceeded its deadline." }
+            if options.profile != nil, !profiled { issues.append("Requested profile could not start before the app exited.") }
+            if let delivery = signal?.delivery, delivery.failedSpans > 0 { issues.append("App telemetry delivery failed for some records.") }
+            if let delivery = signal?.metricDelivery, delivery.failedMetrics > 0 { issues.append("App metrics delivery failed for some instruments.") }
+            let windows: [[String: Any]]
+            let frames = folder.appendingPathComponent("performance.jsonl")
+            if FileManager.default.fileExists(atPath: frames.path) {
+                do { windows = try SessionAnalysis.windows(at: frames) }
+                catch { windows = []; issues.append("Frame evidence is invalid.") }
+            } else { windows = [] }
+            if definition.requireFrameWindows, windows.isEmpty { failure = "Scenario requires a complete renderer window." }
+            if let failure { issues.insert(failure, at: 0) }
+            try host.write(to: folder.appendingPathComponent("host-samples.json"))
+            let processCode = result.requestedStop && [0, 143].contains(result.exitCode) ? 0 : result.exitCode
+            let code: Int32
+            if let analysisInterruption { code = analysisInterruption }
+            else if result.timedOut || completedLate { code = 124 }
+            else if failure != nil { code = [130, 143].contains(processCode) ? processCode : 1 }
+            else { code = ScenarioSignal.exitCode(result: result, signal: signal, windows: windows.count, required: definition.requireFrameWindows, issues: issues) }
+            let report: [String: Any] = context.merging([
+                "schema_version": 1, "status": code == 0 ? "passed" : code == 2 ? "incomplete" : "failed",
+                "exit_code": code, "app.exit_code": result.exitCode, "app.pid": pid, "app.requested_stop": result.requestedStop,
+                "run.started_at": beganDate.timeIntervalSince1970, "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
+                "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
+                "run.deadline_seconds": options.seconds, "scenario.phase": signal?.phase ?? "missing", "scenario.details": signal?.details ?? [:],
+                "readiness.seconds": readyElapsed as Any? ?? NSNull(), "frame.windows": windows.count,
+                "readiness.observation": readinessObservation,
+                "host.samples": host.records.count, "profile.requested": options.profile ?? "none", "profile.attempted": profiled,
+                "issues": issues, "telemetry.app_direct_enabled": client.delivery.enabled,
+                "scenario.arguments": definition.arguments, "scenario.environment": definition.environment,
+                "profile.directory": profiled ? folder.appendingPathComponent("profile").path : "",
+                "app.delivery": signal?.delivery.map { ["enabled": $0.enabled, "exported_spans": $0.exportedSpans, "failed_spans": $0.failedSpans] as [String: Any] } as Any? ?? NSNull(),
+            ]) { _, value in value }
+            runSpan?.setAttribute(key: "app.duration_seconds", value: appDuration)
+            runSpan?.setAttribute(key: "profile.analysis.duration_seconds", value: analysisDuration)
+            runSpan?.setAttribute(key: "run.exit_code", value: Int(code))
+            runSpan?.setAttribute(key: "scenario.phase", value: signal?.phase ?? "missing")
+            if code != 0 {
+                runSpan?.status = .error(description: analysisInterruption != nil ? "Profiler analysis interrupted" :
+                    code == 2 ? "Requested observation is incomplete" : "Development scenario failed")
+            }
+            client.event("development.run.summary", attributes: Companion.attributes(context.merging([
+                "run.exit_code": code, "scenario.phase": signal?.phase ?? "missing", "frame.windows": windows.count,
+                "run.observation_gaps": issues.count, "profile.requested": options.profile ?? "none",
+                "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
+                "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
+                "readiness.seconds": readyElapsed as Any? ?? NSNull(),
+                "app.delivery.exported_spans": signal?.delivery?.exportedSpans as Any? ?? NSNull(),
+                "app.delivery.failed_spans": signal?.delivery?.failedSpans as Any? ?? NSNull(),
+            ]) { _, value in value }))
+            retained = report
+            finalCode = code
         }
-        if signal?.phase != "passed", failure == nil { failure = result.timedOut ? "Scenario deadline expired." : "No successful scenario completion." }
-        if readyElapsed == nil, failure == nil { failure = "No readiness signal was observed." }
-        let completedLate = signal.map { $0.phase != "ready" && $0.recordedAt > beganDate.timeIntervalSince1970 + options.seconds } ?? false
-        if completedLate { failure = "Scenario completion exceeded its deadline." }
-        if options.profile != nil, !profiled { issues.append("Requested profile could not start before the app exited.") }
-        if let delivery = signal?.delivery, delivery.failedSpans > 0 { issues.append("App telemetry delivery failed for some records.") }
-        let windows: [[String: Any]]
-        let frames = folder.appendingPathComponent("performance.jsonl")
-        if FileManager.default.fileExists(atPath: frames.path) {
-            do { windows = try SessionAnalysis.windows(at: frames) }
-            catch { windows = []; issues.append("Frame evidence is invalid.") }
-        } else { windows = [] }
-        if definition.requireFrameWindows, windows.isEmpty { failure = "Scenario requires a complete renderer window." }
-        if let failure { issues.insert(failure, at: 0) }
-        try host.write(to: folder.appendingPathComponent("host-samples.json"))
-        let processCode = result.requestedStop && [0, 143].contains(result.exitCode) ? 0 : result.exitCode
-        let code: Int32
-        if result.timedOut || completedLate { code = 124 }
-        else if failure != nil { code = [130, 143].contains(processCode) ? processCode : 1 }
-        else { code = ScenarioSignal.exitCode(result: result, signal: signal, windows: windows.count, required: definition.requireFrameWindows, issues: issues) }
-        let report: [String: Any] = context.merging([
-            "schema_version": 1, "status": code == 0 ? "passed" : code == 2 ? "incomplete" : "failed",
-            "exit_code": code, "app.exit_code": result.exitCode, "app.pid": pid, "app.requested_stop": result.requestedStop,
-            "run.started_at": beganDate.timeIntervalSince1970, "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
-            "run.deadline_seconds": options.seconds, "scenario.phase": signal?.phase ?? "missing", "scenario.details": signal?.details ?? [:],
-            "readiness.seconds": readyElapsed as Any? ?? NSNull(), "frame.windows": windows.count,
-            "readiness.observation": readinessObservation,
-            "host.samples": host.records.count, "profile.requested": options.profile ?? "none", "profile.attempted": profiled,
-            "issues": issues, "telemetry.app_direct_enabled": client.delivery.enabled,
-            "scenario.arguments": definition.arguments, "scenario.environment": definition.environment,
-            "profile.directory": profiled ? folder.appendingPathComponent("profile").path : "",
-            "app.delivery": signal?.delivery.map { ["enabled": $0.enabled, "exported_spans": $0.exportedSpans, "failed_spans": $0.failedSpans] as [String: Any] } as Any? ?? NSNull(),
-        ]) { _, value in value }
-        client.event("development.run.summary", attributes: Companion.attributes(context.merging([
-            "run.exit_code": code, "scenario.phase": signal?.phase ?? "missing", "frame.windows": windows.count,
-            "run.observation_gaps": issues.count, "profile.requested": options.profile ?? "none",
-            "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
-            "readiness.seconds": readyElapsed as Any? ?? NSNull(),
-            "app.delivery.exported_spans": signal?.delivery?.exportedSpans as Any? ?? NSNull(),
-            "app.delivery.failed_spans": signal?.delivery?.failedSpans as Any? ?? NSNull(),
-        ]) { _, value in value }))
         client.flush(); Companion.printDelivery(client)
-        var retained = report
-        var finalCode = code
         if client.delivery.enabled, client.delivery.failedSpans > 0 || client.delivery.exportedSpans < host.records.count + 2 {
             retained["issues"] = issues + ["Runner telemetry was not fully acknowledged."]
             if finalCode == 0 { finalCode = 2; retained["status"] = "incomplete"; retained["exit_code"] = finalCode }
         }
+        if let delivery = client.metrics?.delivery {
+            retained["runner.metric_delivery"] = ["enabled": delivery.enabled, "exported_metrics": delivery.exportedMetrics, "failed_metrics": delivery.failedMetrics]
+            if delivery.failedMetrics > 0 {
+                retained["issues"] = (retained["issues"] as? [String] ?? []) + ["Runner metrics delivery failed."]
+                if finalCode == 0 { finalCode = 2; retained["status"] = "incomplete"; retained["exit_code"] = finalCode }
+            }
+        }
+        retained["app.metric_delivery"] = signal?.metricDelivery.map { ["enabled": $0.enabled, "exported_metrics": $0.exportedMetrics, "failed_metrics": $0.failedMetrics] as [String: Any] } as Any? ?? NSNull()
         retained["runner.delivery"] = ["enabled": client.delivery.enabled, "exported_spans": client.delivery.exportedSpans, "failed_spans": client.delivery.failedSpans]
         try JSONSerialization.data(withJSONObject: retained, options: [.prettyPrinted, .sortedKeys]).write(to: folder.appendingPathComponent("report.json"), options: .atomic)
         print("Scenario report: \(folder.appendingPathComponent("report.json").path)")

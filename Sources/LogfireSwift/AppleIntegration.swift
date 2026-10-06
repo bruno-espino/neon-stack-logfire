@@ -10,11 +10,13 @@ import StateReporting
 
 public struct AppleMonitoring {
     public var metricKit: Bool
+    public var responsiveness: Bool
     public var stateDomains: Set<String>
     public var metadataKeys: Set<String>
 
-    public init(metricKit: Bool = true, stateDomains: Set<String> = [], metadataKeys: Set<String> = []) {
+    public init(metricKit: Bool = true, responsiveness: Bool = false, stateDomains: Set<String> = [], metadataKeys: Set<String> = []) {
         self.metricKit = metricKit
+        self.responsiveness = responsiveness
         self.stateDomains = stateDomains
         self.metadataKeys = metadataKeys
     }

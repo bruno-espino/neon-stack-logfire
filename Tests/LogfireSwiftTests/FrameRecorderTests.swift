@@ -18,7 +18,8 @@ final class FrameRecorderTests: XCTestCase {
         }
         recorder.finish()
         let window = try XCTUnwrap(exporter.spans.first { $0.name == "test.window" })
-        XCTAssertEqual(window.startTime, date.addingTimeInterval(2))
+        XCTAssertEqual(window.startTime, date.addingTimeInterval(7))
+        XCTAssertEqual(window.attributes["measurement.started_at"], .double(date.addingTimeInterval(2).timeIntervalSince1970))
         XCTAssertEqual(window.endTime, date.addingTimeInterval(7))
         XCTAssertEqual(window.attributes["frames"], .int(3))
         XCTAssertEqual(window.attributes["render_callback_fps"], .double(50))

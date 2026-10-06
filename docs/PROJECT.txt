@@ -97,7 +97,8 @@ Profile weights describe sampled running CPU work. They are not wall time or fra
 Profiled intervals have instrumentation overhead. Keep them separate from baseline comparisons.
 Compare matched Release devices, modes, sizes, seeds, and workloads.
 Do not average window percentiles into a session percentile.
-Performance windows and Apple reports currently use span attributes, not OTel metric instruments.
+SDK frame distributions, responsiveness, host context, and build outcomes use native OTel metrics.
+CPU functions, GPU replay, state, and Apple historical reports remain diagnostic records.
 MetricKit preserves historical dates and reported versions. It omits current-session build and session IDs.
 Full-day and state reports can overlap. The adapter does not deduplicate reports.
 Diagnostic summaries omit raw exception messages and backtraces.
@@ -127,3 +128,27 @@ Optional --profile cpu or gpu. Default deadline 20 seconds. No default profiler 
 Log Roll scenario clears two mazes, reaches a fire grate, and loses through ordinary game rules.
 DevelopmentScenario: SDK helper for a private atomic handshake and completion flush.
 Scenario success and telemetry/profile availability remain separate outcomes.
+
+Telemetry consolidation
+The configuration derives /v1/metrics from /v1/traces and uses the same write token.
+The fixed catalogue has 15 instruments. Only observed instruments appear in Logfire.
+Raw frame histograms preserve individual samples from complete five-second windows.
+Metric labels exclude function names, shader names, capture IDs, scores, and player data.
+Build and session identity remain resource attributes. Dashboards preserve source-series identity.
+AppleMonitoring(responsiveness: true) enables independent main-queue and CPU observations.
+The reference game enables this option. Other SDK clients opt in.
+One pending main-queue probe bounds queued work during stalls.
+Main-thread CPU and queue delay distinguish activity from poor responsiveness.
+Events and measurement summaries use Logfire log records. Operations retain timed spans.
+Automated runs propagate W3C trace context into the app. Builds remain separate traces.
+Run summaries remain children of their run. Native result files remain local.
+The dashboard has 20 panels, including raw distributions, queue stalls, CPU, GPU stages, and task totals.
+The short development check still excludes the Simulator and optional profiler captures.
+
+CPU profiling stages
+run --profile cpu records targeted Time Profiler samples after readiness.
+Host sampling continues through the existing command poll callback during recording.
+The runner stops/reaps the app, then exports and decodes the saved trace and sends selected CPU records.
+CPU record/analysis spans expose separate wall costs. The original session/build identity and symbols remain attached.
+Requested sampling duration differs from recording setup/finalization wall time and the actual recorded interval.
+Standalone profile keeps its single-command interface and leaves the manually launched app running.

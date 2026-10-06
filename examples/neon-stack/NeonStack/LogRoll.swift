@@ -86,7 +86,12 @@ final class LogRollState: ObservableObject {
         signposter.endInterval("LogRollUpdate", state)
         if engine.moves > moves { signposter.emitEvent("Roll") }
         if engine.turns > turns { signposter.emitEvent("TurnMaze") }
-        if cleared > 0 { signposter.emitEvent("MazeCleared"); play(.four) }
+        if cleared > 0 {
+            signposter.emitEvent("MazeCleared"); play(.four)
+            GameTelemetry.client.event("game.maze.cleared", attributes: ["game": .string("log-roll"),
+                "score": .int(engine.score), "moves": .int(engine.moves), "turns": .int(engine.turns),
+                "simulation_seconds": .double(engine.seconds), "maze_size": .int(engine.maze.size)])
+        }
         if engine.gameOver && !wasOver {
             best = max(best, engine.score)
             signposter.emitEvent("Crash"); play(.gameOver)

@@ -2,12 +2,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx2
+import pytest
 from pydantic import SecretStr
 
 from xcode_observe.dev_relay import Relay
 
 
-def test_relay_preserves_otlp_and_injects_only_host_credential() -> None:
+@pytest.mark.parametrize("path", ["/v1/traces", "/v1/metrics"])
+def test_relay_preserves_otlp_and_injects_only_host_credential(path: str) -> None:
     received: list[tuple[str, str | None, bytes]] = []
 
     class Upstream(BaseHTTPRequestHandler):
@@ -30,7 +32,7 @@ def test_relay_preserves_otlp_and_injects_only_host_credential() -> None:
     try:
         url = f"http://127.0.0.1:{relay.server_port}"
         result = httpx2.post(
-            url + "/v1/traces",
+            url + path,
             content=b"protobuf-bytes",
             headers={
                 "Content-Type": "application/x-protobuf",
@@ -38,11 +40,11 @@ def test_relay_preserves_otlp_and_injects_only_host_credential() -> None:
             },
         )
         assert result.status_code == 200
-        assert received == [("/v1/traces", "Bearer synthetic-write-token", b"protobuf-bytes")]
+        assert received == [(path, "Bearer synthetic-write-token", b"protobuf-bytes")]
         health = httpx2.get(url + "/health").json()
         assert health["forwarded"] == 1
         assert "synthetic-write-token" not in str(health)
-        assert httpx2.post(url + "/v1/traces", content=b"x", headers={"Content-Type": "text/plain"}).status_code == 415
+        assert httpx2.post(url + path, content=b"x", headers={"Content-Type": "text/plain"}).status_code == 415
         assert httpx2.post(url + "/wrong", content=b"x").status_code == 404
         assert len(received) == 1
         relay.endpoint = f"http://127.0.0.1:{relay.server_port}/missing"
@@ -52,7 +54,7 @@ def test_relay_preserves_otlp_and_injects_only_host_credential() -> None:
         relay.endpoint = f"http://127.0.0.1:{upstream.server_port}"
         assert (
             httpx2.post(
-                url + "/v1/traces", content=b"x", headers={"Content-Type": "application/x-protobuf"}
+                url + path, content=b"x", headers={"Content-Type": "application/x-protobuf"}
             ).status_code
             == 502
         )

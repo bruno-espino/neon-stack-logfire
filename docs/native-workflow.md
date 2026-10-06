@@ -77,7 +77,8 @@ Concurrent companions on the same Mac produce overlapping host samples. Do not a
 Native CPU time is a separate process measurement. GPU timing is not hardware utilization.
 
 The exporter batches live records. Sampling once per second does not promise instant network delivery.
-Host samples remain available in `host-samples.json`. All current measurements use span attributes, not OTel metric instruments.
+Host samples remain available in `host-samples.json`. Detailed records retain attributes.
+Native OTel gauges also publish host CPU load and nonfree memory.
 The companion pauses its host sampling while it processes a test capture. It does not promise coverage during that processing phase.
 
 ## Record a short CPU profile
@@ -89,7 +90,9 @@ logfire-apple profile --seconds 5 --service neon-stack
 ```
 
 The companion verifies the latest SDK session before attaching `xctrace`.
-It uses Xcode 27's Game Performance Overview template. This template includes Time Profiler and Metal recording.
+It uses Apple's Time Profiler template for targeted CPU samples.
+Apple starts CPU-busy investigations with Time Profiler in its [responsiveness workflow](https://developer.apple.com/videos/play/wwdc2026/268/).
+Game Performance Overview combines CPU and Metal recording and remains useful for longer investigations in Instruments.
 The default duration is five seconds. Use `--seconds` for an interval between one and thirty seconds.
 Remove `--service` when only one instrumented application runs.
 Use `--no-telemetry` for local evidence. The command leaves the application running.
@@ -97,7 +100,7 @@ CPU samples require an active recording. Retained Metal history cannot recover p
 The command is optional. It does not run during Command-R, builds, or the default development check.
 
 Each capture directory retains `Instruments.trace`, XML exports, available dSYM files, and an artifact-checksum manifest.
-Open `Instruments.trace` in Instruments for the full call tree, Metal evidence, and timeline.
+Open `Instruments.trace` in Instruments for the full CPU call tree and timeline.
 Raw recordings can contain environment data, source paths, stacks, and system context. Keep them private when sharing artifacts.
 Logfire receives the selected process's CPU summary and at most twenty leaf functions.
 The export omits raw environment data, source paths, addresses, and full stacks.
@@ -198,8 +201,16 @@ An unrecognized scenario or missing assertion cannot pass because the process ex
 Malformed status, stale identity, absent required windows, abnormal exit, and late completion fail the run.
 A fast app can publish its final assertion between polls. The runner checks its retained marker against the launched PID and process start time.
 
-Add `--profile cpu` for one five-second Instruments recording after readiness.
-Add `--profile gpu` for one capture and replay analysis. The runner enables Metal capture for that diagnostic launch.
+Add `--profile cpu` to request one five-second Time Profiler recording after readiness.
+The recording phase includes tool setup and artifact finalization. Its wall duration exceeds the requested sample interval.
+The runner continues one-second host sampling while the recording command runs.
+Add `--profile gpu` for one capture during play. The runner enables Metal capture for that diagnostic launch.
+The runner stops and reaps the app before either profiler analyzes the saved artifact.
+CPU analysis exports Instruments XML, validates the original process and actual interval, ranks leaf functions, and sends summaries to Logfire.
+`app.duration_seconds` excludes that analysis. `profile.analysis.duration_seconds` reports its separate cost.
+The trace contains timed `development.cpu.record` / `development.cpu.analysis` or `development.gpu.capture` / `development.gpu.analysis` children.
+The capture retains the original session/build identity, binary hash, recording, and available symbols.
+Offline analysis uses that retained identity. It does not search for a new running app or require the original process to remain alive.
 Only one profiler is selected per run. No profiling runs by default.
 Use a Release build for optimization investigations.
 Profiler collection and decoding have separate bounded durations. They can extend command time beyond the scenario deadline.
@@ -207,7 +218,10 @@ The app must still publish completion within its scenario deadline.
 Instrumented windows must not serve as ordinary performance baselines.
 Native frame-presentation lookback remains available through the separate `capture` command.
 
-Host samples carry their measurement times. Synchronous optional profiling can leave gaps in host sampling.
+Host samples carry their measurement times. GPU capture can briefly interrupt host sampling.
+CPU recording uses the existing command poll callback to continue host sampling. It does not start a second observer or daemon.
+CPU export/decoding and GPU replay start after the app stops. Host sampling stops with the app.
+Collection still adds profiler overhead. This split does not make instrumented windows valid performance baselines.
 Readiness time is the runner observation. A terminal assertion supplies an upper bound when an app finishes between polls.
 The private report includes app outcome, session/build identity, binary hash, scenario inputs, renderer-window count, host evidence, profile directory, and delivery counts.
 Raw captures and local reports remain on the developer's Mac. SDK events export directly when credentials are available.
@@ -221,12 +235,14 @@ Renderer windows alone cannot identify expensive SwiftUI or other main-thread co
 Frame reports now include `cpu_frame.scope=frame_preparation_wall_time` and `main_thread.measured=false`.
 Use CPU or SwiftUI profiling to identify code. Timing signals alone cannot name the expensive function.
 
-The next SDK measurement should be a separate main-thread window, independent of renderer completion.
-It should report main-thread CPU-time deltas and main-queue response delay as distinct values.
-Queue delay includes CPU work, blocking, and scheduler contention. It must not be labeled CPU utilization.
-The monitor must report pending delay during a stall and bound itself to one outstanding probe.
-Log Roll sums three GPU stage durations for its SDK window. That sum measures GPU work, not a critical-path frame deadline.
-This monitor is not implemented in this iteration. Its measurement contract must be validated before it is enabled by default.
+The SDK provides an opt-in main-thread window independent of renderer completion.
+Enable it with `AppleMonitoring(responsiveness: true)`. The reference game enables it.
+It measures main-thread CPU-time deltas and main-queue response delay separately.
+Queue delay includes CPU work, blocking, and scheduler contention.
+The monitor retains the maximum pending delay and permits one outstanding probe.
+The controlled [responsiveness example](../examples/responsiveness-probe) validates CPU work against blocking.
+Log Roll sums multiple GPU stage durations for its SDK window.
+`gpu_time.scope=sum_of_command_buffers` identifies that sum. It does not measure a critical-path frame deadline.
 See Apple's [SwiftUI performance analysis](https://developer.apple.com/documentation/xcode/understanding-and-improving-swiftui-performance).
 
 ## Observe a build
@@ -245,7 +261,8 @@ The companion retains stdout, stderr, task totals, issue counts, and timestamped
 Task totals are aggregate work durations. They are not timed compiler spans or a critical-path reconstruction.
 Host samples use macOS APIs for CPU utilization, free/wired/compressed memory, and filesystem free bytes.
 They describe the entire host. They do not establish that the build caused the load.
-These samples and build totals use span attributes. They do not duplicate the older Python metric instruments.
+Detailed samples and task totals retain attributes. Native OTel instruments also publish build duration/outcomes and host gauges.
+The older Python metric names remain historical data.
 Host disk I/O and swap sampling from the earlier Python experiment remain outside this native iteration.
 
 Options include `--output DIRECTORY`, `--scenario NAME`, `--cache-state warm`, `--sample-interval 1`, and `--timeout 3600`.
@@ -341,7 +358,7 @@ Exporter delivery counters remain separate from performance evidence completenes
 
 Apple describes JSON overviews for regression testing and automated triage in
 [its WWDC26 game performance session](https://developer.apple.com/videos/play/wwdc2026/388/).
-Use `profile` for running CPU samples and Game Performance Overview.
+Use `profile` for targeted Time Profiler CPU samples. Use Game Performance Overview in Instruments for broader CPU and Metal investigations.
 Use System Trace or Swift Concurrency in Instruments for scheduling, blocking, and actor contention.
 Retained Metal history does not supply a complete CPU stack profile.
 Apple can collect historical data after an app exits. Our companion currently requires a live verified session for attribution.
@@ -367,7 +384,8 @@ Use `Apple Development Workflow` as the name and `apple-development-workflow` as
 Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
 Management credentials belong to the dashboard client. The application needs only its project write token.
 
-The twelve panels query `records`. They cover SDK windows, live Apple measurements, whole-host context, CPU profiles, captures, and builds.
+The twenty panels query diagnostic `records` and native OTel `metrics`.
+They cover SDK windows, CPU/queue signals, live Apple measurements, host context, CPU profiles, captures, and builds.
 Session and Build accept exact IDs. Empty values disable the filter.
 Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
 The build table ignores Session because the build command and application have different session IDs.
@@ -426,6 +444,20 @@ The current script runs on every build and hashes package sources beyond the lin
 Measure each change with build timing summaries before replacing the script.
 Follow Apple's [incremental build guidance](https://developer.apple.com/documentation/Xcode/improving-the-speed-of-incremental-builds).
 Then add async span support with task-context tests and finished-session artifact import.
-Evaluate a small metrics exporter separately if standard infrastructure dashboards become a requirement.
-Validate delta temporality and source identity before that migration.
+The native metric exporter is verified for delta temporality and source identity.
+It remains a development prototype alongside the upstream experimental HTTP exporter.
 Keep longer tests, iOS Simulator validation, and the tester report button deferred during this macOS iteration.
+
+## Metric and trace semantics
+
+The configured SDK exports both `/v1/traces` and `/v1/metrics` through native OTLP HTTP.
+The [metric catalog](telemetry-metrics.md) lists the fifteen fixed instruments.
+Events and window summaries use Logfire logs. A window log appears at its measurement end time.
+Its attributes retain the interval start and end. It does not claim that interval as an operation duration.
+Explicit `withSpan` operations keep their real durations and native signposts.
+
+The scenario runner passes W3C trace context to the launched app.
+SDK logs, host samples, profiler evidence, and the final summary belong to the run trace.
+Builds have separate traces. Embedded build ID and build trace ID connect them to sessions.
+A manual Cmd-R session has no runner parent. Its operations remain separate traces with shared session/build identity.
+The build task table reports aggregate parallel task costs. It cannot reconstruct build critical paths.
