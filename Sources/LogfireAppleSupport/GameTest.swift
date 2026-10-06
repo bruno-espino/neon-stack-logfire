@@ -71,7 +71,7 @@ enum GameTest {
         environment.merge(["LOGFIRE_DEV_DIRECT": "0", "LOGFIRE_TOKEN": "", "NEON_PERF_REPORT": windowFile.path,
             "NEON_BENCHMARK": "1", "NEON_GAME": "neon-stack", "NEON_SEED": String(options.seed), "NEON_RENDER_MODE": options.mode,
             "NEON_BENCHMARK_SECONDS": String(options.offscreen ? options.seconds : options.seconds + 120),
-            "NEON_OFFSCREEN": options.offscreen ? "1" : "0", "NEON_AURORA_LAYERS": String(options.layers), "NEON_SESSION_ID": id]) { _, test in test }
+            "NEON_OFFSCREEN": options.offscreen ? "1" : "0", "NEON_AURORA_LAYERS": String(options.layers), "LOGFIRE_SESSION_ID": id]) { _, test in test }
         let client = Companion.client(local: options.local, service: "logfire-apple-test")
         var context = ["host.model": HostSamples.model, "host.memory_bytes": String(ProcessInfo.processInfo.physicalMemory),
             "host.processors": String(ProcessInfo.processInfo.processorCount), "gpu.name": MTLCreateSystemDefaultDevice()?.name ?? "unknown",

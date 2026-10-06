@@ -28,7 +28,7 @@ struct ScenarioDefinition: Codable {
         for (key, value) in environment {
             guard key.range(of: "^[A-Za-z_][A-Za-z0-9_]{0,127}$", options: .regularExpression) != nil,
                   !["LOGFIRE_", "OTEL_", "MTL_", "METAL_"].contains(where: key.hasPrefix),
-                  !["NEON_SESSION_ID", "NEON_OBSERVER_DIR", "NEON_PERF_REPORT"].contains(key),
+                  key != "NEON_PERF_REPORT",
                   value.utf8.count <= 2048, !value.contains("\0") else {
                 throw CompanionError.message("Scenario environment cannot override telemetry or process identity")
             }
@@ -138,8 +138,7 @@ enum ScenarioRun {
             .reduce(into: [String: Any]()) { $0[$1.key] = $1.value }
             .merging(["session_id": id, "measurement.source": "native.scenario_runner"]) { _, value in value }
         var environment = ProcessInfo.processInfo.environment.filter {
-            !["LOGFIRE_", "OTEL_", "MTL_", "METAL_", "DYLD_", "XCTest", "XCTEST_"].contains(where: $0.key.hasPrefix) &&
-                !["NEON_SESSION_ID", "NEON_OBSERVER_DIR", "NEON_PERF_REPORT"].contains($0.key)
+            !["LOGFIRE_", "OTEL_", "MTL_", "METAL_", "DYLD_", "XCTest", "XCTEST_"].contains(where: $0.key.hasPrefix) && $0.key != "NEON_PERF_REPORT"
         }
         environment.merge(definition.environment) { _, value in value }
         environment.merge(["LOGFIRE_DEV_DIRECT": client.delivery.enabled ? "1" : "0", "LOGFIRE_SESSION_ID": id,
@@ -207,14 +206,14 @@ enum ScenarioRun {
                             do {
                                 let remaining = max(0.1, options.seconds - (ProcessInfo.processInfo.systemUptime - began))
                                 if profile == "cpu" {
-                                    capturedCPU = try client.withSpan("development.cpu.record") {
+                                    capturedCPU = try client.withSpan("development.cpu.record", attributes: Companion.attributes(context)) {
                                         try InstrumentsProfile.record(args + ["--seconds", "5"], timeout: remaining, onTick: {
                                             host.tick(client: client, context: context.merging(["process.pid": pid]) { _, value in value })
                                             return false
                                         })
                                     }
                                 } else {
-                                    capturedGPU = try client.withSpan("development.gpu.capture") {
+                                    capturedGPU = try client.withSpan("development.gpu.capture", attributes: Companion.attributes(context)) {
                                         try GPUCapture.capture(GPUCaptureOptions(args + ["--profile"]), seconds: min(30, remaining))
                                     }
                                 }
@@ -234,7 +233,7 @@ enum ScenarioRun {
             if let capturedCPU, !interruptedRun {
                 let analysisStarted = ProcessInfo.processInfo.systemUptime
                 do {
-                    let code = try client.withSpan("development.cpu.analysis") { try InstrumentsProfile.analyze(capturedCPU) }
+                    let code = try client.withSpan("development.cpu.analysis", attributes: Companion.attributes(context)) { try InstrumentsProfile.analyze(capturedCPU) }
                     if code != 0 {
                         issues.append("Optional CPU profile is incomplete. Inspect retained profile evidence.")
                     }
@@ -247,7 +246,7 @@ enum ScenarioRun {
             if let capturedGPU, !interruptedRun {
                 let analysisStarted = ProcessInfo.processInfo.systemUptime
                 do {
-                    let code = try client.withSpan("development.gpu.analysis") { try GPUCapture.analyze(capturedGPU) }
+                    let code = try client.withSpan("development.gpu.analysis", attributes: Companion.attributes(context)) { try GPUCapture.analyze(capturedGPU) }
                     if code != 0 {
                         issues.append("Optional GPU profile is incomplete. Inspect retained profile evidence.")
                     }
@@ -291,7 +290,7 @@ enum ScenarioRun {
             else if result.timedOut || completedLate { code = 124 }
             else if failure != nil { code = [130, 143].contains(processCode) ? processCode : 1 }
             else { code = ScenarioSignal.exitCode(result: result, signal: signal, windows: windows.count, required: definition.requireFrameWindows, issues: issues) }
-            let report: [String: Any] = context.merging([
+            var report: [String: Any] = context.merging([
                 "schema_version": 1, "status": code == 0 ? "passed" : code == 2 ? "incomplete" : "failed",
                 "exit_code": code, "app.exit_code": result.exitCode, "app.pid": pid, "app.requested_stop": result.requestedStop,
                 "run.started_at": beganDate.timeIntervalSince1970, "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
@@ -305,6 +304,10 @@ enum ScenarioRun {
                 "profile.directory": profiled ? folder.appendingPathComponent("profile").path : "",
                 "app.delivery": signal?.delivery.map { ["enabled": $0.enabled, "exported_spans": $0.exportedSpans, "failed_spans": $0.failedSpans] as [String: Any] } as Any? ?? NSNull(),
             ]) { _, value in value }
+            if let runParent { report["trace_id"] = runParent.components(separatedBy: "-")[1] }
+            let diagnostic = SessionDiagnostics.build(report: report, folder: folder, windows: windows)
+            report["diagnostic"] = try SessionDiagnostics.object(diagnostic)
+            try SessionDiagnostics.publish(diagnostic, client: client, context: context)
             runSpan?.setAttribute(key: "app.duration_seconds", value: appDuration)
             runSpan?.setAttribute(key: "profile.analysis.duration_seconds", value: analysisDuration)
             runSpan?.setAttribute(key: "run.exit_code", value: Int(code))
@@ -339,6 +342,11 @@ enum ScenarioRun {
         }
         retained["app.metric_delivery"] = signal?.metricDelivery.map { ["enabled": $0.enabled, "exported_metrics": $0.exportedMetrics, "failed_metrics": $0.failedMetrics] as [String: Any] } as Any? ?? NSNull()
         retained["runner.delivery"] = ["enabled": client.delivery.enabled, "exported_spans": client.delivery.exportedSpans, "failed_spans": client.delivery.failedSpans]
+        if var diagnostic = retained["diagnostic"] as? [String: Any] {
+            let gaps = (diagnostic["observationGaps"] as? [String] ?? []) + (retained["issues"] as? [String] ?? [])
+            diagnostic["observationGaps"] = Array(Set(gaps)).sorted()
+            retained["diagnostic"] = diagnostic
+        }
         try JSONSerialization.data(withJSONObject: retained, options: [.prettyPrinted, .sortedKeys]).write(to: folder.appendingPathComponent("report.json"), options: .atomic)
         print("Scenario report: \(folder.appendingPathComponent("report.json").path)")
         return finalCode

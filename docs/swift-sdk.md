@@ -44,7 +44,7 @@ Run `logfire-apple configure --region us`.
 You can also use `swift run logfire-apple` from this checkout.
 Use `--region eu` for a European project. Supply a project write token, not a management API key.
 The command hides input and saves `~/.config/logfire-swift/credentials.env` with permissions of `0600`.
-The SDK also accepts the earlier `~/.config/xcode-observe/credentials.env` location.
+The SDK reads only this location by default. Prototype users must run `logfire-apple configure` again.
 The app reads credentials at runtime. The build never copies them into the application.
 
 Set `LOGFIRE_DEV_DIRECT=1` in the development scheme.
@@ -166,9 +166,7 @@ Failed batches are dropped. Export failure does not replace the operation's resu
 Lifecycle notifications request a flush outside the UI thread.
 They do not guarantee delivery before suspension or termination. An abrupt debugger stop can lose the last batch.
 
-The optional loopback relay remains available for transport comparisons.
-Set `LOGFIRE_DEV_ENDPOINT=http://127.0.0.1:4318/v1/traces` without direct opt-in to use it.
-The legacy relay experiment requires the optional Python environment. Native builds, game tests, and captures use Swift.
+Development export uses HTTPS directly. No relay or Python environment is required.
 See [the native workflow](native-workflow.md) for automated testing and analysis.
 
 Local Apple monitoring remains active when development network export is disabled.
@@ -179,7 +177,7 @@ Session and build IDs use volatile metadata. They do not fragment stable perform
 ## Optional development scenarios
 
 A runner-owned launch sets `LOGFIRE_SESSION_ID`, `LOGFIRE_SESSION_DIR`, `LOGFIRE_SCENARIO_ID`, and `LOGFIRE_SCENARIO_STATUS`.
-The SDK accepts the common session names. The previous `NEON_SESSION_ID` and `NEON_OBSERVER_DIR` names remain fallback options.
+The SDK accepts the common `LOGFIRE_*` session names. Game-specific settings remain in the reference app.
 Use one `Logfire.development` client so the app publishes its verified session marker.
 
 ```swift

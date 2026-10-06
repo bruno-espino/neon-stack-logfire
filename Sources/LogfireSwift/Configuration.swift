@@ -8,7 +8,7 @@ public enum LogfireConfigurationError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .missingCredentials: return "Direct development export requires LOGFIRE_TOKEN and LOGFIRE_BASE_URL."
-        case .invalidEndpoint: return "Use an HTTPS ingest endpoint or an unauthenticated loopback relay."
+        case .invalidEndpoint: return "Use an HTTPS ingest endpoint."
         case .invalidToken: return "The write token must be nonempty and contain no whitespace."
         case .unreadableCredentials: return "The development credential file is unavailable or invalid."
         }
@@ -26,7 +26,7 @@ public struct LogfireConfiguration {
     public init(endpoint: URL, token: String? = nil) throws {
         guard endpoint.host != nil, endpoint.user == nil, endpoint.password == nil,
               endpoint.query == nil, endpoint.fragment == nil, endpoint.path == "/v1/traces",
-              endpoint.scheme == "https" || (endpoint.scheme == "http" && endpoint.host == "127.0.0.1" && token == nil)
+              endpoint.scheme == "https"
         else { throw LogfireConfigurationError.invalidEndpoint }
         if let token, token.isEmpty || token.contains(where: { $0.isWhitespace || $0.isNewline }) {
             throw LogfireConfigurationError.invalidToken
@@ -38,14 +38,10 @@ public struct LogfireConfiguration {
     /// Direct export reads credentials only when the run explicitly enables it.
     public static func development(environment: [String: String] = ProcessInfo.processInfo.environment,
                                    credentialsFile: URL? = nil) throws -> LogfireConfiguration? {
-        guard environment["LOGFIRE_DEV_DIRECT"] == "1" else {
-            return try Logfire.developmentEndpoint(environment: environment).map { try LogfireConfiguration(endpoint: $0) }
-        }
+        guard environment["LOGFIRE_DEV_DIRECT"] == "1" else { return nil }
         var values = environment
         if values["LOGFIRE_TOKEN"] == nil && values["LOGFIRE_BASE_URL"] == nil {
-            let legacy = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/xcode-observe/credentials.env")
-            let defaultFile = FileManager.default.fileExists(atPath: developmentCredentialFile.path) ? developmentCredentialFile : legacy
-            let file = credentialsFile ?? environment["LOGFIRE_DEV_CREDENTIALS"].map { URL(fileURLWithPath: $0) } ?? defaultFile
+            let file = credentialsFile ?? environment["LOGFIRE_DEV_CREDENTIALS"].map { URL(fileURLWithPath: $0) } ?? developmentCredentialFile
             let data: Data
             do { data = try Data(contentsOf: file) }
             catch { throw LogfireConfigurationError.unreadableCredentials }
@@ -68,7 +64,7 @@ public struct LogfireConfiguration {
         return try LogfireConfiguration(endpoint: url.appendingPathComponent("v1/traces"), token: token)
     }
 
-    public var metricsEndpoint: URL { endpoint.deletingLastPathComponent().appendingPathComponent("metrics") }
+    private var metricsEndpoint: URL { endpoint.deletingLastPathComponent().appendingPathComponent("metrics") }
 
     func makeMetricExporter() -> OtlpHttpMetricExporter {
         OtlpHttpMetricExporter(endpoint: metricsEndpoint,

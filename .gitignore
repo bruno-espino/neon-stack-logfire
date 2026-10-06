@@ -22,3 +22,5 @@ tmp/
 *.app/
 *.dSYM/
 .DS_Store
+
+video/

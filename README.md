@@ -22,7 +22,7 @@ Install the companion once with `tools/install-companion.sh`. It builds a native
 Add that directory to your PATH if needed. You can also use `swift run logfire-apple` from this checkout.
 
 Configure a project write token once. The command hides input and saves a private runtime file outside the application and Git.
-Existing prototype credentials remain compatible.
+Existing prototype users must run configure again.
 
 ```sh
 logfire-apple configure --region us
@@ -57,7 +57,7 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes twenty panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, GPU replay costs, scenario outcomes, captures, and builds.
+It includes twenty-two panels for SDK windows, Apple presentation timings, process memory, host context, CPU caller paths, GPU replay costs, diagnoses, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
@@ -82,6 +82,7 @@ Capture collects Apple's retained history and saves recordings and symbols local
 Logfire receives selected summaries and capture metadata.
 Attach streams selected native measurements and whole-host load during its bounded observation period.
 Profile records a short Time Profiler interval and exports selected CPU samples and the top 20 leaf functions.
+It also exports up to 20 caller paths for each main/background thread scope. Unresolved frames remain explicit.
 For automated scenarios, `run --profile cpu` records during the app run, then exports and decodes the recording after the runner stops the app.
 Use a Release build for optimization. The full `.trace` and symbols remain local.
 All three commands use Swift only and report exporter acknowledgements and failures.
@@ -98,7 +99,7 @@ This captures one boundary by default and profiles its replay. It is separate fr
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
 | Apple GPU debugger | Captured render/compute workload, selected replay encoder/shader costs, register and spill properties | Optional `gpu-capture --profile`. Raw resources and shader sources stay local. |
-| Instruments Time Profiler | Running CPU samples and top leaf-function weights | Optional `profile` recording. Summaries export after the recording. |
+| Instruments Time Profiler | Running CPU samples, leaf-function weights, and caller paths | Optional `profile` recording. Summaries export after the recording. |
 | MetricKit adapter inside the SDK | Selected CPU/GPU time, disk writes, launch/resume/hang distributions, hitches, daily Metal reports, diagnostic summaries | Delayed reports with historical context. Coverage varies by platform. |
 | macOS host APIs | Whole-host CPU load, selected memory counts, filesystem free bytes | One-second samples during companion builds, game tests, and live attach |
 | Xcode build tools | Build duration, task totals, warnings, errors, selected host samples | Swift companion build action |
@@ -135,7 +136,7 @@ The command rejects incompatible cohorts and observation gaps.
 It reports worst window p95 values. They are not whole-session percentiles.
 See [the native workflow guide](docs/native-workflow.md) for setup, report fields, and exit codes.
 
-The [legacy Python experiments](tools/xcode-observe/README.md) remain available for transport comparisons and earlier dashboards.
+The earlier Python observer and relay have retired. Native tools cover the supported workflow.
 The companion does not call them.
 
 ## Validate and inspect
@@ -157,6 +158,8 @@ logfire-apple run --app tmp/DerivedData-macos/Build/Products/Debug/NeonStack.app
 
 The app supplies readiness and completion through the SDK. The runner stops after the expected loss and retains one report.
 Add `--profile cpu` or `--profile gpu` for a targeted investigation. Profiling adds time and is absent from default checks.
+The run report includes diagnostic findings, missing evidence, caller paths, and suggested native investigations.
+Use `logfire-apple diagnose --report REPORT` to reanalyze saved evidence without another gameplay run or telemetry upload.
 See [the scenario workflow](docs/native-workflow.md#run-an-app-owned-scenario) for the reusable definition and SDK protocol.
 
 Manual sessions gain native and host telemetry when you run `logfire-apple attach`.
@@ -170,3 +173,5 @@ The exporter has bounded batches and no persistent offline queue.
 Lifecycle flushing is best effort. An abrupt debugger stop can lose the last batch.
 Native companion capture currently requires a live verified session on macOS 27.
 Real daily MetricKit delivery, physical iOS runtime, and a second tester Mac remain unverified.
+
+Local consolidation checks and migration notes are in [the native cleanup note](docs/NATIVE-CLEANUP.txt). Xcode CI remains deferred.

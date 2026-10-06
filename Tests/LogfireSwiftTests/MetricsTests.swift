@@ -25,7 +25,7 @@ final class MetricsTests: XCTestCase {
                 context: context, attributes: ["score": .int(42)], uptime: time, wallTime: Date())
         }
         recorder.finish(); client.flush()
-        let samples = exporter.metrics.filter { $0.name == DevelopmentMetric.frameInterval.rawValue }
+        let samples = exporter.metrics.filter { $0.name == "game.frame.interval" }
             .flatMap { $0.data.points.compactMap { $0 as? HistogramPointData } }
         XCTAssertEqual(samples.reduce(UInt64(0)) { $0 + $1.count }, 3)
         XCTAssertEqual(samples.reduce(0) { $0 + $1.sum }, 60)
@@ -34,7 +34,7 @@ final class MetricsTests: XCTestCase {
         let exemplars = samples.flatMap(\.exemplars)
         XCTAssertFalse(exemplars.isEmpty)
         XCTAssertTrue(exemplars.allSatisfy { $0.spanContext?.traceId == report.traceId })
-        XCTAssertFalse(exporter.metrics.contains { $0.name == DevelopmentMetric.gpuCommands.rawValue })
+        XCTAssertFalse(exporter.metrics.contains { $0.name == "game.gpu.commands.duration" })
         XCTAssertGreaterThan(client.metrics!.delivery.exportedMetrics, 0)
     }
 
