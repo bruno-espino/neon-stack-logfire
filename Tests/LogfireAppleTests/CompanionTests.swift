@@ -9,7 +9,7 @@ final class CompanionTests: XCTestCase {
         XCTAssertEqual(values["partial"], .bool(true))
         XCTAssertEqual(values["samples"], .double(1))
         XCTAssertEqual(values["gaps"], .double(0))
-        let structured = try Companion.structuredAttribute("diagnostic.details", value: ["gaps": ["missing CPU"]], type: "object")
+        let structured = try Companion.structuredAttribute("diagnostic.details", encoded: ["gaps": ["missing CPU"]], type: "object")
         guard case .string(let schema) = structured["logfire.json_schema"], case .string(let payload) = structured["diagnostic.details"] else {
             return XCTFail("Structured attributes require JSON and schema metadata")
         }

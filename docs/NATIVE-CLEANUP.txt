@@ -1,0 +1,46 @@
+NATIVE WORKFLOW CLEANUP — 2026-10-06
+
+Next step: finish the local consolidation before adding CI or expanding profiler coverage.
+This follow-up depends on PR #7's session identity and diagnostic hardening.
+
+Changes
+- Retire the unused Python observer, replay launcher, duplicate build identity, and old dashboards.
+- Remove relay configuration, prototype credential fallback, and SDK NEON identity aliases.
+- Migrate the reference replay to LOGFIRE_SESSION_ID. Keep game-specific replay settings in the app.
+- Use validated LogfireConfiguration for public clients. Hide internal endpoint and marker helpers.
+- A concurrent scenario finish reports completionInProgress. It cannot claim completion before the first flush finishes.
+- Make source fingerprints independent of the NeonStack directory name. Ignore scratch and generated directories.
+- Replace the obsolete game guide with the supported native workflow.
+- Add game logic, animation, and audio decoding checks to tools/check-dev.sh. Audio playback stays optional.
+- Add a native repository checker for local document targets, known credential patterns, dashboard JSON, metric columns, and build fingerprints.
+- Add swift-format settings. Strict local lint covers the two artifact scripts. Whole-repository formatting remains separate.
+- Ignore video/. No video directory exists in this checkout.
+
+Verification
+Run tools/check-dev.sh for the quick local check. Use --smoke for an extra 12-second seeded offscreen replay.
+Run xcrun swift-format lint --strict --configuration .swift-format tools/embed-build.swift tools/check-repository.swift for artifact-script lint.
+The repository checker rejects synthetic credentials, broken local links, and prohibited metric columns without printing credential values.
+It checks a renamed app's source change and an ignored scratch source.
+Hosted dashboard SQL still requires an authenticated integration check. JSON and column checks do not replace that check.
+
+Migration
+Prototype users must run logfire-apple configure again. The SDK defaults to ~/.config/logfire-swift/credentials.env.
+This Mac's existing private credentials were copied to that location with mode 0600. The old private file remains outside Git.
+No key is embedded in the application or saved in this repository.
+
+Retained deliberately
+- test-game keeps seeded and offscreen comparisons until scenario files provide those capabilities.
+- FrameRecorder retains its accumulation lock and reporting queue. They protect different work.
+- Malformed explicit credentials still raise an error. Missing opt-in still disables network export.
+- Swift dictionaries remain at older report and Apple JSON boundaries. Migrate them in focused changes.
+
+Deferred by request
+No Xcode CI workflow was added. All new verification commands are local.
+No simulator test, profiler run, automatic retry, or longer default session was added.
+
+Smoke adjustment
+The onscreen smoke produced no complete windows on this desktop. The smoke now uses the reference offscreen renderer.
+This exercises the game and Metal work without requiring an active window. It does not verify display presentation.
+
+Fingerprint scope
+The fingerprint covers selected Swift, Metal, project files, and package inputs. It is not a complete Xcode input manifest.

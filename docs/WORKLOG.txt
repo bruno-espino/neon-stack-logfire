@@ -443,3 +443,10 @@ Saved twenty-two dashboard panels. Added caller paths and findings. Five updated
 Rejected interpreting low window CPU as a proven lock wait, GPU command sums as utilization, or profiled windows as baselines. Default checks still omit profilers and the iOS Simulator.
 Issue: cold xctrace setup/finalization sometimes exhausts the remaining twenty-second app budget. Requested evidence becomes incomplete with exit 2. The budget remains unchanged.
 Next: targeted waiting/concurrency evidence, startup capture coverage, shared artifact access, SDK async/lifecycle hardening, and a clean second-Mac setup. Real MetricKit delivery and physical iOS remain unverified.
+
+2026-10-06 Native consolidation after feedback
+Retired Python and relay paths. Migrated this Mac's private credentials before removing the fallback.
+Added repeatable local repository and game checks. The source fingerprint now supports renamed apps.
+Kept the reference replay adapter because generic scenarios do not yet cover seeded offscreen comparisons.
+Kept distinct renderer synchronization mechanisms and explicit configuration errors.
+Xcode CI remains deferred at the user's request. See NATIVE-CLEANUP.txt and FEEDBACK-REVIEW.txt.

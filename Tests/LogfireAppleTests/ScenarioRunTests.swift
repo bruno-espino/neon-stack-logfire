@@ -8,7 +8,7 @@ final class ScenarioRunTests: XCTestCase {
     func testDefinitionsCannotOverrideIdentityOrEnableInjectedTools() throws {
         let good = ScenarioDefinition(schemaVersion: 1, id: "sample-v1", arguments: [], environment: ["QUALITY": "low"], requireFrameWindows: false)
         try good.validate()
-        for key in ["LOGFIRE_TOKEN", "LOGFIRE_SESSION_ID", "OTEL_EXPORTER_OTLP_HEADERS", "MTL_CAPTURE_ENABLED", "NEON_SESSION_ID"] {
+        for key in ["LOGFIRE_TOKEN", "LOGFIRE_SESSION_ID", "OTEL_EXPORTER_OTLP_HEADERS", "MTL_CAPTURE_ENABLED"] {
             XCTAssertThrowsError(try ScenarioDefinition(schemaVersion: 1, id: "sample", arguments: [], environment: [key: "override"], requireFrameWindows: false).validate())
         }
         for values in [["--app", "app"], ["--app", "app", "--scenario", "file", "--seconds", "nan"], ["--app", "app", "--scenario", "file", "--profile", "all"]] {

@@ -22,7 +22,7 @@ Install the companion once with `tools/install-companion.sh`. It builds a native
 Add that directory to your PATH if needed. You can also use `swift run logfire-apple` from this checkout.
 
 Configure a project write token once. The command hides input and saves a private runtime file outside the application and Git.
-Existing prototype credentials remain compatible.
+Existing prototype users must run configure again.
 
 ```sh
 logfire-apple configure --region us
@@ -136,7 +136,7 @@ The command rejects incompatible cohorts and observation gaps.
 It reports worst window p95 values. They are not whole-session percentiles.
 See [the native workflow guide](docs/native-workflow.md) for setup, report fields, and exit codes.
 
-The [legacy Python experiments](tools/xcode-observe/README.md) remain available for transport comparisons and earlier dashboards.
+The earlier Python observer and relay have retired. Native tools cover the supported workflow.
 The companion does not call them.
 
 ## Validate and inspect
@@ -173,3 +173,5 @@ The exporter has bounded batches and no persistent offline queue.
 Lifecycle flushing is best effort. An abrupt debugger stop can lose the last batch.
 Native companion capture currently requires a live verified session on macOS 27.
 Real daily MetricKit delivery, physical iOS runtime, and a second tester Mac remain unverified.
+
+Local consolidation checks and migration notes are in [the native cleanup note](docs/NATIVE-CLEANUP.txt). Xcode CI remains deferred.

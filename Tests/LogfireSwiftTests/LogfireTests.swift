@@ -90,11 +90,10 @@ final class LogfireTests: XCTestCase {
         XCTAssertEqual(window.resource.attributes["service.name"], .string("native-test"))
     }
 
-    func testEndpointRequiresExplicitLoopbackConfiguration() {
-        XCTAssertNil(Logfire.developmentEndpoint(environment: [:]))
-        XCTAssertNil(Logfire.developmentEndpoint(environment: ["LOGFIRE_DEV_ENDPOINT": "https://remote.example/v1/traces"]))
-        XCTAssertNil(Logfire.developmentEndpoint(environment: ["LOGFIRE_DEV_ENDPOINT": "http://secret@127.0.0.1:4318/v1/traces"]))
-        XCTAssertEqual(Logfire.developmentEndpoint(environment: ["LOGFIRE_DEV_ENDPOINT": "http://127.0.0.1:4318/v1/traces"])?.port, 4318)
+    func testUnauthenticatedLoopbackIsNoLongerASupportedTransport() throws {
+        XCTAssertThrowsError(try LogfireConfiguration(endpoint: XCTUnwrap(URL(string: "http://127.0.0.1:4318/v1/traces")))) { error in
+            XCTAssertEqual(error as? LogfireConfigurationError, .invalidEndpoint)
+        }
     }
 
     func testDirectExportRequiresRuntimeOptInAndCompleteCredentials() throws {
@@ -131,10 +130,4 @@ final class LogfireTests: XCTestCase {
         }
     }
 
-    func testRelayRemainsAnExplicitUnauthenticatedOption() throws {
-        let configuration = try XCTUnwrap(LogfireConfiguration.development(environment: [
-            "LOGFIRE_DEV_ENDPOINT": "http://127.0.0.1:4318/v1/traces",
-        ]))
-        XCTAssertEqual(configuration.endpoint.port, 4318)
-    }
 }
