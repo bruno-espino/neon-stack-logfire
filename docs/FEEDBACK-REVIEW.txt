@@ -1,0 +1,42 @@
+PSTACK FEEDBACK REVIEW — 2026-10-06
+
+Current change: PR #7, CPU caller paths and session diagnostics.
+The attached review contains clipped sentences. The assessment uses the code to verify each claim.
+Guidance: https://github.com/cursor/plugins/tree/main/pstack/skills
+Applied principles: subtraction, caller migration, boundary discipline, behavior tests, shared-state separation, verifiable steps.
+
+Fixed in PR #7
+- DevelopmentScenario uses waiting, ready, finishing, and finished states. Its lock does not cover exporter flush.
+- A blocked-exporter test proves state access remains available. Renderer evidence stops when completion begins.
+- Typed diagnostic details, intervals, and CPU frames encode directly for Logfire. Local legacy report assembly remains dictionary-based.
+- Diagnostic evidence errors have specific cases. Tests check the failing identity or field.
+- Metric export tests check public wire names rather than the enum under test.
+- Native protocol fixtures exercise passed (0) and incomplete (2) reports. Both paths reap their child process.
+- Apple capture stderr filenames identify each trace. Multiple trace errors no longer overwrite each other.
+
+Confirmed broader cleanup
+- Python observer, replay launcher, and dashboards have no Swift or Xcode consumers. Their documentation still advertises them.
+- Relay support and SDK prototype names can retire with their callers. Game-specific NEON settings still have live consumers.
+- The old credential fallback is active on this Mac. Migrate the private file before removing the fallback.
+- The endpoint-only Logfire initializer bypasses validated configuration. No caller supplies that endpoint. Reduce this API.
+- Quick checks omit game engine and feedback tests. Add these checks and native CI separately.
+- The build digest script assumes NeonStack source paths. Make its input root generic and verify a renamed synthetic app.
+
+Do not apply literally
+- FrameRecorder needs both mechanisms. The lock protects frame accumulation across callbacks. The queue exports completed windows outside render callbacks.
+- test-game supplies seeded comparisons and offscreen reference workloads. The generic runner supplies app-owned assertions. Migrate those capabilities before deletion.
+- Disabled export is valid without opt-in. Malformed explicit configuration must remain visible instead of silently losing telemetry.
+- video/ is absent from this checkout. An ignore rule can prevent future accidental additions. No media files need deletion.
+
+Further work
+- Parse shared development environment once. Migrate actual consumers before deleting old keys.
+- Migrate retained report and Apple payload boundaries to versioned Codable types in focused changes.
+- Central command and outcome enums can follow the runner migration. Do not introduce IDs, render-mode enums, or a generic abstraction without a demonstrated consumer.
+- Split Companion by an actual responsibility during those changes. Consolidate the JSON stream scanners and capture setup after comparing their limits.
+- Add repeatable local document, credential-pattern, and dashboard checks. Hosted query validation still needs an authenticated integration run.
+- Format the repository in a dedicated change before enforcing whole-repository formatting. Avoid mixing a large style diff into CPU diagnostics.
+
+Structured details
+The SDK sends JSON text plus logfire.json_schema over OTLP. Logfire retains the decoded object or array in records.attributes.
+Example query: SELECT attributes->'diagnostic.details'->'observations' FROM records WHERE span_name = 'development.diagnostic.summary'.
+Caller frames are separate call_path.frames records. Diagnostic intervals describe measured windows, not exact stall boundaries.

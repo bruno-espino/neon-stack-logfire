@@ -222,7 +222,7 @@ public enum Companion {
         for trace in traces {
             let overview = trace.deletingPathExtension().appendingPathExtension("overview.json")
             let status = try HostCommand.run("/usr/bin/metalperftrace", ["overview", "--json", "--include-state-transitions", "--predicate",
-                "pid == \(session.pid)", trace.path], output: overview, errors: folder.appendingPathComponent("overview.stderr"), seconds: 30)
+                "pid == \(session.pid)", trace.path], output: overview, errors: trace.deletingPathExtension().appendingPathExtension("overview.stderr"), seconds: 30)
             guard status == 0 else { throw CompanionError.message("Apple overview failed. Inspect \(folder.path)") }
             let processes = try JSONSerialization.jsonObject(with: Data(contentsOf: overview)) as? [[String: Any]] ?? []
             measurements += processes.flatMap { NativeMeasurements.summaries($0, pid: session.pid, stateDomains: session.stateDomains) }
@@ -232,7 +232,7 @@ public enum Companion {
                     "--predicate", "pid == \(session.pid)"]
                 let rawState = interval == nil ? stateFile : trace.deletingPathExtension().appendingPathExtension("state-context-\(index).json")
                 let stateCode = try HostCommand.run("/usr/bin/metalperftrace", command + [trace.path], output: rawState,
-                    errors: folder.appendingPathComponent("state-\(index).stderr"), seconds: 30)
+                    errors: trace.deletingPathExtension().appendingPathExtension("state-\(index).stderr"), seconds: 30)
                 guard stateCode == 0 else { throw CompanionError.message("State aggregation failed. Inspect \(folder.path)") }
                 var states = try JSONSerialization.jsonObject(with: Data(contentsOf: rawState)) as? [[String: Any]] ?? []
                 if let interval {
@@ -242,7 +242,7 @@ public enum Companion {
                     let offsets = try NativeMeasurements.aggregationOffsets(interval, origin: origin)
                     command += ["--start", "\(offsets.lowerBound)s", "--end", "\(offsets.upperBound)s", trace.path]
                     let sliced = try HostCommand.run("/usr/bin/metalperftrace", command, output: stateFile,
-                        errors: folder.appendingPathComponent("state-slice-\(index).stderr"), seconds: 30)
+                        errors: trace.deletingPathExtension().appendingPathExtension("state-slice-\(index).stderr"), seconds: 30)
                     guard sliced == 0 else { throw CompanionError.message("State measurement slice failed") }
                     states = try JSONSerialization.jsonObject(with: Data(contentsOf: stateFile)) as? [[String: Any]] ?? []
                 }
@@ -321,6 +321,14 @@ public enum Companion {
     static func structuredAttribute(_ key: String, value: Any, type: String) throws -> [String: LogfireAttribute] {
         let schema: [String: Any] = ["type": "object", "properties": [key: ["type": type]]]
         return [key: .string(String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self)),
+            "logfire.json_schema": .string(String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self))]
+    }
+
+    static func structuredAttribute<Value: Encodable>(_ key: String, encoded value: Value, type: String) throws -> [String: LogfireAttribute] {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let schema = ["type": "object", "properties": [key: ["type": type]]] as [String: Any]
+        return [key: .string(String(decoding: try encoder.encode(value), as: UTF8.self)),
             "logfire.json_schema": .string(String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self))]
     }
 

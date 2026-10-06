@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import OpenTelemetrySdk
 @testable import LogfireSwift
 
 final class DevelopmentScenarioTests: XCTestCase {
@@ -11,7 +12,9 @@ final class DevelopmentScenarioTests: XCTestCase {
         let output = folder.appendingPathComponent("scenario.json")
         var env = ["LOGFIRE_SESSION_ID": client.sessionID, "LOGFIRE_SCENARIO_ID": "test-scenario", "LOGFIRE_SCENARIO_STATUS": output.path]
         let scenario = try XCTUnwrap(DevelopmentScenario(client: client, environment: env))
-        XCTAssertThrowsError(try scenario.finish(passed: true))
+        XCTAssertThrowsError(try scenario.finish(passed: true)) { error in
+            XCTAssertEqual(error as? DevelopmentScenarioError, .notReady)
+        }
         XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
         try scenario.markReady()
         try scenario.finish(passed: false, details: ["reason": "expected assertion failed"])
@@ -25,6 +28,46 @@ final class DevelopmentScenarioTests: XCTestCase {
         env["LOGFIRE_SESSION_ID"] = UUID().uuidString
         XCTAssertNil(DevelopmentScenario(client: client, environment: env))
         XCTAssertNil(DevelopmentScenario(client: client, environment: [:]))
+    }
+
+    func testFinishReleasesScenarioLockWhileExporterRunsAndStopsAcceptingFrames() throws {
+        final class BlockingExporter: SpanExporter, @unchecked Sendable {
+            let entered = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
+            func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
+                entered.signal(); _ = resume.wait(timeout: .now() + 5); return .success
+            }
+            func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+            func shutdown(explicitTimeout: TimeInterval?) {}
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let exporter = BlockingExporter()
+        let monitored = Logfire(serviceName: "test", exporter: exporter)
+        let scenario = try XCTUnwrap(DevelopmentScenario(client: monitored, environment: ["LOGFIRE_SESSION_ID": monitored.sessionID,
+            "LOGFIRE_SCENARIO_ID": "finish", "LOGFIRE_SCENARIO_STATUS": folder.appendingPathComponent("scenario.json").path]))
+        try scenario.markReady()
+        let done = expectation(description: "finish publishes completion")
+        DispatchQueue.global().async {
+            defer { done.fulfill() }
+            do { try scenario.finish(passed: true) } catch { XCTFail("Unexpected finish error: \(error)") }
+        }
+        XCTAssertEqual(exporter.entered.wait(timeout: .now() + 2), .success)
+        let responsive = expectation(description: "scenario stays accessible during export")
+        DispatchQueue.global().async {
+            XCTAssertTrue(scenario.isReady)
+            do {
+                try scenario.record(FrameWindow(started: Date(), ended: Date(), callbackFPS: 60,
+                    gpuMeanMilliseconds: nil, attributes: ["frames": .int(300)]))
+            } catch { XCTFail("Unexpected record error: \(error)") }
+            responsive.fulfill()
+        }
+        wait(for: [responsive], timeout: 0.5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("performance.jsonl").path))
+        exporter.resume.signal(); exporter.resume.signal()
+        wait(for: [done], timeout: 3)
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("scenario.json"))) as? [String: Any])
+        XCTAssertEqual(value["phase"] as? String, "passed")
     }
 
     func testRendererEvidencePrecedesReadiness() throws {

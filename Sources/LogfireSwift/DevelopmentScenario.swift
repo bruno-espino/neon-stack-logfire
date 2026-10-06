@@ -8,10 +8,10 @@ public final class DevelopmentScenario {
     private let id: String
     private let output: URL
     private let lock = NSLock()
-    private var ready = false
-    private var finished = false
+    private enum Phase { case waiting, ready, finishing, finished }
+    private var phase: Phase = .waiting
 
-    public var isReady: Bool { lock.lock(); defer { lock.unlock() }; return ready }
+    public var isReady: Bool { lock.lock(); defer { lock.unlock() }; return phase != .waiting }
 
     public init?(client: Logfire, environment: [String: String] = ProcessInfo.processInfo.environment) {
         guard let id = environment["LOGFIRE_SCENARIO_ID"], !id.isEmpty, id.count <= 128,
@@ -22,16 +22,16 @@ public final class DevelopmentScenario {
 
     public func markReady() throws {
         lock.lock(); defer { lock.unlock() }
-        guard !ready, !finished else { return }
+        guard phase == .waiting else { return }
         try write(phase: "ready", isReady: true, details: [:])
-        ready = true
+        phase = .ready
         client.event("development.scenario.ready", attributes: ["scenario.id": .string(id)])
     }
 
     /// A completed renderer window supplies readiness and retained local evidence.
     public func record(_ window: FrameWindow) throws {
         lock.lock()
-        guard !finished else { lock.unlock(); return }
+        guard phase == .waiting || phase == .ready else { lock.unlock(); return }
         do {
             let file = output.deletingLastPathComponent().appendingPathComponent("performance.jsonl")
             if !FileManager.default.fileExists(atPath: file.path) {
@@ -77,13 +77,22 @@ public final class DevelopmentScenario {
 
     /// Call on a background queue. Flush queued telemetry before the runner sees completion.
     public func finish(passed: Bool, details: [String: String] = [:]) throws {
-        lock.lock(); defer { lock.unlock() }
-        guard !finished else { return }
-        guard ready else { throw DevelopmentScenarioError.notReady }
+        lock.lock()
+        switch phase {
+        case .waiting: lock.unlock(); throw DevelopmentScenarioError.notReady
+        case .finishing, .finished: lock.unlock(); return
+        case .ready: phase = .finishing; lock.unlock()
+        }
+        // Exporters can block or call app code. Keep the scenario lock out of this operation.
         client.event("development.scenario.finished", attributes: ["scenario.id": .string(id), "scenario.passed": .bool(passed)])
         client.flush()
-        try write(phase: passed ? "passed" : "failed", isReady: true, details: details)
-        finished = true
+        do {
+            try write(phase: passed ? "passed" : "failed", isReady: true, details: details)
+            lock.lock(); phase = .finished; lock.unlock()
+        } catch {
+            lock.lock(); phase = .ready; lock.unlock()
+            throw error
+        }
     }
 
     private func write(phase: String, isReady: Bool, details: [String: String]) throws {

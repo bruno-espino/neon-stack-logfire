@@ -62,7 +62,10 @@ final class SessionDiagnosticsTests: XCTestCase {
         XCTAssertEqual(try SessionDiagnostics.responsiveness(at: file, report: report()).count, 1)
         for (key, value) in [("session_id", UUID().uuidString as Any), ("pid", 99), ("recorded_at", 150.0), ("main_queue.delay_max_ms", -1.0)] {
             let original = row[key]; row[key] = value; try write()
-            XCTAssertThrowsError(try SessionDiagnostics.responsiveness(at: file, report: report()))
+            XCTAssertThrowsError(try SessionDiagnostics.responsiveness(at: file, report: report())) { error in
+                XCTAssertEqual(error as? DiagnosticEvidenceError, key == "main_queue.delay_max_ms" ?
+                    .invalidResponsivenessField(key) : .invalidResponsivenessIdentity)
+            }
             row[key] = original
         }
     }

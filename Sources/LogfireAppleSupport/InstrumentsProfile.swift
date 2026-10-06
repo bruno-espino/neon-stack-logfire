@@ -274,7 +274,6 @@ enum InstrumentsProfile {
         for scope in ["main", "background"] {
             let denominator = scope == "main" ? summary.mainThreadWeightNanoseconds : summary.weightNanoseconds - summary.mainThreadWeightNanoseconds
             for (index, path) in summary.callPaths.filter({ $0.threadScope == scope }).enumerated() {
-                let frames = try JSONSerialization.jsonObject(with: JSONEncoder().encode(path.frames))
                 let display = path.frames.map(\.symbol).joined(separator: " → ")
                 let values: [String: Any] = ["measurement.scope": "cpu_sampled_call_path", "cpu.thread_scope": scope,
                     "call_path.rank": index + 1, "call_path.samples": path.samples,
@@ -286,7 +285,7 @@ enum InstrumentsProfile {
                     "call_path.display": display.count > 8192 ? "… " + String(display.suffix(8192)) : display,
                     "call_path.display_truncated": display.count > 8192]
                 client.event("game.cpu.call_path", attributes: try Companion.attributes(context.merging(values) { _, path in path })
-                    .merging(Companion.structuredAttribute("call_path.frames", value: frames, type: "array")) { _, structured in structured })
+                    .merging(Companion.structuredAttribute("call_path.frames", encoded: path.frames, type: "array")) { _, structured in structured })
             }
         }
         client.flush(); Companion.printDelivery(client)

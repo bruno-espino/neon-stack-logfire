@@ -2,6 +2,19 @@ import Foundation
 import LogfireSwift
 #if os(macOS)
 
+enum DiagnosticEvidenceError: Error, Equatable, CustomStringConvertible {
+    case tooLarge, invalidResponsivenessIdentity, invalidResponsivenessField(String), invalidRunReport
+
+    var description: String {
+        switch self {
+        case .tooLarge: return "Diagnostic evidence exceeds its size limit"
+        case .invalidResponsivenessIdentity: return "Responsiveness evidence does not identify this run and interval"
+        case .invalidResponsivenessField(let key): return "Invalid responsiveness field \(key)"
+        case .invalidRunReport: return "Supply a retained scenario-run report"
+        }
+    }
+}
+
 struct DiagnosticFinding: Codable {
     let id: String
     let observation: String
@@ -32,6 +45,23 @@ struct SessionDiagnostic: Codable {
     let cpuCallPaths: [CPUCallPath]
 }
 
+/// The hosted overview omits caller paths because each path has its own bounded record.
+private struct DiagnosticDetails: Encodable {
+    let schemaVersion: Int
+    let summary: String
+    let observations: [String: Double]
+    let findings: [DiagnosticFinding]
+    let observationGaps: [String]
+    let limitations: [String]
+    let artifacts: [DiagnosticArtifact]
+
+    init(_ report: SessionDiagnostic) {
+        schemaVersion = report.schemaVersion; summary = report.summary
+        observations = report.observations; findings = report.findings
+        observationGaps = report.observationGaps; limitations = report.limitations; artifacts = report.artifacts
+    }
+}
+
 /// Findings select an investigation. They do not establish a performance regression or its cause.
 enum SessionDiagnostics {
     static func intervals(_ rows: [[String: Any]], source: String) -> [DiagnosticInterval] {
@@ -44,9 +74,9 @@ enum SessionDiagnostics {
     }
     static func data(_ file: URL, limit: Int = 16 * 1024 * 1024) throws -> Data {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? limit + 1
-        guard size <= limit else { throw CompanionError.message("Diagnostic evidence exceeds its size limit") }
+        guard size <= limit else { throw DiagnosticEvidenceError.tooLarge }
         let data = try Data(contentsOf: file)
-        guard data.count <= limit else { throw CompanionError.message("Diagnostic evidence exceeds its size limit") }
+        guard data.count <= limit else { throw DiagnosticEvidenceError.tooLarge }
         return data
     }
 
@@ -63,12 +93,12 @@ enum SessionDiagnostics {
                   ended >= started, ended <= started + duration + 1,
                   let seconds = SessionAnalysis.number(row["window_seconds"]), seconds >= 5,
                   seconds <= ended - started + 1 else {
-                throw CompanionError.message("Responsiveness evidence does not identify this run and interval")
+                throw DiagnosticEvidenceError.invalidResponsivenessIdentity
             }
             for key in ["main_queue.delay_max_ms", "main_queue.pending_age_max_ms", "main_thread.cpu.utilization", "process.cpu.utilization"] {
                 if row[key] != nil {
                     guard let number = SessionAnalysis.number(row[key]), number >= 0 else {
-                        throw CompanionError.message("Invalid responsiveness field \(key)")
+                        throw DiagnosticEvidenceError.invalidResponsivenessField(key)
                     }
                 }
             }
@@ -224,20 +254,16 @@ enum SessionDiagnostics {
     }
 
     static func publish(_ diagnostic: SessionDiagnostic, client: Logfire, context: [String: Any]) throws {
-        var details = try object(diagnostic)
-        // Caller paths have separate bounded records. Keep the session overview compact.
-        details.removeValue(forKey: "cpuCallPaths")
         client.event("development.diagnostic.summary", attributes: try Companion.attributes(context.merging([
             "diagnostic.schema_version": diagnostic.schemaVersion, "diagnostic.summary": diagnostic.summary,
             "diagnostic.findings": diagnostic.findings.count, "diagnostic.observation_gaps": diagnostic.observationGaps.count,
-        ]) { _, value in value }).merging(Companion.structuredAttribute("diagnostic.details", value: details, type: "object")) { _, structured in structured })
+        ]) { _, value in value }).merging(Companion.structuredAttribute("diagnostic.details", encoded: DiagnosticDetails(diagnostic), type: "object")) { _, structured in structured })
         for finding in diagnostic.findings {
             var attributes = Companion.attributes(context.merging([
                 "diagnostic.finding_id": finding.id, "diagnostic.observation": finding.observation,
                 "diagnostic.next_investigation": finding.nextInvestigation,
             ]) { _, value in value }.merging(finding.signals) { _, value in value })
-            let intervals = try JSONSerialization.jsonObject(with: JSONEncoder().encode(finding.intervals))
-            attributes.merge(try Companion.structuredAttribute("diagnostic.intervals", value: intervals, type: "array")) { _, structured in structured }
+            attributes.merge(try Companion.structuredAttribute("diagnostic.intervals", encoded: finding.intervals, type: "array")) { _, structured in structured }
             client.event("development.diagnostic.finding", attributes: attributes)
         }
     }
@@ -252,10 +278,10 @@ enum SessionDiagnostics {
         guard var report = try JSONSerialization.jsonObject(with: data(file)) as? [String: Any],
               SessionAnalysis.number(report["schema_version"]) == 1,
               let session = report["session_id"] as? String, UUID(uuidString: session) != nil,
-              let pid = SessionAnalysis.number(report["app.pid"]), pid.rounded() == pid, pid >= 0, pid <= Double(Int32.max),
+              let pid = SessionAnalysis.number(report["app.pid"]), pid.rounded() == pid, pid > 0, pid <= Double(Int32.max),
               let started = SessionAnalysis.number(report["run.started_at"]), started >= 0,
               let duration = SessionAnalysis.number(report["app.duration_seconds"]), duration >= 0 else {
-            throw CompanionError.message("Supply a retained scenario-run report")
+            throw DiagnosticEvidenceError.invalidRunReport
         }
         let folder = file.deletingLastPathComponent()
         let frames = folder.appendingPathComponent("performance.jsonl")

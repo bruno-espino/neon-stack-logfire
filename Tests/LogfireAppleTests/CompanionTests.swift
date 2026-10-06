@@ -18,6 +18,17 @@ final class CompanionTests: XCTestCase {
         XCTAssertEqual(properties["diagnostic.details"]?["type"], "object")
         XCTAssertEqual((try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: [String]])?["gaps"], ["missing CPU"])
     }
+    func testTypedStructuredFramesPreserveTheirWireFields() throws {
+        let attributes = try Companion.structuredAttribute("call_path.frames", encoded: [CPUFrame(symbol: "draw", image: "Game", imageUUID: "binary-id")], type: "array")
+        guard case .string(let payload) = attributes["call_path.frames"], case .string(let schema) = attributes["logfire.json_schema"] else {
+            return XCTFail("Expected structured OTLP attributes")
+        }
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [[String: String]],
+            [["symbol": "draw", "image": "Game", "imageUUID": "binary-id"]])
+        let description = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(schema.utf8)) as? [String: Any])
+        XCTAssertEqual((description["properties"] as? [String: [String: String]])?["call_path.frames"], ["type": "array"])
+    }
+
     func testCredentialSetupKeepsFilePrivateAndRejectsInvalidReplacement() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
