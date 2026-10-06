@@ -12,12 +12,32 @@ enum FireDetail: Int, CaseIterable, Identifiable {
     }
 }
 
-final class FlappyState: ObservableObject {
-    @Published var engine: FlappyEngine
+/// What the screen shows around the 3D view. The screen refreshes only when this changes.
+struct RollHUD: Equatable {
+    var score: Int, started: Bool, gameOver: Bool, water: Bool
+    init(_ engine: LogRollEngine) {
+        score = engine.score; started = engine.started; gameOver = engine.gameOver; water = engine.water
+    }
+}
+
+/// Feeds the corner map, which redraws more often than the rest of the screen.
+final class MazeFeed: ObservableObject {
+    @Published var engine: LogRollEngine
+    init(_ engine: LogRollEngine) { self.engine = engine }
+}
+
+final class LogRollState: ObservableObject {
+    /// The rules change 120 times a second, but the 3D view reads them directly. Publishing every change
+    /// would make SwiftUI lay out the whole screen every frame, so the screen refreshes only when the HUD
+    /// changes and the corner map at most 30 times a second.
+    var engine: LogRollEngine { didSet { refresh() } }
+    let map: MazeFeed
+    private var shown: RollHUD
+    private var mapShown = 0.0
     @Published var paused = false
     @Published var detail: FireDetail
     @Published var best = 0
-    @Published var stats = FlappyStats()
+    @Published var stats = RollStats()
     @Published var soundEnabled = true
     let benchmark = ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1"
     private var seed: UInt64
@@ -27,33 +47,49 @@ final class FlappyState: ObservableObject {
     init() {
         let environment = ProcessInfo.processInfo.environment
         seed = environment["NEON_SEED"].flatMap(UInt64.init) ?? UInt64.random(in: 1...UInt64.max)
-        engine = FlappyEngine(seed: seed)
-        detail = FireDetail.from(environment: environment["FLAPPY_PARTICLES"])
+        engine = LogRollEngine(seed: seed)
+        map = MazeFeed(engine); shown = RollHUD(engine)
+        detail = FireDetail.from(environment: environment["LOG_ROLL_PARTICLES"])
     }
-    func flap() {
+    private func refresh() {
+        let hud = RollHUD(engine), now = CACurrentMediaTime()
+        let changed = hud != shown
+        if changed { shown = hud; objectWillChange.send() }
+        if changed || now - mapShown >= 1.0 / 30 { mapShown = now; map.engine = engine }
+    }
+    func press(_ direction: Direction) {
         guard !benchmark, !paused else { return }
         if engine.gameOver { restart(); return }
-        engine.flap(); signposter.emitEvent("Flap"); play(.rotate)
+        engine.press(direction)
+    }
+    func release(_ direction: Direction) { engine.release(direction) }
+    func turn(_ direction: Int) {
+        guard !benchmark, !paused, !engine.gameOver else { return }
+        engine.turn(direction)
     }
     func togglePause() { if engine.started && !engine.gameOver && !benchmark { paused.toggle() } }
     func restart() {
         seed = benchmark ? seed &+ 1 : UInt64.random(in: 1...UInt64.max)
-        engine = FlappyEngine(seed: seed); paused = false
+        engine = LogRollEngine(seed: seed); paused = false
     }
     func toggleSound() { soundEnabled.toggle(); if !soundEnabled { audio.stop() } }
     func update(_ seconds: Double) {
         guard !paused else { return }
-        let state = signposter.beginInterval("FlappyUpdate")
+        let state = signposter.beginInterval("LogRollUpdate")
         let wasOver = engine.gameOver
-        let passed = engine.advance(seconds, autoplay: benchmark)
-        signposter.endInterval("FlappyUpdate", state)
-        if passed > 0 { play(engine.score % 10 == 0 ? .four : .hold) }
+        let moves = engine.moves, turns = engine.turns
+        let cleared = engine.advance(seconds, autoplay: benchmark)
+        signposter.endInterval("LogRollUpdate", state)
+        if engine.moves > moves { signposter.emitEvent("Roll") }
+        if engine.turns > turns { signposter.emitEvent("TurnMaze") }
+        if cleared > 0 { signposter.emitEvent("MazeCleared"); play(.four) }
         if engine.gameOver && !wasOver {
             best = max(best, engine.score)
             signposter.emitEvent("Crash"); play(.gameOver)
             GameTelemetry.client.event("game.crash", attributes: [
-                "game": .string("flappy-log"), "score": .int(engine.score), "flaps": .int(engine.flaps),
-                "flight_seconds": .double(engine.time), "particles": .int(detail.rawValue),
+                "game": .string("log-roll"), "score": .int(engine.score), "moves": .int(engine.moves),
+                "maze_size": .int(engine.maze.size), "seconds": .double(engine.seconds), "particles": .int(detail.rawValue),
+                "turns": .int(engine.turns), "water": .bool(engine.water), "heat": .double(engine.heat),
             ])
             if benchmark { restart() }
         }
@@ -61,20 +97,20 @@ final class FlappyState: ObservableObject {
     private func play(_ cue: SoundCue) { if soundEnabled && !benchmark { audio.play(cue) } }
 }
 
-struct FlappyStats: Equatable {
+struct RollStats: Equatable {
     var fps = 0.0, simulation = 0.0, scene = 0.0, glow = 0.0
     var gpu: Double { simulation + scene + glow }
 }
 
-struct FlappyScreen: View {
-    @ObservedObject var game: FlappyState
+struct LogRollScreen: View {
+    @ObservedObject var game: LogRollState
     let flame = Color(red: 1.0, green: 0.55, blue: 0.18)
     var body: some View {
         VStack(spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("FLAPPY LOG").font(.system(size: 30, weight: .black, design: .monospaced)).tracking(3)
-                    Text("FLY THROUGH THE FIRE").font(.system(size: 10, design: .monospaced)).tracking(3).foregroundStyle(flame)
+                    Text("LOG ROLL").font(.system(size: 30, weight: .black, design: .monospaced)).tracking(3)
+                    Text(game.engine.water ? "THE LOG IS ON FIRE · AVOID THE WATER" : "ESCAPE THE BURNING MAZE").font(.system(size: 10, design: .monospaced)).tracking(3).foregroundStyle(flame)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
@@ -86,21 +122,32 @@ struct FlappyScreen: View {
                 }
             }
             ZStack {
-                FlappySurface(game: game).clipShape(RoundedRectangle(cornerRadius: 12))
+                LogRollSurface(game: game).clipShape(RoundedRectangle(cornerRadius: 12))
                 VStack {
-                    Text("\(game.engine.score)").font(.system(size: 54, weight: .black, design: .monospaced))
-                        .shadow(color: flame.opacity(0.8), radius: 12).padding(.top, 16)
+                    Text("MAZE \(game.engine.score + 1)").font(.system(size: 28, weight: .black, design: .monospaced))
+                        .shadow(color: flame.opacity(0.8), radius: 12).padding(.top, 14)
+                    HeatMeter(engine: game.engine, flame: flame)
                     Spacer()
+                    HStack {
+                        MazeMap(feed: game.map, flame: flame)
+                        Spacer()
+                    }.padding(14)
                 }.allowsHitTesting(false)
                 if !game.engine.started && !game.benchmark {
-                    message("PRESS SPACE OR CLICK TO FLAP", detail: "Fly the log through the gaps in the fire")
+                    message("ARROWS ROLL THE LOG · Q AND E TURN THE MAZE",
+                            detail: """
+                            Reach the blue pool to escape. Each pool takes you to a bigger maze.
+                            Bronze gates open only when their arrow points up the screen. Turn the maze to open them.
+                            Grates in the floor glow red, then burst into flame. Wait beside them until they go out.
+                            Every maze heats the log a little more...
+                            """)
                 } else if game.paused {
-                    message("PAUSED", detail: "Press P to keep flying")
+                    message("PAUSED", detail: "Press P to keep rolling")
                 } else if game.engine.gameOver && !game.benchmark {
                     VStack(spacing: 14) {
-                        Text("THE LOG CAUGHT FIRE").font(.system(size: 20, weight: .black, design: .monospaced))
-                        Text("Score \(game.engine.score) · Best \(game.best)").foregroundStyle(flame)
-                        Button("Fly again") { game.restart() }.buttonStyle(.borderedProminent).tint(flame).foregroundStyle(.black)
+                        Text(game.engine.water ? "THE WATER PUT YOUR FIRE OUT" : "THE LOG CAUGHT FIRE").font(.system(size: 20, weight: .black, design: .monospaced))
+                        Text("Mazes escaped \(game.engine.score) · Best \(game.best)").foregroundStyle(flame)
+                        Button("Try again") { game.restart() }.buttonStyle(.borderedProminent).tint(flame).foregroundStyle(.black)
                     }.padding(28).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 }
             }.aspectRatio(16 / 10, contentMode: .fit)
@@ -108,7 +155,7 @@ struct FlappyScreen: View {
                 .shadow(color: flame.opacity(0.25), radius: 25)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             HStack {
-                Text(game.benchmark ? "FIXED-SEED REPLAY" : "SPACE / CLICK  FLAP   P  PAUSE   R  RESTART")
+                Text(game.benchmark ? "FIXED-SEED REPLAY" : "← ↑ → ↓  ROLL   Q E  TURN MAZE   P  PAUSE   R  RESTART")
                 Spacer()
                 Button { game.toggleSound() } label: {
                     Image(systemName: game.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
@@ -126,39 +173,133 @@ struct FlappyScreen: View {
         VStack(spacing: 8) {
             Text(title).font(.system(size: 18, weight: .black, design: .monospaced))
             Text(detail).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
         }.padding(22).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14)).allowsHitTesting(false)
     }
 }
 
+/// How hot the log is. It fills up one notch per maze until the log is ablaze.
+struct HeatMeter: View {
+    let engine: LogRollEngine
+    let flame: Color
+    var body: some View {
+        let names = ["FRESH LOG", "WARM LOG", "SMOKING LOG", "SMOULDERING LOG", "LOGFIRE"]
+        let notches = min(engine.score, LogRollEngine.ablazeAt)
+        HStack(spacing: 6) {
+            ForEach(0..<LogRollEngine.ablazeAt, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2).fill(index < notches ? flame : .white.opacity(0.15)).frame(width: 18, height: 6)
+            }
+            Text(engine.water ? "LOGFIRE · REACH THE FIRE PIT" : names[notches])
+                .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(flame)
+        }.padding(.horizontal, 10).padding(.vertical, 5).background(.black.opacity(0.45), in: Capsule())
+    }
+}
+
+/// The whole maze from above: walls, gates, fire grates, the exit, and the log.
+/// It turns with the camera, so up on the map is always up on the screen.
+struct MazeMap: View {
+    @ObservedObject var feed: MazeFeed
+    let flame: Color
+    var body: some View {
+        let engine = feed.engine, maze = engine.maze, cell = CGFloat(min(7, 150 / maze.size))
+        Canvas { context, _ in
+            for z in 0..<maze.size {
+                for x in 0..<maze.size {
+                    let rect = CGRect(x: CGFloat(x) * cell, y: CGFloat(z) * cell, width: cell, height: cell)
+                    if maze.isWall(x, z) { context.fill(Path(rect), with: .color(.white.opacity(0.22))) }
+                }
+            }
+            for gate in maze.gates {
+                let rect = CGRect(x: CGFloat(gate.x) * cell, y: CGFloat(gate.z) * cell, width: cell, height: cell)
+                let open = !maze.blocked(gate.x, gate.z, facing: engine.facing)
+                context.fill(Path(rect.insetBy(dx: 1, dy: 1)), with: .color(open ? .cyan.opacity(0.35) : .orange))
+            }
+            let hot: Color = engine.water ? .cyan : flame, warm: Color = engine.water ? .blue : .red
+            for jet in maze.jets {
+                let rect = CGRect(x: CGFloat(jet.x) * cell + 1, y: CGFloat(jet.z) * cell + 1, width: cell - 2, height: cell - 2)
+                let color: Color = jet.burning(engine.clock) ? hot : jet.warming(engine.clock) ? warm : warm.opacity(0.35)
+                context.fill(Path(ellipseIn: rect), with: .color(color))
+            }
+            let exit = CGRect(x: CGFloat(maze.exit.x) * cell, y: CGFloat(maze.exit.z) * cell, width: cell, height: cell)
+            context.fill(Path(ellipseIn: exit), with: .color(engine.water ? flame : .cyan))
+            let log = engine.position
+            context.fill(Path(ellipseIn: CGRect(x: log.x * cell + 0.5, y: log.z * cell + 0.5, width: cell - 1, height: cell - 1)),
+                         with: .color(.white))
+        }.frame(width: CGFloat(maze.size) * cell, height: CGFloat(maze.size) * cell)
+            .rotationEffect(.degrees(-90 * engine.turnAngle))
+            .padding(8).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 #if os(macOS)
-final class FlappyInputView: MTKView {
-    var game: FlappyState?
+final class LogRollInputView: MTKView {
+    var game: LogRollState?
     override var acceptsFirstResponder: Bool { true }
-    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(self); game?.flap() }
-    override func keyDown(with event: NSEvent) {
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(self) }
+    private func direction(_ event: NSEvent) -> Direction? {
         switch event.keyCode {
-        case 49, 126: game?.flap()
+        case 126, 13: .up
+        case 124, 2: .right
+        case 125, 1: .down
+        case 123, 0: .left
+        default: nil
+        }
+    }
+    override func keyDown(with event: NSEvent) {
+        if let direction = direction(event) {
+            if !event.isARepeat { game?.press(direction) }
+            return
+        }
+        switch event.keyCode {
+        case 12: game?.turn(-1)
+        case 14: game?.turn(1)
+        case 49 where game?.engine.gameOver == true: game?.restart()
         case 35: game?.togglePause()
         case 15: game?.restart()
         default: super.keyDown(with: event)
         }
     }
+    override func keyUp(with event: NSEvent) {
+        if let direction = direction(event) { game?.release(direction) } else { super.keyUp(with: event) }
+    }
 }
 #else
-final class FlappyInputView: MTKView {
-    var game: FlappyState?
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { game?.flap() }
+final class LogRollInputView: MTKView {
+    var game: LogRollState?
+    private var touching: Direction?
+    /// Touching above, below, left, or right of the middle of the screen rolls that way while held.
+    /// A two-finger tap turns the maze.
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if (event?.allTouches?.count ?? 0) >= 2 {
+            if let touching { game?.release(touching) }
+            touching = nil
+            game?.turn(1)
+            return
+        }
+        guard let point = touches.first?.location(in: self), bounds.width > 0 else { return }
+        let dx = point.x / bounds.width - 0.5, dy = point.y / bounds.height - 0.5
+        let direction: Direction = abs(dx) > abs(dy) ? (dx > 0 ? .right : .left) : (dy > 0 ? .down : .up)
+        touching = direction
+        game?.press(direction)
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let touching { game?.release(touching) }
+        touching = nil
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { touchesEnded(touches, with: event) }
 }
 #endif
 
-struct FlappySurface: SurfaceRepresentable {
-    let game: FlappyState
-    func makeCoordinator() -> FlappyViewRenderer { FlappyViewRenderer(game: game) }
+struct LogRollSurface: SurfaceRepresentable {
+    let game: LogRollState
+    func makeCoordinator() -> LogRollViewRenderer { LogRollViewRenderer(game: game) }
     private func makeView(context: Context) -> MTKView {
-        let view = FlappyInputView(frame: .zero, device: context.coordinator.renderer?.device)
+        let view = LogRollInputView(frame: .zero, device: context.coordinator.renderer?.device)
         view.game = game; view.delegate = context.coordinator; view.preferredFramesPerSecond = 120
         #if os(macOS)
         DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+        #else
+        view.isMultipleTouchEnabled = true
         #endif
         return view
     }
@@ -171,14 +312,14 @@ struct FlappySurface: SurfaceRepresentable {
     #endif
 }
 
-final class FlappyViewRenderer: NSObject, MTKViewDelegate {
-    let renderer = FlappyRenderer()
-    private let game: FlappyState
+final class LogRollViewRenderer: NSObject, MTKViewDelegate {
+    let renderer = LogRollRenderer()
+    private let game: LogRollState
     private let performance = PerformanceRecorder()
     private var lastTime = CACurrentMediaTime()
     private var lastStats = CACurrentMediaTime()
-    private let smoothed = OSAllocatedUnfairLock(initialState: FlappyStats())
-    init(game: FlappyState) { self.game = game }
+    private let smoothed = OSAllocatedUnfairLock(initialState: RollStats())
+    init(game: LogRollState) { self.game = game }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
     func draw(in view: MTKView) {
         let now = CACurrentMediaTime(); let delta = now - lastTime; lastTime = now
@@ -203,28 +344,34 @@ final class FlappyViewRenderer: NSObject, MTKViewDelegate {
     }
 }
 
-struct FlappyUniforms {
+struct MazeUniforms {
     var viewProjection: simd_float4x4
-    var camera: SIMD4<Float>
+    var eye: SIMD4<Float>
     var right: SIMD4<Float>
     var up: SIMD4<Float>
+    var step: SIMD4<Float>
     var log: SIMD4<Float>
-    var particle: SIMD4<Float>
+    var fire: SIMD4<Float>
+    var maze: SIMD4<Float>
+    var state: SIMD4<Float>
+    var world: SIMD4<Float>
 }
 
-/// Renders one Flappy Log frame into any BGRA texture. Each frame uses three command buffers
+/// Renders one Log Roll frame into any BGRA texture. Each frame uses three command buffers
 /// (fire simulation, 3D scene, glow and final image) so each stage reports its own GPU time.
-final class FlappyRenderer {
+final class LogRollRenderer {
+    static let maxJets = 64
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let simulation: MTLComputePipelineState
-    private let sky, ground, log, fire, bright, copy, blur, composite: MTLRenderPipelineState
+    private let sky, floor, wall, log, fire, bright, copy, blur, composite: MTLRenderPipelineState
     private let skyDepth, solidDepth, fireDepth: MTLDepthStencilState
     private var particles: MTLBuffer?
     private var particleCount = 0
+    private var walls: (maze: Maze, buffer: MTLBuffer, count: Int)?
     private var targets: (size: SIMD2<Int>, scene: MTLTexture, depth: MTLTexture, half: [MTLTexture], quarter: [MTLTexture])?
     private var started = CACurrentMediaTime()
-    private var cameraX: Float = 0
+    private var focus: SIMD2<Float>?
     private let signposter = OSSignposter(subsystem: "dev.example.NeonStack", category: .pointsOfInterest)
 
     init?() {
@@ -251,47 +398,49 @@ final class FlappyRenderer {
             return device.makeDepthStencilState(descriptor: descriptor)
         }
         do {
-            guard let kernel = library.makeFunction(name: "flappyParticles") else { return nil }
+            guard let kernel = library.makeFunction(name: "rollParticles") else { return nil }
             simulation = try device.makeComputePipelineState(function: kernel)
-            sky = try pipeline("flappyFullscreen", "flappySky", depth: true)
-            ground = try pipeline("flappyGroundVertex", "flappyGround", depth: true)
-            log = try pipeline("flappyLogVertex", "flappyLog", depth: true)
-            fire = try pipeline("flappyParticleVertex", "flappyParticleFragment", depth: true, additive: true)
-            bright = try pipeline("flappyFullscreen", "flappyBrightPass")
-            copy = try pipeline("flappyFullscreen", "flappyCopy")
-            blur = try pipeline("flappyFullscreen", "flappyBlur")
-            composite = try pipeline("flappyFullscreen", "flappyComposite", format: .bgra8Unorm)
-        } catch { print("Flappy Log Metal pipeline error: \(error.localizedDescription)"); return nil }
+            sky = try pipeline("rollFullscreen", "rollSky", depth: true)
+            floor = try pipeline("rollFloorVertex", "rollFloor", depth: true)
+            wall = try pipeline("rollWallVertex", "rollWall", depth: true)
+            log = try pipeline("rollLogVertex", "rollLog", depth: true)
+            fire = try pipeline("rollParticleVertex", "rollParticleFragment", depth: true, additive: true)
+            bright = try pipeline("rollFullscreen", "rollBrightPass")
+            copy = try pipeline("rollFullscreen", "rollCopy")
+            blur = try pipeline("rollFullscreen", "rollBlur")
+            composite = try pipeline("rollFullscreen", "rollComposite", format: .bgra8Unorm)
+        } catch { print("Log Roll Metal pipeline error: \(error.localizedDescription)"); return nil }
         guard let skyDepth = depthState(.always, write: false), let solidDepth = depthState(.less, write: true),
               let fireDepth = depthState(.less, write: false) else { return nil }
         self.skyDepth = skyDepth; self.solidDepth = solidDepth; self.fireDepth = fireDepth
     }
 
     /// Encodes and commits one frame. `completed` receives CPU encode time and per-stage GPU milliseconds.
-    func render(engine: FlappyEngine, particles count: Int, seconds: Double, target: MTLTexture,
+    func render(engine: LogRollEngine, particles count: Int, seconds: Double, target: MTLTexture,
                 present drawable: MTLDrawable? = nil, completed: @escaping (Double, [String: Double]) -> Void) {
         let begin = CACurrentMediaTime()
         let state = signposter.beginInterval("EncodeFrame")
         defer { signposter.endInterval("EncodeFrame", state) }
         guard let particles = particleBuffer(count), let targets = textures(width: target.width, height: target.height),
+              let walls = wallBuffer(engine.maze),
               let simulationBuffer = queue.makeCommandBuffer(), let sceneBuffer = queue.makeCommandBuffer(),
               let glowBuffer = queue.makeCommandBuffer() else { return }
-        simulationBuffer.label = "FlappyLog.Fire"; sceneBuffer.label = "FlappyLog.Scene"; glowBuffer.label = "FlappyLog.Glow"
+        simulationBuffer.label = "LogRoll.Fire"; sceneBuffer.label = "LogRoll.Scene"; glowBuffer.label = "LogRoll.Glow"
 
         var uniforms = makeUniforms(engine: engine, count: count, seconds: seconds,
                                     aspect: Float(target.width) / Float(target.height))
-        var columns = Array(repeating: SIMD4<Float>(0, 0, 0, 0), count: 8)
-        for column in engine.columns {
-            columns[column.index % 8] = SIMD4(Float(column.x), Float(column.gapCenter), Float(column.gapHalf), 1)
+        var jets = Array(repeating: SIMD4<Float>(0, 0, 0, 0), count: Self.maxJets)
+        for (index, jet) in engine.maze.jets.prefix(Self.maxJets).enumerated() {
+            jets[index] = SIMD4(Float(jet.x), Float(jet.z), Float(jet.phase), 0)
         }
-        let uniformSize = MemoryLayout<FlappyUniforms>.stride, columnSize = MemoryLayout<SIMD4<Float>>.stride * 8
+        let uniformSize = MemoryLayout<MazeUniforms>.stride, jetSize = MemoryLayout<SIMD4<Float>>.stride * Self.maxJets
 
         if let compute = simulationBuffer.makeComputeCommandEncoder() {
             compute.label = "FireParticles"
             compute.setComputePipelineState(simulation)
             compute.setBuffer(particles, offset: 0, index: 0)
             compute.setBytes(&uniforms, length: uniformSize, index: 1)
-            compute.setBytes(&columns, length: columnSize, index: 2)
+            compute.setBytes(&jets, length: jetSize, index: 2)
             compute.dispatchThreads(MTLSize(width: count, height: 1, depth: 1),
                                     threadsPerThreadgroup: MTLSize(width: simulation.threadExecutionWidth * 4, height: 1, depth: 1))
             compute.endEncoding()
@@ -304,20 +453,22 @@ final class FlappyRenderer {
         scenePass.depthAttachment.loadAction = .clear; scenePass.depthAttachment.clearDepth = 1
         scenePass.depthAttachment.storeAction = .dontCare
         if let encoder = sceneBuffer.makeRenderCommandEncoder(descriptor: scenePass) {
-            encoder.label = "SkyGroundLogFire"
+            encoder.label = "MazeFloorWallsLogFire"
             encoder.setVertexBytes(&uniforms, length: uniformSize, index: 0)
+            encoder.setVertexBuffer(walls.buffer, offset: 0, index: 1)
             encoder.setFragmentBytes(&uniforms, length: uniformSize, index: 0)
-            encoder.setFragmentBytes(&columns, length: columnSize, index: 1)
+            encoder.setFragmentBytes(&jets, length: jetSize, index: 2)
             encoder.setDepthStencilState(skyDepth); encoder.setRenderPipelineState(sky)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-            encoder.setDepthStencilState(solidDepth); encoder.setRenderPipelineState(ground)
+            encoder.setDepthStencilState(solidDepth); encoder.setRenderPipelineState(floor)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+            encoder.setRenderPipelineState(wall)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 36, instanceCount: walls.count)
             encoder.setRenderPipelineState(log)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 32 * 12)
             encoder.setDepthStencilState(fireDepth); encoder.setRenderPipelineState(fire)
             encoder.setVertexBuffer(particles, offset: 0, index: 0)
             encoder.setVertexBytes(&uniforms, length: uniformSize, index: 1)
-            encoder.setVertexBytes(&columns, length: columnSize, index: 2)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
             encoder.endEncoding()
         }
@@ -362,26 +513,62 @@ final class FlappyRenderer {
         simulationBuffer.commit(); sceneBuffer.commit(); glowBuffer.commit()
     }
 
-    private func makeUniforms(engine: FlappyEngine, count: Int, seconds: Double, aspect: Float) -> FlappyUniforms {
-        cameraX += (Float(engine.x) - cameraX) * min(1, Float(seconds) * 8)
-        let eye = SIMD3<Float>(cameraX - 2.5, 6, 11.5), focus = SIMD3<Float>(cameraX + 3, 5, 0)
-        let forward = simd_normalize(focus - eye)
-        let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
+    private func makeUniforms(engine: LogRollEngine, count: Int, seconds: Double, aspect: Float) -> MazeUniforms {
+        // The camera hangs above and behind the log, glides after it, and swings around when the maze turns.
+        let position = SIMD2(Float(engine.position.x), Float(engine.position.z))
+        var focus = self.focus ?? position
+        focus += (position - focus) * min(1, Float(seconds) * 5)
+        self.focus = focus
+        let turn = Float(engine.turnAngle) * .pi / 2
+        let ahead = SIMD3<Float>(sin(turn), 0, -cos(turn))
+        let target = SIMD3(focus.x, 0, focus.y) + ahead * 0.6
+        let eye = target - ahead * 5.2 + SIMD3<Float>(0, 10, 0)
+        let forward = simd_normalize(target - eye)
+        let right = simd_normalize(simd_cross(forward, SIMD3<Float>(0, 1, 0)))
         let up = simd_cross(right, forward)
-        let view = simd_float4x4(columns: (SIMD4(right.x, up.x, -forward.x, 0), SIMD4(right.y, up.y, -forward.y, 0),
-                                           SIMD4(right.z, up.z, -forward.z, 0),
-                                           SIMD4(-simd_dot(right, eye), -simd_dot(up, eye), simd_dot(forward, eye), 1)))
-        let near: Float = 0.1, far: Float = 200, scaleY = 1 / tan(Float.pi * 50 / 360)
-        let projection = simd_float4x4(columns: (SIMD4(scaleY / aspect, 0, 0, 0), SIMD4(0, scaleY, 0, 0),
-                                                 SIMD4(0, 0, far / (near - far), -1), SIMD4(0, 0, far * near / (near - far), 0)))
+        let view = simd_float4x4(columns: (
+            SIMD4(right.x, up.x, -forward.x, 0), SIMD4(right.y, up.y, -forward.y, 0), SIMD4(right.z, up.z, -forward.z, 0),
+            SIMD4(-simd_dot(right, eye), -simd_dot(up, eye), simd_dot(forward, eye), 1)))
+        let fieldOfView: Float = 0.82, near: Float = 0.1, far: Float = 80
+        let scaleY = 1 / tan(fieldOfView / 2), scaleX = scaleY / aspect
+        let projection = simd_float4x4(columns: (
+            SIMD4(scaleX, 0, 0, 0), SIMD4(0, scaleY, 0, 0), SIMD4(0, 0, far / (near - far), -1),
+            SIMD4(0, 0, near * far / (near - far), 0)))
         // Keep total fire brightness similar at every detail level: more particles are smaller and dimmer.
         let ratio = Float(FireDetail.medium.rawValue) / Float(count)
         let size = pow(ratio, 1 / 6)
-        return FlappyUniforms(viewProjection: projection * view,
-                              camera: SIMD4(eye, Float(CACurrentMediaTime() - started)),
-                              right: SIMD4(right, Float(min(seconds, 1.0 / 20))), up: SIMD4(up, Float(count)),
-                              log: SIMD4(Float(engine.x), Float(engine.y), Float(engine.tilt), engine.gameOver ? 1 : 0),
-                              particle: SIMD4(0.03 * ratio / (size * size), size, 0, 0))
+        let maze = engine.maze
+        return MazeUniforms(viewProjection: projection * view,
+                            eye: SIMD4(eye, Float(CACurrentMediaTime() - started)),
+                            right: SIMD4(right, 0), up: SIMD4(up, 0),
+                            step: SIMD4(Float(min(seconds, 1.0 / 20)), Float(count), 0.006 * ratio / (size * size), size),
+                            log: SIMD4(position.x, position.y, Float(engine.rolled), engine.lyingAlongX ? 1 : 0),
+                            fire: SIMD4(Float(engine.clock), Float(LogRollEngine.cycleTicks), Float(LogRollEngine.burnTicks),
+                                        Float(LogRollEngine.warnTicks)),
+                            maze: SIMD4(Float(maze.size), Float(maze.exit.x), Float(maze.exit.z),
+                                        Float(min(maze.jets.count, Self.maxJets))),
+                            state: SIMD4(engine.gameOver ? 1 : 0, 0, 0, 0),
+                            world: SIMD4(Float(engine.heat), engine.water ? 1 : 0, Float(engine.turnAngle), 0))
+    }
+
+    /// One instance per wall block, rebuilt when the maze changes. Heights vary a little so the walls look hand-built.
+    /// Gates are blocks too, and the shader raises or sinks them as the maze turns.
+    private func wallBuffer(_ maze: Maze) -> (maze: Maze, buffer: MTLBuffer, count: Int)? {
+        if let walls, walls.maze == maze { return walls }
+        var instances: [SIMD4<Float>] = []
+        for z in 0..<maze.size {
+            for x in 0..<maze.size where maze.isWall(x, z) {
+                var random = SeededRandom(state: UInt64(z * maze.size + x + 1) &* 0x9E3779B97F4A7C15)
+                let jitter = Float(random.next() >> 40) / Float(1 << 24)
+                instances.append(SIMD4(Float(x), Float(z), 0.6 + 0.15 * jitter, jitter))
+            }
+        }
+        for gate in maze.gates { instances.append(SIMD4(Float(gate.x), Float(gate.z), 0.55, -1 - Float(gate.facing.rawValue))) }
+        guard !instances.isEmpty, let buffer = device.makeBuffer(bytes: instances, length: instances.count * 16) else { return nil }
+        buffer.label = "MazeWalls"
+        walls = (maze, buffer, instances.count)
+        if focus.map({ simd_distance($0, SIMD2(Float(maze.start.x), Float(maze.start.z))) > 3 }) ?? false { focus = nil }
+        return walls
     }
 
     private func particleBuffer(_ count: Int) -> MTLBuffer? {
@@ -411,17 +598,17 @@ final class FlappyRenderer {
     }
 }
 
-/// Headless Flappy Log replay for CI-style GPU comparisons. It renders the autopilot into a 1280 by 720 texture.
-enum FlappyOffscreenReplay {
+/// Headless Log Roll replay for CI-style GPU comparisons. It renders the autopilot into a 1280 by 720 texture.
+enum LogRollOffscreenReplay {
     static func run() throws {
         let environment = ProcessInfo.processInfo.environment
-        guard let renderer = FlappyRenderer() else { throw ReplayError.unavailable }
+        guard let renderer = LogRollRenderer() else { throw ReplayError.unavailable }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 1280, height: 720, mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]; descriptor.storageMode = .shared
         guard let texture = renderer.device.makeTexture(descriptor: descriptor) else { throw ReplayError.unavailable }
         var seed = environment["NEON_SEED"].flatMap(UInt64.init) ?? 777
-        var engine = FlappyEngine(seed: seed)
-        let detail = FireDetail.from(environment: environment["FLAPPY_PARTICLES"]).rawValue
+        var engine = LogRollEngine(seed: seed)
+        let detail = FireDetail.from(environment: environment["LOG_ROLL_PARTICLES"]).rawValue
         let duration = environment["NEON_BENCHMARK_SECONDS"].flatMap(Double.init) ?? 20
         let recorder = PerformanceRecorder()
         let started = CACurrentMediaTime()
@@ -431,7 +618,7 @@ enum FlappyOffscreenReplay {
                 let now = CACurrentMediaTime(), delta = now - previous
                 previous = now
                 engine.advance(delta, autoplay: true)
-                if engine.gameOver { crashes += 1; seed &+= 1; engine = FlappyEngine(seed: seed) }
+                if engine.gameOver { crashes += 1; seed &+= 1; engine = LogRollEngine(seed: seed) }
                 let done = DispatchSemaphore(value: 0)
                 let score = engine.score
                 renderer.render(engine: engine, particles: detail, seconds: delta, target: texture) { cpu, stages in
@@ -447,8 +634,8 @@ enum FlappyOffscreenReplay {
         recorder.finish()
         if let output = environment["NEON_PERF_REPORT"] {
             try OffscreenReplay.savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent()
-                .appendingPathComponent("flappy-log.png"))
+                .appendingPathComponent("log-roll.png"))
         }
-        print("Flappy Log offscreen replay completed. Frames: \(frames), score: \(engine.score), crashes: \(crashes)")
+        print("Log Roll offscreen replay completed. Frames: \(frames), score: \(engine.score), crashes: \(crashes)")
     }
 }

@@ -93,7 +93,7 @@ final class GameState: ObservableObject {
 
 @main struct NeonStackApp: App {
     @StateObject private var game = GameState()
-    @StateObject private var flappy = FlappyState()
+    @StateObject private var logRoll = LogRollState()
     init() {
         if ProcessInfo.processInfo.environment["NEON_OFFSCREEN"] == "1" {
             do { try OffscreenReplay.run(); exit(0) }
@@ -102,7 +102,7 @@ final class GameState: ObservableObject {
     }
     var body: some Scene {
         WindowGroup {
-            GameSwitcher(game: game, flappy: flappy)
+            GameSwitcher(game: game, logRoll: logRoll)
                 .onAppear {
                     #if os(macOS)
                     if game.benchmark,
@@ -118,21 +118,21 @@ final class GameState: ObservableObject {
     }
 }
 
-/// Chooses between Neon Stack and Flappy Log. Benchmarks pick the game with NEON_GAME and hide the switcher.
+/// Chooses between Neon Stack and Log Roll. Benchmarks pick the game with NEON_GAME and hide the switcher.
 struct GameSwitcher: View {
     @ObservedObject var game: GameState
-    let flappy: FlappyState
+    let logRoll: LogRollState
     @State private var selection = ProcessInfo.processInfo.environment["NEON_GAME"]
-        ?? (ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1" ? "neon-stack" : "flappy-log")
+        ?? (ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1" ? "neon-stack" : "log-roll")
     var body: some View {
         VStack(spacing: 0) {
             if !game.benchmark {
                 Picker("Game", selection: $selection) {
-                    Text("Flappy Log").tag("flappy-log")
+                    Text("Log Roll").tag("log-roll")
                     Text("Neon Stack").tag("neon-stack")
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 260).padding(.top, 10)
             }
-            if selection == "flappy-log" { FlappyScreen(game: flappy) } else { GameScreen(game: game) }
+            if selection == "log-roll" { LogRollScreen(game: logRoll) } else { GameScreen(game: game) }
         }.background(Color.black)
     }
 }

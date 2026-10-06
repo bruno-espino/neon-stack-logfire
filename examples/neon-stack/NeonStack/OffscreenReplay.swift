@@ -9,7 +9,7 @@ enum ReplayError: Error { case unavailable }
 enum OffscreenReplay {
     static func run() throws {
         let environment = ProcessInfo.processInfo.environment
-        if environment["NEON_GAME"] == "flappy-log" { try FlappyOffscreenReplay.run(); return }
+        if environment["NEON_GAME"] == "log-roll" { try LogRollOffscreenReplay.run(); return }
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
               let library = device.makeDefaultLibrary() else { throw ReplayError.unavailable }
         let descriptor = MTLRenderPipelineDescriptor()
