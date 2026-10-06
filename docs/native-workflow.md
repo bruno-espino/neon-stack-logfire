@@ -29,6 +29,51 @@ Local Apple monitoring can remain active when network export is disabled.
 Ordinary Xcode Command-R requires neither the companion nor Python.
 It embeds build identity and the SDK exports runtime records when configured.
 
+## Fast development loop
+
+Use Command-R for ordinary game changes. No test session runs automatically.
+Use the cached development check when SDK or companion changes need validation.
+
+```sh
+tools/check-dev.sh
+tools/check-dev.sh --smoke
+```
+
+The default command runs the Swift tests and an incremental macOS Debug build.
+It reuses `tmp/DerivedData-macos`. It does not install a Release companion or launch the game.
+The optional smoke run lasts 12 seconds. It retains one or more complete SDK windows and host samples.
+It skips native capture and performs no baseline comparison. A successful smoke run does not establish a performance budget.
+The script uses the freshly built Debug companion. SDK and tool edits do not require repeated Release installation.
+
+Keep all Swift unit tests. Their execution takes less than one second on the current Mac after compilation.
+Skip iOS Simulator builds during this macOS workflow iteration.
+Run a separate iOS compatibility check when a change requires cross-platform validation.
+Use a 20-second native session only when validating the capture pipeline.
+Longer runs and performance-budget calibration remain deferred.
+
+## What arrives live
+
+| Data | Producer and timing |
+| --- | --- |
+| App operations and frame windows | SDK during ordinary gameplay. Frame windows cover five seconds. |
+| Whole-host CPU load, free/wired/compressed memory, filesystem free bytes | Companion once per second during `attach` or `test-game`. |
+| Native process resources and layer performance | Apple's `metalperftrace listen` during `attach`. Selected fields depend on Apple's updates. |
+| State-layer aggregations | Companion near the end of `test-game`, before the app stops, or an explicit `capture`. |
+| MetricKit reports | SDK when Apple delivers metric or diagnostic reports. They are not an immediate per-frame feed. |
+
+Host sampling does not start during an ordinary Command-R session unless you attach the companion.
+Run `logfire-apple attach --seconds 10 --service neon-stack` to observe a manual session.
+Host samples use the `game.host.sample` record name and the session/build identity.
+Their `measurement.scope` is `whole_host`. CPU utilization is a fraction of total host CPU capacity.
+They describe other applications and system work as well as the game.
+They do not establish that the game caused the load.
+Concurrent companions on the same Mac produce overlapping host samples. Do not add these streams together.
+Native CPU time is a separate process measurement. GPU timing is not hardware utilization.
+
+The exporter batches live records. Sampling once per second does not promise instant network delivery.
+Host samples remain available in `host-samples.json`. All current measurements use span attributes, not OTel metric instruments.
+The companion pauses its host sampling while it processes a test capture. It does not promise coverage during that processing phase.
+
 ## Observe a build
 
 ```sh
@@ -89,6 +134,7 @@ Each session directory contains:
 
 - `report.json`. Cohort, build identity, SDK/native summary measurements, and observation gaps.
 - `performance.jsonl`. Original complete SDK windows.
+- `host-samples.json`. Timestamped whole-host samples with session/build context.
 - `console.log` and `console.stderr`. Local application output.
 - `native/manifest.json` and capture artifacts when collection succeeds.
 
@@ -112,8 +158,8 @@ Match the device model, memory, processor count, GPU name, OS, seed, duration, t
 Use the same machine for a valid performance comparison. Device descriptors do not uniquely identify a physical Mac.
 The gate rejects mismatched cohorts, observation gaps, and missing measurements.
 New slow frames above a zero baseline count as a regression without a percentage division.
-Use runs of 60 seconds or longer to reduce the relative effect of native slice boundaries.
-A threshold is an experimental budget. Repeated runs must establish measurement noise before CI enforcement.
+A threshold remains experimental. Performance-budget calibration is deferred during workflow development.
+Short smoke runs validate data flow. They do not establish reliable performance regression budgets.
 
 | Measurement | Meaning |
 | --- | --- |
@@ -142,11 +188,15 @@ Apple describes JSON overviews for regression testing and automated triage in
 [its WWDC26 game performance session](https://developer.apple.com/videos/play/wwdc2026/388/).
 Use Game Performance Overview or Metal System Trace in Instruments when CPU stacks and scheduling detail are required.
 Retained Metal history does not supply a complete CPU stack profile.
+Apple can collect historical data after an app exits. Our companion currently requires a live verified session for attribution.
+`test-game` already automates the run, collection, JSON extraction, and summary export before stopping its app.
+Full captures and symbols stay local. Only selected measurements and capture metadata reach Logfire.
+No scheduled or CI game-test pipeline is configured. The command is an on-demand pipeline.
 MetricKit reports remain delayed evidence inside the SDK.
 They cannot replace immediate automated-test measurements.
 
-Next, validate a second tester Mac and physical iOS report delivery.
-Establish repeated-run baselines before enforcing a CI performance budget.
+Next, improve the macOS setup and iteration loop.
+A second tester Mac, physical iOS delivery, and performance-budget calibration remain later validation.
 Add an artifact-import path for finished sessions and iOS captures.
 Evaluate a smaller compiled build-identity helper to reduce the script's incremental build overhead.
 Keep the tester report button deferred until this workflow is stable.

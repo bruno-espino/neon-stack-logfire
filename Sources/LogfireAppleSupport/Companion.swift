@@ -54,9 +54,10 @@ struct NativeSession {
 
 enum HostCommand {
     static func run(_ executable: String, _ arguments: [String], output: URL, errors: URL,
-                    seconds: Double, stopAtDeadline: Bool = false, onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {
+                    seconds: Double, stopAtDeadline: Bool = false, onTick: (() throws -> Bool)? = nil,
+                    onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {
         let result = try CommandRunner.run(executable, arguments, output: output, errors: errors,
-            seconds: seconds, onOutput: onOutput)
+            seconds: seconds, onOutput: onOutput, onTick: onTick)
         if result.timedOut {
             if stopAtDeadline { return 0 }
             throw CompanionError.message("Apple command exceeded its time limit. Inspect \(errors.path)")
@@ -245,8 +246,12 @@ public enum Companion {
         let output = folder.appendingPathComponent("native.jsonl")
         var updates = JSONUpdates()
         var count = 0
+        var host = SessionHostSamples()
         let code = try HostCommand.run("/usr/bin/metalperftrace", ["listen", "--pid", "\(session.pid)", "--json", "--interval", "1"],
-            output: output, errors: folder.appendingPathComponent("native.stderr"), seconds: seconds, stopAtDeadline: true) { data in
+            output: output, errors: folder.appendingPathComponent("native.stderr"), seconds: seconds, stopAtDeadline: true, onTick: {
+                if host.isDue { try session.validate(); host.tick(client: client, context: session.metadata) }
+                return false
+            }) { data in
                 guard !data.isEmpty else { return }
                 try session.validate()
                 for update in try updates.feed(data) {
@@ -256,6 +261,7 @@ public enum Companion {
                     }
                 }
             }
+        try host.write(to: folder.appendingPathComponent("host-samples.json"))
         guard code == 0 else { throw CompanionError.message("Apple live observation failed. Inspect \(folder.path)") }
         client.flush()
         print("Retained \(count) live native summaries: \(output.path)")

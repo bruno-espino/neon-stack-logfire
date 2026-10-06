@@ -63,7 +63,7 @@ logfire-apple attach --seconds 30
 
 Capture collects Apple's retained history and saves recordings and symbols locally.
 Logfire receives selected summaries and capture metadata.
-Attach streams selected native measurements during its bounded observation period.
+Attach streams selected native measurements and whole-host load during its bounded observation period.
 Both commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.
 
@@ -75,6 +75,7 @@ Add `--no-telemetry` to retain evidence locally without export.
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
 | MetricKit adapter inside the SDK | Selected CPU/GPU time, disk writes, launch/resume/hang distributions, hitches, daily Metal reports, diagnostic summaries | Delayed reports with historical context. Coverage varies by platform. |
+| macOS host APIs | Whole-host CPU load, selected memory counts, filesystem free bytes | One-second samples during companion builds, game tests, and live attach |
 | Xcode build tools | Build duration, task totals, warnings, errors, selected host samples | Swift companion build action |
 | Native captures | Apple recordings and symbols | Files remain local. Selected measurements and metadata arrive in Logfire. |
 
@@ -113,8 +114,14 @@ The companion does not call them.
 ## Validate and inspect
 
 ```sh
-swift test
+tools/check-dev.sh          # Swift tests and cached macOS Debug build
+tools/check-dev.sh --smoke  # Also run a 12-second SDK-only session
 ```
+
+Ordinary game edits use Command-R. iOS Simulator checks and performance-budget calibration are deferred during this macOS workflow iteration.
+The unit tests remain available independently with `swift test`.
+Manual sessions gain native and host telemetry when you run `logfire-apple attach`.
+Automated sessions stream host samples while the app runs. Their SDK and capture summaries export after measurement.
 
 [PROJECT.txt](docs/PROJECT.txt) contains the compact guide and terminology.
 [WORKLOG.txt](docs/WORKLOG.txt) records decisions, verification, and next steps.

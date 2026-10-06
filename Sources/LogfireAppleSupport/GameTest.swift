@@ -80,6 +80,7 @@ enum GameTest {
         context["native.enabled"] = String(options.native)
         context["native.interval_policy"] = "apple-whole-seconds-retained-slices-v1"
         var session: NativeSession?
+        var host = SessionHostSamples()
         var native: [[String: Any]] = []; var issues: [String] = []; var collected = false
         let began = ProcessInfo.processInfo.systemUptime
         var result = CommandResult(exitCode: 127, timedOut: false, requestedStop: false)
@@ -93,6 +94,7 @@ enum GameTest {
                             "started_at": Date().timeIntervalSince1970, "state_domains": ["dev.example.NeonStack.rendering"],
                         ]) { _, process in process })
                     }, onTick: {
+                        if let session { host.tick(client: client, context: session.metadata) }
                         guard !options.offscreen, !collected, ProcessInfo.processInfo.systemUptime - began >= options.seconds else { return false }
                         collected = true
                         if options.native, let session {
@@ -116,6 +118,8 @@ enum GameTest {
             try SessionAnalysis.write(["session_id": id, "error": "No valid complete performance windows", "exit_code": String(code)], to: folder.appendingPathComponent("failure.json"))
             throw CompanionError.message("Test has no valid performance windows. Inspect \(folder.path)")
         }
+        do { try host.write(to: folder.appendingPathComponent("host-samples.json")) }
+        catch { issues.append("Host samples could not be retained.") }
         let report = try SessionAnalysis.summarize(windows: windows, native: native, sessionID: id, build: build,
             context: context, nativeExpected: options.native, issues: issues)
         try SessionAnalysis.write(report, to: folder.appendingPathComponent("report.json"))
@@ -127,7 +131,7 @@ enum GameTest {
         }
         client.event("game.test.summary", attributes: Companion.attributes(build.reduce(into: [String: Any]()) { $0[$1.key] = $1.value }.merging([
             "session_id": id, "test.report_path": folder.appendingPathComponent("report.json").path,
-            "test.windows": windows.count, "test.native_layers": report.nativeLayers, "test.observation_gaps": report.issues.count,
+            "test.windows": windows.count, "test.host_samples": host.records.count, "test.native_layers": report.nativeLayers, "test.observation_gaps": report.issues.count,
         ]) { _, test in test }.merging(report.metrics) { _, measured in measured }))
         client.flush(); Companion.printDelivery(client)
         print("Test report: \(folder.appendingPathComponent("report.json").path)")

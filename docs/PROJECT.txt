@@ -21,6 +21,7 @@ Renderer frame samples -> SDK FrameRecorder -> five-second windows -> Logfire.
 Rendering context -> SDK state API -> Logfire and Apple StateReporting.
 Apple MetricKit reports -> adapter inside the SDK -> historical Logfire spans.
 Apple display/resource measurements -> optional Swift companion -> Logfire.
+Mac CPU/memory/filesystem samples -> attach or test companion -> live game.host.sample records.
 Native capture -> local recording, symbols, checksums, and Logfire metadata.
 Host Swift build step -> embedded build identity -> app startup identity record.
 Swift companion build action -> complete build trace, task totals, selected host samples, and .xcresult.
@@ -40,6 +41,8 @@ The manifest identifies the session, build, measurement interval, binary, symbol
 The recording can contain other processes. Exported summaries select our PID.
 
 Native build and test investigation
+Use Command-R for ordinary edits. Use tools/check-dev.sh for Swift tests and a cached macOS Debug build.
+Add --smoke for a 12-second SDK-only run. iOS Simulator checks and longer runs are deferred.
 Use logfire-apple build with options and xcodebuild arguments after --.
 Use logfire-apple test-game --app APP --seconds 20 for the reference game.
 Onscreen tests retain launch context, then select matching native state layers with whole-second bounds around complete SDK window dates.
