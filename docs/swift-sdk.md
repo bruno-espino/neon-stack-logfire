@@ -5,7 +5,9 @@ It supports trusted developer and manual tester builds.
 
 ## Configure once
 
-Run `swift run logfire-apple configure --region us` from the repository root.
+Install the companion with [the native setup guide](native-workflow.md#install-once).
+Run `logfire-apple configure --region us`.
+You can also use `swift run logfire-apple` from this checkout.
 Use `--region eu` for a European project. Supply a project write token, not a management API key.
 The command hides input and saves `~/.config/logfire-swift/credentials.env` with permissions of `0600`.
 The SDK also accepts the earlier `~/.config/xcode-observe/credentials.env` location.
@@ -104,8 +106,8 @@ The app exports identity when it starts. Command-B alone creates local identity.
 The Swift companion build action supplies full build timing and a build trace relationship.
 
 ```sh
-swift run logfire-apple capture --last 10s
-swift run logfire-apple attach --seconds 30
+logfire-apple capture --last 10s
+logfire-apple attach --seconds 30
 ```
 
 The companion selects a verified live SDK session and retains artifacts locally.
