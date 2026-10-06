@@ -23,6 +23,7 @@ Apple MetricKit reports -> adapter inside the SDK -> historical Logfire spans.
 Apple display/resource measurements -> optional Swift companion -> Logfire.
 Mac CPU/memory/filesystem samples -> attach or test companion -> live game.host.sample records.
 Native capture -> local recording, symbols, checksums, and Logfire metadata.
+Optional Instruments recording -> selected running CPU samples and top leaf functions -> Logfire.
 Host Swift build step -> embedded build identity -> app startup identity record.
 Swift companion build action -> complete build trace, task totals, selected host samples, and .xcresult.
 Swift test-game action -> fixed inputs, SDK windows, Apple capture/state aggregates, and one session report.
@@ -32,11 +33,14 @@ Keep the game running. From the repository root, run:
 logfire-apple capture --last 10s
 For live measurements, run:
 logfire-apple attach --seconds 30
+For a short live CPU recording on a Release app, run:
+logfire-apple profile --seconds 5
 Use --service neon-stack when multiple instrumented apps run.
 Add --no-telemetry to keep evidence local.
 The companion verifies the process, executable, process start time, and embedded build ID.
 It selects the latest live SDK session automatically.
-Open the retained .atrc recording in Instruments.
+Open the retained .atrc or Instruments.trace recording in Instruments.
+CPU profiling leaves the app running. Raw recordings can contain private environment and source data.
 The manifest identifies the session, build, measurement interval, binary, symbols, and artifact checksums.
 The recording can contain other processes. Exported summaries select our PID.
 
@@ -67,6 +71,8 @@ Adapter: code inside the SDK that selects Apple report fields and exports them.
 Companion: optional native executable for captures, observed builds, reference-game tests, and analysis.
 Relay: optional host forwarder for transport comparisons. Direct SDK export needs no relay.
 metalperftrace: Apple's macOS CLI for live and historical Metal measurements.
+xctrace: Apple's CLI for active Instruments recordings and selected XML exports.
+Leaf function: innermost sampled frame. Its self weight excludes caller time.
 Capture: Apple recording artifact, distinct from an OpenTelemetry trace.
 Build ID: identifies the app build and joins its runtime records and captures.
 Session ID: identifies one app run and joins independent operation and measurement records.
@@ -79,6 +85,8 @@ Measurement limits
 Callback FPS differs from presented FPS. Preparation wall time differs from CPU utilization.
 GPU command duration is not hardware utilization.
 Native CPU times are not CPU utilization percentages.
+Profile weights describe sampled running CPU work. They are not wall time or frame latency.
+Profiled intervals have instrumentation overhead. Keep them separate from baseline comparisons.
 Compare matched Release devices, modes, sizes, seeds, and workloads.
 Do not average window percentiles into a session percentile.
 Performance windows and Apple reports currently use span attributes, not OTel metric instruments.
@@ -92,6 +100,8 @@ Physical iOS runtime, real MetricKit delivery, and a second tester Mac remain un
 
 Next steps
 Import dashboards/apple-development.json. Filter investigations by session and build IDs.
+Select CPU busy-work, blocking, shader-compilation, or GPU investigation from an observed problem.
+Use System Trace or Swift Concurrency for waiting and scheduling. CPU profiles do not measure these.
 Package the SDK, optional companion, and dashboard separately. Keep the game as the reference example.
 Select a license, publish version tags, and add short package CI before a reusable release.
 Measure build-script overhead before a generic compiled build-identity helper replaces it.

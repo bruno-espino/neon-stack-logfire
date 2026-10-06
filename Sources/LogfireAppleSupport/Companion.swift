@@ -82,6 +82,7 @@ public enum Companion {
         if action == "build" { return try NativeBuild.run(values) }
         if action == "test-game" { return try GameTest.run(values) }
         if action == "analyze" { return try SessionAnalysis.run(values) }
+        if action == "profile" { return try InstrumentsProfile.run(values) }
         guard ["capture", "attach"].contains(action) else { throw CompanionError.message(usage) }
         if values.contains("--help") { print(usage); return 0 }
         guard #available(macOS 27.0, *) else { throw CompanionError.message("Native Metal monitoring requires macOS 27") }
@@ -223,12 +224,12 @@ public enum Companion {
         var checksums: [String: String] = [:]
         let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? []
         for file in files where (try file.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true {
-            checksums[String(file.path.dropFirst(folder.path.count + 1))] = hash(try Data(contentsOf: file))
+            checksums[String(file.path.dropFirst(folder.path.count + 1))] = try fileHash(file)
         }
         let details: [String: Any] = ["capture.id": folder.lastPathComponent, "capture.started_at": started, "capture.ended_at": collectedEnd,
             "measurement.requested_start": requestedStart, "measurement.requested_end": ended,
             "capture.path": folder.path, "capture.tool": "apple.metalperftrace", "capture.storage": "local",
-            "capture.kind": "native-lookback", "binary.sha256": hash(try Data(contentsOf: session.executable))]
+            "capture.kind": "native-lookback", "binary.sha256": try fileHash(session.executable)]
         var manifest = session.metadata.merging(details) { _, capture in capture }
         manifest["artifacts"] = checksums; manifest["capture.measurements"] = measurements
         try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted]).write(to: folder.appendingPathComponent("manifest.json"), options: .atomic)
@@ -281,7 +282,13 @@ public enum Companion {
         }
     }
 
-    static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    static func fileHash(_ file: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var digest = SHA256()
+        while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty { digest.update(data: data) }
+        return digest.finalize().map { String(format: "%02x", $0) }.joined()
+    }
 
     static func printDelivery(_ client: Logfire) {
         let status = client.delivery
@@ -299,10 +306,11 @@ public enum Companion {
            logfire-apple doctor
            logfire-apple capture --last 10s [--service NAME] [--no-telemetry]
            logfire-apple attach --seconds 30 [--service NAME] [--no-telemetry]
+           logfire-apple profile --seconds 5 [--service NAME] [--no-telemetry]
            logfire-apple build [--scenario NAME] [--no-telemetry] -- [xcodebuild arguments]
            logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
            logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
-    Capture and attach select the latest verified live SDK session automatically.
+    Capture, attach, and profile select the latest verified live SDK session automatically.
     Optional overrides: --sessions DIRECTORY --output DIRECTORY.
     All actions use Swift and Apple tools. Full reports and captures remain local.
     """

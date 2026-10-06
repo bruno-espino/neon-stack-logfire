@@ -383,6 +383,58 @@
             }
           ]
         }
+      },
+      "CPUProfiles": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Instruments CPU profiles",
+            "description": "Optional live recordings. CPU weights are sampled running work, not wall time or frame latency. Main-thread identification uses Apple's label. Profiling adds overhead. Full recordings remain on the recording Mac."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'profile.started_at' AS measured_start, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, CAST(attributes->>'profile.duration_seconds' AS DOUBLE) AS seconds, attributes->>'cpu.summary_available' AS summary_available, CAST(attributes->>'cpu.samples' AS DOUBLE) AS samples, CAST(attributes->>'cpu.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'cpu.main_thread_sampled_weight_ms' AS DOUBLE) AS main_thread_sampled_ms, CAST(attributes->>'cpu.unresolved_samples' AS DOUBLE) AS unresolved_samples, attributes->>'profile.observation_gap' AS observation_gap, attributes->>'capture.path' AS local_artifact FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.profile' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "CPUFunctions": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Top CPU leaf functions by capture",
+            "description": "Up to 20 self-weight functions per capture. This is not an inclusive call tree. Fractions use all selected running samples, including unresolved samples. Tables can truncate at 100 rows. Filter the session/build and time range. Do not sum overlapping captures."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.sampled_weight_ms' AS DOUBLE) AS sampled_cpu_ms, CAST(attributes->>'function.sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.function' ORDER BY measured_end DESC, capture, rank ASC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -483,6 +535,34 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/HostMemory"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Targeted CPU investigation"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPUProfiles"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPUFunctions"
               }
             }
           ]

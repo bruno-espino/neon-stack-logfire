@@ -1,7 +1,7 @@
 # Native build and performance workflow
 
 The Swift SDK and one native companion form the current development workflow.
-The companion uses Xcode result bundles and Apple's Metal performance history.
+The companion uses Xcode result bundles, Apple's Metal performance history, and optional Instruments CPU profiles.
 It does not start a daemon or call Python.
 The tester report button remains deferred.
 
@@ -73,6 +73,50 @@ Native CPU time is a separate process measurement. GPU timing is not hardware ut
 The exporter batches live records. Sampling once per second does not promise instant network delivery.
 Host samples remain available in `host-samples.json`. All current measurements use span attributes, not OTel metric instruments.
 The companion pauses its host sampling while it processes a test capture. It does not promise coverage during that processing phase.
+
+## Record a short CPU profile
+
+Build Release, run the app, then record a live interval:
+
+```sh
+logfire-apple profile --seconds 5 --service neon-stack
+```
+
+The companion verifies the latest SDK session before attaching `xctrace`.
+It uses Xcode 27's Game Performance Overview template. This template includes Time Profiler and Metal recording.
+The default duration is five seconds. Use `--seconds` for an interval between one and thirty seconds.
+Remove `--service` when only one instrumented application runs.
+Use `--no-telemetry` for local evidence. The command leaves the application running.
+CPU samples require an active recording. Retained Metal history cannot recover previous CPU stacks.
+The command is optional. It does not run during Command-R, builds, or the default development check.
+
+Each capture directory retains `Instruments.trace`, XML exports, available dSYM files, and an artifact-checksum manifest.
+Open `Instruments.trace` in Instruments for the full call tree, Metal evidence, and timeline.
+Raw recordings can contain environment data, source paths, stacks, and system context. Keep them private when sharing artifacts.
+Logfire receives the selected process's CPU summary and at most twenty leaf functions.
+The export omits raw environment data, source paths, addresses, and full stacks.
+Function names, image identities, build/session identity, measured dates, and the local artifact location are exported.
+The process identity in the recording must match the selected session before export.
+
+| Record | Selected evidence |
+| --- | --- |
+| `game.profile.capture` | Local artifact location, checksums in the local manifest, binary identity, template, and actual interval |
+| `game.cpu.profile` | Running sample count, total sampled CPU weight, identified main-thread weight, unresolved count, and summary availability |
+| `game.cpu.function` | Rank, leaf symbol, image identity, sample count, sampled CPU weight, and fraction of all selected running weight |
+
+The parser resolves Apple's XML references and selects only the target PID's Running samples.
+A leaf function's weight is self weight. Caller time does not enter that function's total.
+Unresolved samples remain in the denominator. The top twenty fractions need not sum to one.
+Main-thread identification uses Apple's thread label. Other running threads remain in the total.
+Sample weights estimate sampled running CPU work. They do not measure wall time, frame latency, or waiting-thread time.
+Zero running samples or a decoding gap returns exit 2. Available raw evidence remains local.
+Recording, export, or identity failures return a failure and retain available artifacts.
+Exporter acknowledgements describe delivery separately from capture success.
+
+Profiling adds overhead. Profiled intervals are diagnostic evidence, not baseline comparison inputs.
+Apple recommends Time Profiler for CPU busy work. Waiting, thread scheduling, and actor contention require other instruments.
+See [Apple's WWDC26 responsiveness workflow](https://developer.apple.com/videos/play/wwdc2026/268/).
+Instruments 27 also offers flame graphs, top-function views, and recording comparisons for the full local analysis.
 
 ## Observe a build
 
@@ -186,7 +230,8 @@ Exporter delivery counters remain separate from performance evidence completenes
 
 Apple describes JSON overviews for regression testing and automated triage in
 [its WWDC26 game performance session](https://developer.apple.com/videos/play/wwdc2026/388/).
-Use Game Performance Overview or Metal System Trace in Instruments when CPU stacks and scheduling detail are required.
+Use `profile` for running CPU samples and Game Performance Overview.
+Use System Trace or Swift Concurrency in Instruments for scheduling, blocking, and actor contention.
 Retained Metal history does not supply a complete CPU stack profile.
 Apple can collect historical data after an app exits. Our companion currently requires a live verified session for attribution.
 `test-game` already automates the run, collection, JSON extraction, and summary export before stopping its app.
@@ -195,9 +240,11 @@ No scheduled or CI game-test pipeline is configured. The command is an on-demand
 MetricKit reports remain delayed evidence inside the SDK.
 They cannot replace immediate automated-test measurements.
 
-Next, improve the macOS setup and iteration loop.
+Next, add finished-session artifact import and select the next instrument from a real optimization question.
+Evaluate shader-compilation recording options before changing the renderer.
+GPU counter sampling remains deferred. It requires supported counters and can perturb the workload.
+See Apple's [GPU counter sampling guidance](https://developer.apple.com/documentation/metal/sampling-gpu-data-into-counter-sample-buffers).
 A second tester Mac, physical iOS delivery, and performance-budget calibration remain later validation.
-Add an artifact-import path for finished sessions and iOS captures.
 Evaluate a smaller compiled build-identity helper to reduce the script's incremental build overhead.
 Keep the tester report button deferred until this workflow is stable.
 
@@ -209,7 +256,7 @@ Use `Apple Development Workflow` as the name and `apple-development-workflow` as
 Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
 Management credentials belong to the dashboard client. The application needs only its project write token.
 
-The ten panels query `records`. They cover SDK windows, live Apple measurements, whole-host context, captures, and builds.
+The twelve panels query `records`. They cover SDK windows, live Apple measurements, whole-host context, CPU profiles, captures, and builds.
 Session and Build accept exact IDs. Empty values disable the filter.
 Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
 The build table ignores Session because the build command and application have different session IDs.
@@ -220,6 +267,8 @@ The SDK timing chart shows the worst window p95 per bucket. It is not a session 
 Apple timing points average reported interval means. They are not per-frame session means.
 The live FPS chart divides presented frames by measured duration within each session and layer.
 Capture tables retain process, layer, and state-layer scopes separately. Overlapping captures are not summed.
+CPU tables retain each capture separately. They show sampled running work and top leaf functions, not inclusive call trees.
+CPU rows include the actual recording dates and retain unresolved-sample counts.
 Missing attach data means no observation occurred. It does not mean zero load or zero FPS.
 The tables show at most 100 rows. Charts show at most 10,000 buckets. Narrow the time range for detailed investigation.
 
@@ -237,7 +286,7 @@ Keep one repository during the pilot. Distribute three independent parts:
 | Part | Installation | Required for ordinary app telemetry |
 | --- | --- | --- |
 | `LogfireSwift` | Source Swift package with a versioned library product | Yes |
-| `logfire-apple` | Optional native executable for configuration, builds, attach, capture, and analysis | No |
+| `logfire-apple` | Optional native executable for configuration, builds, attach, capture, CPU profiling, and analysis | No |
 | Dashboard definition | Logfire JSON import or MCP creation | No |
 
 Keep NeonStack under `examples`. It demonstrates the integration and supplies a repeatable workload.
@@ -260,7 +309,8 @@ See the [release list](https://github.com/open-telemetry/opentelemetry-swift/rel
 [exporter status](https://github.com/open-telemetry/opentelemetry-swift/blob/2.6.0/README.md),
 and [language status](https://opentelemetry.io/docs/languages/swift/).
 
-Prioritize a generic build-identity helper and explicit build-script dependencies to reduce Command-R overhead.
+Evaluate a generic build-identity helper and explicit build-script dependencies after measuring Command-R overhead.
+The current measured identity phase takes about half a second on the development Mac. It is not the dominant build cost.
 The current script runs on every build and hashes package sources beyond the linked SDK.
 Measure each change with build timing summaries before replacing the script.
 Follow Apple's [incremental build guidance](https://developer.apple.com/documentation/Xcode/improving-the-speed-of-incremental-builds).

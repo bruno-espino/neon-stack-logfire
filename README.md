@@ -56,7 +56,7 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes ten panels for SDK windows, Apple presentation timings, process memory, host context, captures, and builds.
+It includes twelve panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
@@ -73,12 +73,15 @@ Use `--service NAME` if multiple applications run.
 ```sh
 logfire-apple capture --last 10s
 logfire-apple attach --seconds 30
+logfire-apple profile --seconds 5
 ```
 
 Capture collects Apple's retained history and saves recordings and symbols locally.
 Logfire receives selected summaries and capture metadata.
 Attach streams selected native measurements and whole-host load during its bounded observation period.
-Both commands use Swift only and report exporter acknowledgements and failures.
+Profile records a short Instruments interval and exports selected CPU samples and the top 20 leaf functions.
+Use a Release build for optimization. The full `.trace` and symbols remain local.
+All three commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.
 
 ## What supplies each measurement
@@ -88,6 +91,7 @@ Add `--no-telemetry` to retain evidence locally without export.
 | Game + SDK frame recorder | Callback cadence, frame preparation time, Metal command duration, render context | Five-second windows during gameplay |
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
+| Instruments Time Profiler | Running CPU samples and top leaf-function weights | Optional `profile` recording. Summaries export after the recording. |
 | MetricKit adapter inside the SDK | Selected CPU/GPU time, disk writes, launch/resume/hang distributions, hitches, daily Metal reports, diagnostic summaries | Delayed reports with historical context. Coverage varies by platform. |
 | macOS host APIs | Whole-host CPU load, selected memory counts, filesystem free bytes | One-second samples during companion builds, game tests, and live attach |
 | Xcode build tools | Build duration, task totals, warnings, errors, selected host samples | Swift companion build action |
