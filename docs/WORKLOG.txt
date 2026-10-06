@@ -260,7 +260,7 @@ Apple M4 can replay-profile the captured workload without a Metal 4 renderer mig
 A completed Log Roll renderer window is a better readiness signal than the initial SDK session marker.
 Two early capture attempts fail because Metal capture is not ready yet.
 The first complete Log Roll replay exports six measurements and one capture record without delivery failures.
-Its scene encoder accounts for about 78 percent of that captured low-particle workload's replay cost.
+Its scene encoder accounts for about 78 percent of that captured workload's replay cost.
 This is not a baseline, GPU utilization reading, or diagnosis of the previous main-thread hitch.
 Shader Wait is an instruction count. It does not measure CPU waiting.
 Rejected immediate timeline extraction as a shader-cost ranking. Reloaded profiles provide the ranked shader table.
@@ -284,3 +284,58 @@ Keep Log Roll's two-mazes-then-loss actions in its game adapter. The scenario is
 Add a separate main-thread window with CPU-time deltas and bounded main-queue response probes.
 Keep CPU busy time, queue delay, render preparation, and GPU work as separate measurements.
 Import finished-session artifacts through the same identity and summary contracts.
+
+
+Reusable scenario runner (2026-10-06)
+Goal
+Move process control and evidence collection out of individual game adapters.
+Keep app-owned actions and assertions separate from the optional native profiler.
+
+Implemented
+Added logfire-apple run with a versioned JSON definition and a 20-second default scenario deadline.
+Added DevelopmentScenario for SDK readiness, renderer evidence, completion, and background telemetry flush.
+Added common LOGFIRE_SESSION_ID and LOGFIRE_SESSION_DIR names. Existing Neon names remain fallback options.
+The runner validates the launched PID, kernel process start time, executable, SDK session, and build identity.
+Fast applications can publish valid completion between polls. Successful process exit alone never passes.
+The runner retains scenario inputs, window evidence, host samples, delivery counts, and one report.
+Optional CPU or GPU diagnostics use the run's isolated SDK marker directory and existing native commands.
+Added a scenario-outcome table to the reusable dashboard and the hosted dashboard.
+Default development checks still use Swift tests and a cached macOS Debug build. No scenario, profiler, or Simulator runs by default.
+
+Log Roll adapter
+Seed 777 clears two mazes through the existing autopilot.
+The adapter plans a safe route onto a fire grate and waits for the engine's ordinary loss condition.
+The adapter does not assign the score or game-over state.
+Assertions require exactly two clears and the expected loss location.
+The example uses 65,536 particles and completes in about 12 seconds.
+This run verifies workflow behavior. It is not a performance baseline.
+
+Corrections from experiments
+Removed the old frame reader's restriction to Neon Stack rendering-mode names.
+Instruments can emit a valid running sample with an unavailable-backtrace sentinel.
+The decoder now retains that sample's CPU weight and records an unresolved backtrace.
+It continues to reject broken references and unsupported schemas.
+The SDK stops retaining scenario frame evidence after completion.
+The runner rereads cancellation after an optional blocking profiler callback.
+Rejected copied Apple system binaries inside synthetic app bundles as reliable process fixtures.
+Script fixtures exercise missing-protocol timeout and successful exit without completion instead.
+Synchronous optional profiling can leave gaps in host sampling. Timestamps remain explicit.
+Profiling can extend total command time. App completion must still meet its own deadline.
+
+Verification
+All 44 Swift SDK and companion tests pass. The cached macOS Debug game build passes.
+The engine scenario passes for seeds 42 and 777 and rejects an early crash.
+The live default scenario passes with one complete renderer window and successful app/runner export.
+A non-rendering Foundation protocol fixture passes and exercises between-poll completion.
+The optional CPU flow exports 1,447 running samples and twenty leaf functions.
+SDK, scenario, host, and CPU records join by session/build through Logfire MCP.
+The scenario dashboard query returns the final outcome and actual SDK delivery counts.
+All thirteen prior hosted panel definitions remain intact. The dashboard now has fourteen panels.
+An interrupt during optional CPU collection returns 130 and leaves no owned game process running.
+The installed Release command exposes run help outside the checkout.
+No iOS Simulator or long benchmark is added. GPU replay is verified in the preceding iteration.
+
+Next
+Add the independent main-thread measurement after its timing contract is validated.
+Consider asynchronous profiler orchestration when continuous host sampling is needed during diagnostics.
+Add retained finished-session import and package distribution without expanding ordinary developer checks.

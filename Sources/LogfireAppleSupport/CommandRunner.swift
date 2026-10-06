@@ -69,6 +69,7 @@ enum CommandRunner {
                 interrupted = cancel.signum
                 timedOut = now >= deadline
                 if interrupted == 0 && !timedOut { requestedStop = try onTick?() ?? false }
+                interrupted = cancel.signum
                 if interrupted != 0 || timedOut || requestedStop {
                     kill(-pid, interrupted == 0 ? SIGTERM : interrupted)
                     stopping = ProcessInfo.processInfo.systemUptime + 3

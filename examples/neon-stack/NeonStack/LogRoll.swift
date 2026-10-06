@@ -42,6 +42,8 @@ final class LogRollState: ObservableObject {
     let benchmark = ProcessInfo.processInfo.environment["NEON_BENCHMARK"] == "1"
     private var seed: UInt64
     private lazy var audio = GameAudio()
+    private var scenario: LogRollScenario? = ProcessInfo.processInfo.environment["LOGFIRE_SCENARIO_ID"] == LogRollScenario.id ? LogRollScenario() : nil
+    private var scenarioReported = false
     private let signposter = OSSignposter(subsystem: "dev.example.NeonStack", category: .pointsOfInterest)
 
     init() {
@@ -78,7 +80,9 @@ final class LogRollState: ObservableObject {
         let state = signposter.beginInterval("LogRollUpdate")
         let wasOver = engine.gameOver
         let moves = engine.moves, turns = engine.turns
-        let cleared = engine.advance(seconds, autoplay: benchmark)
+        let cleared: Int
+        if scenario != nil { cleared = scenario!.advance(seconds, engine: &engine) }
+        else { cleared = engine.advance(seconds, autoplay: benchmark) }
         signposter.endInterval("LogRollUpdate", state)
         if engine.moves > moves { signposter.emitEvent("Roll") }
         if engine.turns > turns { signposter.emitEvent("TurnMaze") }
@@ -91,7 +95,17 @@ final class LogRollState: ObservableObject {
                 "maze_size": .int(engine.maze.size), "seconds": .double(engine.seconds), "particles": .int(detail.rawValue),
                 "turns": .int(engine.turns), "water": .bool(engine.water), "heat": .double(engine.heat),
             ])
-            if benchmark { restart() }
+            if benchmark && scenario == nil { restart() }
+        }
+        if !scenarioReported, let scenario, let passed = scenario.outcome, GameTelemetry.scenario?.isReady == true {
+            scenarioReported = true
+            let details = ["mazes_cleared": String(engine.score),
+                    "game_over": String(engine.gameOver), "moves": String(engine.moves), "turns": String(engine.turns),
+                    "simulation_seconds": String(engine.seconds), "failure": scenario.failure]
+            DispatchQueue.global(qos: .utility).async {
+                do { try GameTelemetry.scenario?.finish(passed: passed, details: details) }
+                catch { print("Scenario completion report failed: \(error)") }
+            }
         }
     }
     private func play(_ cue: SoundCue) { if soundEnabled && !benchmark { audio.play(cue) } }

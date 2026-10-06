@@ -461,6 +461,32 @@
             }
           ]
         }
+      },
+      "ScenarioRuns": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "App-owned scenario runs",
+            "description": "Explicit app assertions with correlated build/session identity. Exit 0 passes requested evidence, 2 marks observation gaps, and 124 marks a scenario timeout. Optional profiling extends command time. Duration includes startup, collection, and shutdown; it is not frame latency."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp AS reported, attributes->>'scenario.id' AS scenario, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'scenario.phase' AS phase, CAST(attributes->>'run.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'run.duration_seconds' AS DOUBLE) AS duration_seconds, CAST(attributes->>'readiness.seconds' AS DOUBLE) AS readiness_observed_seconds, CAST(attributes->>'frame.windows' AS DOUBLE) AS frame_windows, attributes->>'profile.requested' AS profile, CAST(attributes->>'run.observation_gaps' AS DOUBLE) AS observation_gaps, CAST(attributes->>'app.delivery.exported_spans' AS DOUBLE) AS sdk_exported_spans, CAST(attributes->>'app.delivery.failed_spans' AS DOUBLE) AS sdk_failed_spans FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.run.summary' ORDER BY reported DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -636,6 +662,25 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/GPUReplay"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "App-owned scenarios"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/ScenarioRuns"
               }
             }
           ]

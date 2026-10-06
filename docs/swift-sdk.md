@@ -174,3 +174,27 @@ See [the native workflow](native-workflow.md) for automated testing and analysis
 Local Apple monitoring remains active when development network export is disabled.
 The client retains each StateReporting reporter for its domain. Stable metadata selects performance cohorts.
 Session and build IDs use volatile metadata. They do not fragment stable performance groups.
+
+
+## Optional development scenarios
+
+A runner-owned launch sets `LOGFIRE_SESSION_ID`, `LOGFIRE_SESSION_DIR`, `LOGFIRE_SCENARIO_ID`, and `LOGFIRE_SCENARIO_STATUS`.
+The SDK accepts the common session names. The previous `NEON_SESSION_ID` and `NEON_OBSERVER_DIR` names remain fallback options.
+Use one `Logfire.development` client so the app publishes its verified session marker.
+
+```swift
+let scenario = DevelopmentScenario(client: telemetry)
+// In a renderer's onWindow callback:
+try scenario?.record(window)
+// A non-rendering app can declare its own startup condition:
+try scenario?.markReady()
+```
+
+`DevelopmentScenario` is nil during an ordinary launch. It does not add a daemon or change Command-R.
+The app owns its scenario actions and assertions.
+Call `try scenario?.finish(passed: assertionsPassed, details: details)` on a background queue.
+The method flushes queued telemetry before it publishes a terminal assertion.
+Handle file-write failures. The runner treats absent assertions as failures.
+Keep details compact. The status limit is 64 KiB.
+All SDK spans include the supplied scenario ID during a runner launch.
+The [native runner guide](native-workflow.md#run-an-app-owned-scenario) shows the command and JSON definition.
