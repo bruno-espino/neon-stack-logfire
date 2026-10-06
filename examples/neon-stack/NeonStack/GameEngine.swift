@@ -7,6 +7,8 @@ struct Piece {
     var rotation = 0
     var x = 3
     var y = 0
+    /// A burning log burns away every row it touches when it lands.
+    var burning = false
     var cells: [Cell] {
         let shapes = [
             [(0,1),(1,1),(2,1),(3,1)], [(1,0),(2,0),(1,1),(2,1)],
@@ -34,6 +36,8 @@ struct SeededRandom: RandomNumberGenerator {
 struct GameEngine {
     static let width = 10
     static let height = 20
+    /// Every eighth piece is a burning log.
+    static let fireEvery = 8
     var board = Array(repeating: Int32(0), count: width * height)
     var piece = Piece(kind: 0)
     var nextKind = 0
@@ -46,18 +50,33 @@ struct GameEngine {
     var lastClear = 0
     private(set) var lastClearRows: [Int] = []
     private(set) var lastAllClear = false
+    /// Rows the last burning log burned away, before rows above fell.
+    private(set) var lastBurnedRows: [Int] = []
     private var bag: [Int] = []
     private var random: SeededRandom
     var level: Int { 1 + lines / 10 }
-    var canHold: Bool { !holdUsed && !gameOver }
+    /// A burning log can't be stored in hold.
+    var canHold: Bool { !holdUsed && !gameOver && !piece.burning }
+    /// Pieces until the next burning log, or 0 while one is falling.
+    var piecesUntilFire: Int { (Self.fireEvery - 1 - piecesLocked % Self.fireEvery) % Self.fireEvery }
+    static func points(clearing rows: Int) -> Int { [0, 100, 300, 500, 800][min(rows, 4)] + max(0, rows - 4) * 200 }
     init(seed: UInt64 = UInt64.random(in: 1...UInt64.max)) {
         random = SeededRandom(state: seed)
         piece = Piece(kind: drawKind())
         nextKind = drawKind()
     }
     static func clearDemo(_ scenario: String, seed: UInt64 = 777) -> GameEngine? {
-        guard ["single", "four", "all-clear"].contains(scenario) else { return nil }
+        guard ["single", "four", "all-clear", "burn"].contains(scenario) else { return nil }
         var engine = GameEngine(seed: seed)
+        if scenario == "burn" {
+            // A ragged stack with a burning I piece above it. It burns four rows that are far from full.
+            for row in 12..<height {
+                for column in 0..<width where (column * 7 + row * 3) % 5 < (row < 16 ? 1 : 3) { engine.board[row * width + column] = Int32(column % 7 + 1) }
+            }
+            for row in 12..<height { engine.board[row * width + 4] = 0 }
+            engine.piece = Piece(kind: 0, rotation: 1, x: 2, burning: true)
+            return engine
+        }
         let rowCount = scenario == "single" ? 1 : 4
         for row in (height - rowCount)..<height {
             for column in 0..<width where column != 4 { engine.board[row * width + column] = 6 }
@@ -124,10 +143,16 @@ struct GameEngine {
     mutating func step() { if !move(dx: 0, dy: 1) && !gameOver { lock() } }
     mutating func lock() {
         for cell in piece.cells { board[cell.y * Self.width + cell.x] = Int32(piece.kind + 1) }
+        // A burning log fills the rows it touches with fire, so they clear along with any full rows.
+        lastBurnedRows = piece.burning ? Array(Set(piece.cells.map(\.y))).sorted() : []
+        for row in lastBurnedRows {
+            for column in 0..<Self.width { board[row * Self.width + column] = Int32(piece.kind + 1) }
+        }
         piecesLocked += 1
         lastClear = clearRows()
-        score += [0, 100, 300, 500, 800][lastClear] * level
+        score += Self.points(clearing: lastClear) * level
         piece = Piece(kind: nextKind); nextKind = drawKind()
+        piece.burning = piecesLocked % Self.fireEvery == Self.fireEvery - 1
         holdUsed = false
         gameOver = !fits(piece)
     }
@@ -144,8 +169,10 @@ struct GameEngine {
     var displayCells: [Int32] {
         var result = board
         guard !gameOver else { return result }
-        for cell in landing(piece).cells { result[cell.y * Self.width + cell.x] = Int32(piece.kind + 11) }
-        for cell in piece.cells { result[cell.y * Self.width + cell.x] = Int32(piece.kind + 1) }
+        // Ghost cells add 10. A burning log adds 20 more to both.
+        let fire = piece.burning ? 20 : 0
+        for cell in landing(piece).cells { result[cell.y * Self.width + cell.x] = Int32(piece.kind + 11 + fire) }
+        for cell in piece.cells { result[cell.y * Self.width + cell.x] = Int32(piece.kind + 1 + fire) }
         return result
     }
     mutating func autoplay() {
@@ -154,7 +181,7 @@ struct GameEngine {
         var bestCost = Double.infinity
         for rotation in 0..<4 {
             for x in -3..<Self.width {
-                let candidate = Piece(kind: piece.kind, rotation: rotation, x: x, y: 0)
+                let candidate = Piece(kind: piece.kind, rotation: rotation, x: x, y: 0, burning: piece.burning)
                 guard fits(candidate) else { continue }
                 let dropped = landing(candidate)
                 var trial = self; trial.piece = dropped; trial.lock()

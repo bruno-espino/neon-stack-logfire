@@ -5,16 +5,21 @@ struct ClearAnimation {
     let rows: [Int]
     let allClear: Bool
     let started: Double
-    var duration: Double { allClear ? 1.6 : (rows.count == 4 ? 1.1 : 0.65) }
+    /// True when a burning log burned the rows away.
+    var burned = false
+    var duration: Double { allClear ? 1.6 : (burned || rows.count == 4 ? 1.1 : 0.65) }
     var title: String {
-        allClear ? "ALL CLEAR!" : (rows.count == 4 ? "FOUR ROWS!" : "\(rows.count) \(rows.count == 1 ? "LINE" : "LINES")")
+        if allClear { return "ALL CLEAR!" }
+        if burned { return "LOG BURNED \(rows.count) \(rows.count == 1 ? "ROW" : "ROWS")!" }
+        return rows.count == 4 ? "BATCH FLUSHED!" : "FLUSHED \(rows.count) \(rows.count == 1 ? "ROW" : "ROWS")"
     }
     func uniforms(at time: Double, reducedMotion: Bool = false) -> SIMD4<Float> {
         let age = time - started
         guard age >= 0 && age < duration else { return SIMD4<Float>(-1, 0, 0, 0) }
         return SIMD4<Float>(Float(age / duration), Float(rows.count), allClear ? 1 : 0, reducedMotion ? 1 : 0)
     }
-    var rowMask: UInt32 { rows.reduce(UInt32(0)) { $0 | (UInt32(1) << UInt32($1)) } }
+    /// One bit per cleared row. The top bit tells the shader to draw fire instead of sparks.
+    var rowMask: UInt32 { rows.reduce(burned ? UInt32(1) << 31 : 0) { $0 | (UInt32(1) << UInt32($1)) } }
 }
 
 enum SoundCue: CaseIterable {
