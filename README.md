@@ -17,12 +17,15 @@ Ordinary runs require no Python, relay, or native observer.
 A host Swift script embeds build identity. The SDK exports identity when the app starts.
 The game still runs if telemetry configuration is unavailable.
 
+Install the companion once with `tools/install-companion.sh`. It builds a native executable in `~/.local/bin`.
+Add that directory to your PATH if needed. You can also use `swift run logfire-apple` from this checkout.
+
 Configure a project write token once. The command hides input and saves a private runtime file outside the application and Git.
 Existing prototype credentials remain compatible.
 
 ```sh
-swift run logfire-apple configure --region us
-swift run logfire-apple doctor
+logfire-apple configure --region us
+logfire-apple doctor
 ```
 
 Use arrows to move and rotate, Space to drop, C to hold or swap, P to pause, and R to restart.
@@ -54,8 +57,8 @@ Keep the app running. The companion finds the latest verified SDK session.
 Use `--service NAME` if multiple applications run.
 
 ```sh
-swift run logfire-apple capture --last 10s
-swift run logfire-apple attach --seconds 30
+logfire-apple capture --last 10s
+logfire-apple attach --seconds 30
 ```
 
 Capture collects Apple's retained history and saves recordings and symbols locally.
@@ -72,35 +75,45 @@ Add `--no-telemetry` to retain evidence locally without export.
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
 | MetricKit adapter inside the SDK | Selected CPU/GPU time, disk writes, launch/resume/hang distributions, hitches, daily Metal reports, diagnostic summaries | Delayed reports with historical context. Coverage varies by platform. |
-| Xcode build tools | Full build duration, task totals, warnings, errors, machine samples | Optional build observer |
+| Xcode build tools | Build duration, task totals, warnings, errors, selected host samples | Swift companion build action |
 | Native captures | Apple recordings and symbols | Files remain local. Selected measurements and metadata arrive in Logfire. |
 
 Performance windows and Apple reports use span attributes. They are not OpenTelemetry metric instruments.
 Callback FPS differs from presented FPS. GPU command duration does not measure GPU utilization.
 Native resource CPU times are not CPU utilization percentages.
 
-## Optional full build observation
+## Build and test with native tools
 
-Install Python host tools only for full build timing, host metrics, or controlled replay workflows.
-They remain available through the companion's build action.
+Ordinary Command-R embeds identity. Use the companion when you need complete build timing and retained result bundles.
+All commands below use Swift and Apple tools. Python is not required.
 
 ```sh
-uv sync --frozen --project tools/xcode-observe
-swift run logfire-apple build --scenario neon-release -- \
+logfire-apple build --scenario neon-release -- \
   -project examples/neon-stack/NeonStack.xcodeproj -scheme NeonStack \
-  -configuration Release -destination 'platform=macOS,arch=arm64' build
+  -configuration Release -destination 'platform=macOS,arch=arm64' \
+  -derivedDataPath tmp/NeonStack build
+logfire-apple test-game --app tmp/NeonStack/Build/Products/Release/NeonStack.app \
+  --seconds 20 --seed 777 --render-mode aurora --aurora-layers 8
+logfire-apple analyze --report PATH_TO_REPORT_JSON
 ```
 
-The app receives the observed build ID and trace relationship through its identity resource.
-Ordinary Command-R supplies identity without full build timing.
-See [the host tools](tools/xcode-observe/README.md) for artifacts, dashboards, and limits.
+The reference-game test runs fixed inputs and retains SDK windows.
+Onscreen tests preserve Apple's state context from launch, then select presented-frame measurements with whole-second bounds around the completed SDK window interval.
+The companion exports correlated summaries. The test app does not read credentials or duplicate the export.
+Each test retains one report, its raw windows, console output, and available native evidence.
+
+Compare two matching runs with `analyze --report NEW_REPORT --baseline BASELINE_REPORT`.
+The command rejects incompatible cohorts and observation gaps.
+It reports worst window p95 values. They are not whole-session percentiles.
+See [the native workflow guide](docs/native-workflow.md) for setup, report fields, and exit codes.
+
+The [legacy Python experiments](tools/xcode-observe/README.md) remain available for transport comparisons and earlier dashboards.
+The companion does not call them.
 
 ## Validate and inspect
 
 ```sh
 swift test
-uv run --frozen --project tools/xcode-observe pytest \
-  -c tools/xcode-observe/pyproject.toml tools/xcode-observe/tests
 ```
 
 [PROJECT.txt](docs/PROJECT.txt) contains the compact guide and terminology.

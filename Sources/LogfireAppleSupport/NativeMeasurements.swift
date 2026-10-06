@@ -1,6 +1,43 @@
 import Foundation
 
 public enum NativeMeasurements {
+    static func date(_ value: String) -> Date? {
+        let precise = ISO8601DateFormatter()
+        precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return precise.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+#if os(macOS)
+    static func aggregationOffsets(_ interval: ClosedRange<Date>, origin: Date) throws -> ClosedRange<Int> {
+        let start = max(0, interval.lowerBound.timeIntervalSince(origin))
+        let end = interval.upperBound.timeIntervalSince(origin)
+        guard end > start else { throw CompanionError.message("Native trace does not overlap the measurement window") }
+        // Apple's CLI accepts whole seconds. Cover the requested interval and retain both date ranges.
+        return Int(floor(start))...Int(ceil(end))
+    }
+#endif
+
+    public static func stateSummaries(_ process: [String: Any], pid: Int32) -> [[String: Any]] {
+        guard (process["PID"] as? NSNumber)?.int32Value == pid, let domain = process["Domain"] as? String else { return [] }
+        return (process["Groups"] as? [[String: Any]] ?? []).flatMap { group in
+            summaries(["PID": pid, "Layers": group["Layers"] ?? []], pid: pid).map { measurement in
+                var result = measurement
+                result["measurement.scope"] = "state_layer"
+                result["state.domain"] = domain
+                result["state.label"] = group["State Label"]
+                result["state.duration_seconds"] = group["Total Duration (sec)"]
+                let window = process["Aggregation Window"] as? [String: Any] ?? [:]
+                result["aggregation.started_at"] = window["Start"]
+                result["aggregation.ended_at"] = window["End"]
+                let metadata = group["Stable State"] as? [String: Any] ?? [:]
+                if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
+                    result["state.metadata"] = String(data: data, encoding: .utf8)
+                }
+                return result
+            }
+        }
+    }
+
     public static func summaries(_ process: [String: Any], pid: Int32, stateDomains: Set<String> = []) -> [[String: Any]] {
         guard (process["PID"] as? NSNumber)?.int32Value == pid else { return [] }
         let resource = process["Resource Usage"] as? [String: Any] ?? [:]
@@ -28,6 +65,8 @@ public enum NativeMeasurements {
             let configuration = layer["Configuration"] as? [String: Any] ?? [:]
             var result: [String: Any] = ["measurement.source": "apple.metalperftrace",
                 "measurement.scope": "layer", "layer_index": index]
+            result["measurement.started_at"] = stats["Start Date"] as? String
+            result["measurement.ended_at"] = stats["End Date"] as? String
             let states = (process["States"] as? [String: Any] ?? [:]).filter { stateDomains.contains($0.key) }
             if !states.isEmpty, let data = try? JSONSerialization.data(withJSONObject: states, options: [.sortedKeys]),
                let json = String(data: data, encoding: .utf8) { result["game.native.states"] = json }

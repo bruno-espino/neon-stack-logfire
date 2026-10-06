@@ -8,11 +8,12 @@ Toolchain: Xcode 27 with its Metal toolchain. Native lookback requires macOS 27.
 
 Setup
 Open examples/neon-stack/NeonStack.xcodeproj.
-Configure a write token once with swift run logfire-apple configure --region us.
+Install the companion with tools/install-companion.sh. Add ~/.local/bin to PATH if needed.
+Configure a write token once with logfire-apple configure --region us.
 Existing private prototype credentials remain compatible.
 Select NeonStack and My Mac. Press Cmd-R. LLDB remains enabled.
 The SDK and ordinary build identity step require no Python or relay.
-Run swift run logfire-apple doctor to inspect setup without displaying credentials.
+Run logfire-apple doctor to inspect setup without displaying credentials.
 
 Data flow
 Game operation -> Swift SDK -> OTLP HTTPS -> Logfire.
@@ -22,13 +23,14 @@ Apple MetricKit reports -> adapter inside the SDK -> historical Logfire spans.
 Apple display/resource measurements -> optional Swift companion -> Logfire.
 Native capture -> local recording, symbols, checksums, and Logfire metadata.
 Host Swift build step -> embedded build identity -> app startup identity record.
-Optional Python build observer -> complete build trace and build-time host samples.
+Swift companion build action -> complete build trace, task totals, selected host samples, and .xcresult.
+Swift test-game action -> fixed inputs, SDK windows, Apple capture/state aggregates, and one session report.
 
 Native evidence
 Keep the game running. From the repository root, run:
-swift run logfire-apple capture --last 10s
+logfire-apple capture --last 10s
 For live measurements, run:
-swift run logfire-apple attach --seconds 30
+logfire-apple attach --seconds 30
 Use --service neon-stack when multiple instrumented apps run.
 Add --no-telemetry to keep evidence local.
 The companion verifies the process, executable, process start time, and embedded build ID.
@@ -37,12 +39,17 @@ Open the retained .atrc recording in Instruments.
 The manifest identifies the session, build, measurement interval, binary, symbols, and artifact checksums.
 The recording can contain other processes. Exported summaries select our PID.
 
-Optional build investigation
-Run uv sync --frozen --project tools/xcode-observe only for advanced host workflows.
-Use swift run logfire-apple build with observer options and xcodebuild arguments.
-Full build timing still uses the Python observer. It is an optional companion action.
-Controlled seeded replays and relay comparisons also remain available in that package.
-Import dashboard JSON from tools/xcode-observe into your Logfire project.
+Native build and test investigation
+Use logfire-apple build with options and xcodebuild arguments after --.
+Use logfire-apple test-game --app APP --seconds 20 for the reference game.
+Onscreen tests retain launch context, then select matching native state layers with whole-second bounds around complete SDK window dates.
+Offscreen tests retain SDK and Metal command timing only.
+Use logfire-apple analyze --report REPORT --baseline BASELINE for matched runs.
+The gate requires Release builds, at least three windows, and matching test/device cohorts.
+Exit 0 means passed. Exit 1 means regressed. Exit 2 means insufficient or incompatible evidence.
+The companion uses no Python and needs no source checkout after installation.
+Legacy Python experiments and dashboards remain separately available.
+See docs/native-workflow.md for commands and report limitations.
 
 Terminology
 SDK: native Swift application integration, distributed as a Swift package.
@@ -54,13 +61,14 @@ Signpost: native event or interval on an Instruments timeline.
 StateReporting: Apple state context for profiling tools and MetricKit.
 MetricKit: Apple metric and diagnostic report delivery to the application.
 Adapter: code inside the SDK that selects Apple report fields and exports them.
-Companion: optional Swift host command for capture, live attach, and build-tool routing.
+Companion: optional native executable for captures, observed builds, reference-game tests, and analysis.
 Relay: optional host forwarder for transport comparisons. Direct SDK export needs no relay.
 metalperftrace: Apple's macOS CLI for live and historical Metal measurements.
 Capture: Apple recording artifact, distinct from an OpenTelemetry trace.
 Build ID: identifies the app build and joins its runtime records and captures.
 Session ID: identifies one app run and joins independent operation and measurement records.
 Source digest: fingerprints source, package inputs, and project settings.
+Regression gate: compares matched reports and rejects missing or incompatible evidence.
 dSYM: retained debug symbols for native analysis.
 
 Measurement limits
@@ -79,6 +87,7 @@ Capture currently requires a live verified SDK session. Finished-session capture
 Physical iOS runtime, real MetricKit delivery, and a second tester Mac remain unverified.
 
 Next steps
+Defer the tester report button until the native consolidation workflow is validated.
 Verify setup and direct export on another tester Mac.
 Test physical iOS delivery with development credentials.
 Await a real MetricKit report and verify its historical version and state context.

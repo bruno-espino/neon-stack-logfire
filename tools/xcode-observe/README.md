@@ -1,5 +1,6 @@
 > Ordinary Xcode runs and native captures now use Swift only. See [the root guide](../../README.md).
-> Install this optional Python package for full build observation, controlled replays, or relay comparisons.
+> This Python package retains earlier experiments, relay comparisons, and metrics dashboards.
+> The Swift companion now handles observed builds and game tests. It does not call this package.
 
 # xcode-observe
 

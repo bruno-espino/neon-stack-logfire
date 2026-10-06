@@ -87,3 +87,53 @@ Canonical lowercase build IDs preserve joins across the Python observer and Swif
 A twelve-second offscreen replay uses the SDK Metal adapter and retains a valid GPU window.
 Repository and app credential scans report no findings.
 The user chose public repository visibility for game design collaboration.
+
+Native build and automated analysis consolidation
+Deferred the tester report button. Complete the native workflow before adding more entry points.
+Replaced the companion's Python build route with native process handling and macOS host samples.
+Build observation retains Xcode timing totals, issue counts, logs, and .xcresult files.
+Added an installer. The compiled companion works outside the source checkout.
+Added a seeded reference-game test action with one retained session report.
+The host exports SDK windows once. The test app receives no credentials and performs no network export.
+Added state-layer capture summaries and matched Release report comparison.
+The gate separates callback cadence from native presentation measurements.
+It rejects mismatched cohorts, missing data, and excessive native coverage gaps.
+Worst window p95 values remain distinct from session percentiles.
+Legacy Python transport experiments and earlier dashboards remain optional and separate.
+
+Experiments and native limits
+A trimmed Metal recording lost the initial StateReporting transition after warmup.
+Retaining launch context restores state aggregation. Comparison selects a separate measurement slice.
+Rejected packed JSON metadata. It did not fix the missing transition and added adapter complexity.
+Retained long-lived reporters and separate volatile session/build metadata types.
+Apple monitoring can run locally without network export.
+The Apple CLI accepts whole-second aggregation offsets. Fractional seconds and millisecond suffixes fail.
+The companion rounds bounds outward and retains requested, aggregation, and actual measurement dates.
+Retained native slices still omit partial boundary samples.
+The gate permits at most one second of loss at each SDK boundary and reports the covered fraction.
+Two twenty-second runs covered about 93 percent of their fifteen-second SDK measurement intervals.
+Use longer runs and calibrate repeated-run noise before enforcing a CI budget.
+No daemon, relay, or Python environment participates in the primary workflow.
+Deep CPU stacks and scheduling analysis still require Instruments.
+
+Verification for the consolidated workflow
+All 28 Swift SDK and companion tests pass.
+Tests cover cohort rejection, state selection, coverage gaps, zero-baseline regressions, and process-group cancellation.
+Native macOS and iOS Simulator Release builds pass with zero warnings and errors.
+Both app resources contain the exact companion build ID.
+The missing-scheme build preserves Xcode exit 65.
+The installed executable runs from outside the repository.
+Two matched onscreen tests retain three SDK windows and three native summaries each.
+Both tests have no observation gaps. Their comparison passes an experimental 20 percent threshold.
+The host exporters acknowledge nine records per game run without failures.
+A scoped Logfire query verifies build records and correlated native/state/window records.
+An offscreen test retains its SDK GPU window and image without native presentation claims.
+Local documentation links resolve. Credential and private-reference scans report no findings.
+The verification apps stop after their own captures. The repository remains public.
+
+Remaining validation
+The performance budget is not calibrated for CI enforcement.
+Real daily MetricKit delivery, physical iOS runtime, and a second tester Mac remain unverified.
+Finished-session and iOS capture import remain future work.
+Signed executable distribution and a cheaper incremental build-identity helper remain future work.
+Keep the tester report button deferred until these workflow checks settle.

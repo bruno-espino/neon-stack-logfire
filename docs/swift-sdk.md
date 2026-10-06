@@ -101,7 +101,7 @@ The example build phase runs `tools/embed-build.swift` with the macOS host SDK.
 It embeds a build ID, source fingerprint, Git commit, configuration, SDK, and Xcode version.
 It reads no credentials and performs no network request.
 The app exports identity when it starts. Command-B alone creates local identity.
-The optional observer supplies full build timing and a build trace relationship.
+The Swift companion build action supplies full build timing and a build trace relationship.
 
 ```sh
 swift run logfire-apple capture --last 10s
@@ -131,4 +131,9 @@ They do not guarantee delivery before suspension or termination. An abrupt debug
 
 The optional loopback relay remains available for transport comparisons.
 Set `LOGFIRE_DEV_ENDPOINT=http://127.0.0.1:4318/v1/traces` without direct opt-in to use it.
-The relay and advanced host tools require the optional Python environment.
+The legacy relay experiment requires the optional Python environment. Native builds, game tests, and captures use Swift.
+See [the native workflow](native-workflow.md) for automated testing and analysis.
+
+Local Apple monitoring remains active when development network export is disabled.
+The client retains each StateReporting reporter for its domain. Stable metadata selects performance cohorts.
+Session and build IDs use volatile metadata. They do not fragment stable performance groups.
