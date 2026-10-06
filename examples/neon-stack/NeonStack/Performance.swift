@@ -3,9 +3,10 @@ import LogfireSwift
 import Metal
 
 enum GameTelemetry {
+    static let scenario = DevelopmentScenario(client: client)
     static let client: Logfire = {
         do {
-            return try Logfire.development(serviceName: "neon-stack", apple: .init(
+            return try Logfire.development(serviceName: "neon-stack", apple: .init(responsiveness: true,
                 stateDomains: ["dev.example.NeonStack.rendering"],
                 metadataKeys: ["workload", "aurora_layers", "particles"]))
         } catch {
@@ -27,6 +28,8 @@ final class PerformanceRecorder {
         stateDomain: "dev.example.NeonStack.rendering") { [weak self] window in
             guard let self else { return }
             lock.lock(); latest = (window.callbackFPS, window.gpuMeanMilliseconds ?? 0); lock.unlock()
+            do { try GameTelemetry.scenario?.record(window) }
+            catch { print("Scenario renderer report failed: \(error)") }
             guard let output else { return }
             do {
                 let url = URL(fileURLWithPath: output)
@@ -68,7 +71,7 @@ final class PerformanceRecorder {
         recorder.record(frameMilliseconds: frameMilliseconds, preparationMilliseconds: cpuMilliseconds,
             gpuMilliseconds: total > 0 ? total : nil,
             context: RenderContext(mode: game, width: width, height: height, workload: workload,
-                metadata: ["game": .string(game), "particles": .int(particles)]),
+                metadata: ["game": .string(game), "particles": .int(particles)], gpuTimeScope: .commandBufferSum),
             attributes: attributes)
     }
 

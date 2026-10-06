@@ -21,6 +21,8 @@ struct SessionHostSamples {
         sample["measurement.source"] = "darwin.host"
         let record = context.merging(sample) { _, measured in measured }
         records.append(record)
+        if let cpu = sample["cpu_utilization"] as? Double { client.metrics?.record(.hostCPU, value: cpu) }
+        if let memory = sample["memory_nonfree_bytes"] as? UInt64 { client.metrics?.record(.hostMemory, value: Double(memory)) }
         client.event("game.host.sample", attributes: Companion.attributes(record))
     }
 

@@ -1,22 +1,25 @@
 import Foundation
 import Metal
 
+public enum RenderGPUTimeScope: String { case commandBuffer = "command_buffer", commandBufferSum = "sum_of_command_buffers" }
+
 public struct RenderContext: Equatable {
     public let mode: String
     public let width: Int
     public let height: Int
     public let workload: String
+    public let gpuTimeScope: RenderGPUTimeScope
     public let metadata: [String: LogfireAttribute]
 
     public init(mode: String, width: Int, height: Int, workload: String = "onscreen",
-                metadata: [String: LogfireAttribute] = [:]) {
+                metadata: [String: LogfireAttribute] = [:], gpuTimeScope: RenderGPUTimeScope = .commandBuffer) {
         self.mode = mode; self.width = width; self.height = height
-        self.workload = workload; self.metadata = metadata
+        self.workload = workload; self.metadata = metadata; self.gpuTimeScope = gpuTimeScope
     }
 
     var attributes: [String: LogfireAttribute] {
         metadata.merging(["render_mode": .string(mode), "drawable_width": .int(width),
-            "drawable_height": .int(height), "workload": .string(workload)]) { _, context in context }
+            "drawable_height": .int(height), "workload": .string(workload), "gpu_time.scope": .string(gpuTimeScope.rawValue)]) { _, context in context }
     }
 }
 
@@ -41,7 +44,8 @@ public struct FrameWindow {
     }
 }
 
-/// Record completed frames. Callback cadence does not measure display presentation.
+/// Record completed renderer frames. Preparation wall time excludes other main-thread and SwiftUI work.
+/// Callback cadence does not measure display presentation.
 public final class FrameRecorder {
     private let client: Logfire
     private let domain: String
@@ -117,14 +121,25 @@ public final class FrameRecorder {
             "frames_over_25_ms": .int(frames.filter { $0 > 25 }.count),
             "sample_limit_reached": .bool(frames.count == 10000),
             "thermal_state": .int(ProcessInfo.processInfo.thermalState.rawValue),
+            "measurement.source": .string("sdk.frame_recorder"), "measurement.scope": .string("render_callbacks"),
+            "cpu_frame.scope": .string("frame_preparation_wall_time"), "main_thread.measured": .bool(false),
         ]) { _, measured in measured }
         if !gpu.isEmpty { values["gpu_command_p95_ms"] = .double(percentile(gpu, 0.95)) }
         let window = FrameWindow(started: windowDate, ended: windowDate.addingTimeInterval(elapsed), callbackFPS: fps,
             gpuMeanMilliseconds: gpu.isEmpty ? nil : gpu.reduce(0, +) / Double(gpu.count), attributes: values)
+        let frameSamples = frames, preparationSamples = preparation, gpuSamples = gpu
         frames.removeAll(keepingCapacity: true); preparation.removeAll(keepingCapacity: true); gpu.removeAll(keepingCapacity: true)
         self.windowBegan = uptime; self.windowDate = window.ended
         writer.async { [self] in
-            client.window(spanName, started: window.started, ended: window.ended, attributes: window.attributes)
+            client.window(spanName, started: window.started, ended: window.ended, attributes: window.attributes) {
+                let labels: [String: LogfireAttribute] = ["render_mode": .string(next.mode), "workload": .string(next.workload), "gpu_time.scope": .string(next.gpuTimeScope.rawValue)]
+                for value in frameSamples { client.metrics?.record(.frameInterval, value: value, attributes: labels) }
+                for value in preparationSamples { client.metrics?.record(.preparation, value: value, attributes: labels) }
+                for value in gpuSamples { client.metrics?.record(.gpuCommands, value: value, attributes: labels) }
+                client.metrics?.record(.frames, value: Double(frameSamples.count), attributes: labels)
+                client.metrics?.record(.slowFrames, value: Double(frameSamples.filter { $0 > 25 }.count), attributes: labels)
+                client.metrics?.record(.callbackFPS, value: fps, attributes: labels)
+            }
             onWindow?(window)
         }
         lock.unlock()

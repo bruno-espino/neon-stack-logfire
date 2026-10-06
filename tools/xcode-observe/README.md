@@ -168,3 +168,6 @@ Uploaded names are explicit developer and CI context.
 
 Build correctness depends on Xcode. Telemetry is an optional side effect. The prototype's reliability checks cover preserved exit
 codes, bounded shutdown, and retained reports.
+
+The optional development relay forwards `/v1/traces` and `/v1/metrics` with the host write token.
+The ordinary Swift development flow exports directly and does not require this relay.

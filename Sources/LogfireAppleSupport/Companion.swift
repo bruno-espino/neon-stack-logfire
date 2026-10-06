@@ -6,7 +6,13 @@ import Darwin
 
 enum CompanionError: Error, CustomStringConvertible {
     case message(String)
-    var description: String { if case .message(let value) = self { return value }; return "Native command failed" }
+    case interrupted(Int32)
+    var description: String {
+        switch self {
+        case .message(let value): return value
+        case .interrupted(let code): return "Apple command interrupted (exit \(code))"
+        }
+    }
 }
 
 struct NativeSession {
@@ -53,6 +59,11 @@ struct NativeSession {
 }
 
 enum HostCommand {
+    static func requireSuccess(_ code: Int32, message: String) throws {
+        if [130, 143].contains(code) { throw CompanionError.interrupted(code) }
+        guard code == 0 else { throw CompanionError.message(message) }
+    }
+
     static func run(_ executable: String, _ arguments: [String], output: URL, errors: URL,
                     seconds: Double, stopAtDeadline: Bool = false, onTick: (() throws -> Bool)? = nil,
                     onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {
@@ -72,16 +83,36 @@ public enum Companion {
         let values = Array(arguments.dropFirst())
         if action == "configure" { return try configure(values) }
         if action == "doctor" {
+            guard values.isEmpty || values == ["--send"] || values == ["--help"] else { throw CompanionError.message("Use doctor [--send]") }
+            if values == ["--help"] { print("Usage: logfire-apple doctor [--send]. --send verifies ingestion with one telemetry record."); return 0 }
             print("Swift SDK and native companion require no Python runtime.")
             print("Session markers: \(Logfire.developmentSessionsDirectory.path)")
-            do { _ = try configuration(); print("Runtime credentials: configured") }
-            catch { print("Runtime credentials: unavailable. Configure the private development credential file.") }
+            let config: LogfireConfiguration?
+            var configured = true
+            do { config = try configuration(); print("Runtime credentials: configured. Ingestion is not verified until doctor --send.") }
+            catch {
+                print("Runtime credentials: unavailable. Run logfire-apple configure --region us or --region eu on this Mac.")
+                config = nil; configured = false
+            }
             print("Native Metal tools: \(FileManager.default.isExecutableFile(atPath: "/usr/bin/metalperftrace") ? "available" : "unavailable (macOS 27 required)")")
-            return 0
+            print("GPU workload tools: \(FileManager.default.isExecutableFile(atPath: "/usr/bin/gpudebug") ? "available" : "unavailable (macOS 27 required)")")
+            if values == ["--send"] {
+                guard configured else { return 2 }
+                let client = Logfire(serviceName: "logfire-apple-doctor", configuration: config)
+                let id = UUID().uuidString
+                client.event("apple.telemetry.check", attributes: ["check.id": .string(id)])
+                client.flush(); printDelivery(client)
+                print("Ingestion check ID: \(id)")
+                return client.delivery.enabled && client.delivery.exportedSpans == 1 && client.delivery.failedSpans == 0 ? 0 : 2
+            }
+            return configured ? 0 : 2
         }
         if action == "build" { return try NativeBuild.run(values) }
         if action == "test-game" { return try GameTest.run(values) }
+        if action == "run" { return try ScenarioRun.run(values) }
         if action == "analyze" { return try SessionAnalysis.run(values) }
+        if action == "profile" { return try InstrumentsProfile.run(values) }
+        if action == "gpu-capture" { return try GPUCapture.run(values) }
         guard ["capture", "attach"].contains(action) else { throw CompanionError.message(usage) }
         if values.contains("--help") { print(usage); return 0 }
         guard #available(macOS 27.0, *) else { throw CompanionError.message("Native Metal monitoring requires macOS 27") }
@@ -223,12 +254,12 @@ public enum Companion {
         var checksums: [String: String] = [:]
         let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? []
         for file in files where (try file.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true {
-            checksums[String(file.path.dropFirst(folder.path.count + 1))] = hash(try Data(contentsOf: file))
+            checksums[String(file.path.dropFirst(folder.path.count + 1))] = try fileHash(file)
         }
         let details: [String: Any] = ["capture.id": folder.lastPathComponent, "capture.started_at": started, "capture.ended_at": collectedEnd,
             "measurement.requested_start": requestedStart, "measurement.requested_end": ended,
             "capture.path": folder.path, "capture.tool": "apple.metalperftrace", "capture.storage": "local",
-            "capture.kind": "native-lookback", "binary.sha256": hash(try Data(contentsOf: session.executable))]
+            "capture.kind": "native-lookback", "binary.sha256": try fileHash(session.executable)]
         var manifest = session.metadata.merging(details) { _, capture in capture }
         manifest["artifacts"] = checksums; manifest["capture.measurements"] = measurements
         try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted]).write(to: folder.appendingPathComponent("manifest.json"), options: .atomic)
@@ -281,7 +312,13 @@ public enum Companion {
         }
     }
 
-    static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    static func fileHash(_ file: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var digest = SHA256()
+        while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty { digest.update(data: data) }
+        return digest.finalize().map { String(format: "%02x", $0) }.joined()
+    }
 
     static func printDelivery(_ client: Logfire) {
         let status = client.delivery
@@ -289,20 +326,24 @@ public enum Companion {
         else { print("Export disabled. Measurements remain local.") }
     }
 
-    static func client(local: Bool, service: String) -> Logfire {
-        do { return Logfire(serviceName: service, configuration: local ? nil : try configuration()) }
+    static func client(local: Bool, service: String, resource: [String: Any] = [:]) -> Logfire {
+        let identity = attributes(resource.filter { ["session_id", "build.id", "build.configuration", "build.source_digest", "build.sdk", "git.commit", "scenario.id"].contains($0.key) })
+        do { return Logfire(serviceName: service, configuration: local ? nil : try configuration(), resourceAttributes: identity) }
         catch { print("Telemetry unavailable. Reports remain local."); return Logfire(serviceName: service, configuration: nil) }
     }
 
     static let usage = """
     Usage: logfire-apple configure [--region us|eu]
-           logfire-apple doctor
+           logfire-apple doctor [--send]
            logfire-apple capture --last 10s [--service NAME] [--no-telemetry]
            logfire-apple attach --seconds 30 [--service NAME] [--no-telemetry]
+           logfire-apple profile --seconds 5 [--service NAME] [--no-telemetry]
+           logfire-apple gpu-capture [--profile] [--count 1] [--service NAME] [--no-telemetry]
            logfire-apple build [--scenario NAME] [--no-telemetry] -- [xcodebuild arguments]
            logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
+           logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu] [--no-telemetry]
            logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
-    Capture and attach select the latest verified live SDK session automatically.
+    Capture, attach, and profile select the latest verified live SDK session automatically.
     Optional overrides: --sessions DIRECTORY --output DIRECTORY.
     All actions use Swift and Apple tools. Full reports and captures remain local.
     """

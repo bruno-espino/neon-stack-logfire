@@ -44,7 +44,7 @@ enum SessionAnalysis {
             guard let slow = number(object["frames_over_25_ms"]), slow >= 0, slow <= number(object["frames"])!,
                   let thermal = number(object["thermal_state"]), (0...3).contains(thermal),
                   ["onscreen", "offscreen"].contains(object["workload"] as? String ?? ""),
-                  ["classic", "neon", "aurora"].contains(object["render_mode"] as? String ?? "") else {
+                  let mode = object["render_mode"] as? String, !mode.isEmpty, mode.count <= 128 else {
                 throw CompanionError.message("Invalid window cohort or frame counts")
             }
             return object

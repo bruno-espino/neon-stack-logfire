@@ -306,7 +306,8 @@ struct LogRollEngine {
 
     /// Breadth-first search over (cell, which way the maze faces, moment in the fire rhythm). The rhythm repeats
     /// every 16 steps, so that is the whole state. A turn takes two steps, which keeps the search almost shortest-first.
-    func route() -> [Plan] {
+    func route(to target: (x: Int, z: Int)? = nil) -> [Plan] {
+        let destination = target ?? maze.exit
         let size = maze.size, layers = Self.cycleTicks / Self.moveSteps
         func state(_ cell: (x: Int, z: Int), _ facing: Int, _ layer: Int) -> Int {
             (maze.index(cell.x, cell.z) * 4 + facing) * layers + layer % layers
@@ -320,7 +321,7 @@ struct LogRollEngine {
             let current = queue[head]; head += 1
             let layer = current % layers, facing = current / layers % 4, cell = current / layers / 4
             let here = (x: cell % size, z: cell / size)
-            if here == maze.exit && current != start {
+            if here == destination && current != start {
                 var path: [Plan] = []
                 var walk = current
                 while walk != start { path.append(action[walk]); walk = parent[walk] }

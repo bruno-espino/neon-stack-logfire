@@ -193,3 +193,239 @@ The MCP validates and saves the dashboard definition.
 Browser rendering remains unverified. The browser is signed out, and API-key credentials cannot supply an OAuth browser handoff.
 Local JSON, layout, documentation links, whitespace, credential, and private-reference checks pass.
 No app code changed. No additional game session, native recording, or Simulator run was needed.
+
+Short Instruments CPU profiling
+Reviewed Apple's WWDC26 responsiveness and game-performance workflows against the installed Xcode 27 tools.
+Time Profiler identifies CPU busy work. System Trace and Swift Concurrency address waiting and scheduling.
+Retained Metal history cannot recover CPU stacks from an earlier interval.
+Added optional logfire-apple profile with a five-second default and a thirty-second maximum.
+The command attaches to a verified SDK session with Game Performance Overview and leaves the app running.
+No game code, SDK interface, ordinary Command-R flow, or default check changes.
+
+The companion exports selected Running CPU samples and at most twenty leaf functions.
+Each record carries the same app build/session identity and the actual recording interval.
+Leaf weights exclude callers. Unresolved samples remain in the fraction denominator.
+Raw environment data, source paths, addresses, and full stacks stay in local artifacts.
+The exported metadata retains symbols, image identity, and the local artifact location.
+The manifest retains the full recording, available symbols, selected summary, and SHA256 checksums.
+Artifact hashing now reads bounded chunks instead of loading each file into memory.
+CPU decoding gaps remain explicit. Profiler overhead prevents baseline comparisons with these intervals.
+
+Added CPU profile and top leaf-function tables to the reusable dashboard template.
+The existing dashboard panels remain unchanged. CPU tables retain individual captures without summing them.
+No daemon, Python dependency, renderer instrumentation, or longer default test is introduced.
+Deferred direct GPU counter sampling. It requires renderer changes and can affect the measured workload.
+The installed xctrace exports CPU tables as XML. Its recording-options configuration uses JSON.
+Rejected a JSON CPU-export assumption and corrected fractional time limits to integer milliseconds.
+
+Verification
+All 33 Swift unit tests pass, including XML reference resolution, process selection, self weights, interval validation, and streamed hashes.
+A five-second live recording exports 751 Running CPU samples and twenty leaf functions.
+The exporter acknowledges all 22 records without failures. The verification app remains running after capture.
+An earlier run retains 630 samples locally but fails network delivery. The failure does not reproduce.
+Configured credentials pass the ingest check. The exporter still has no persistent retry queue.
+Dashboard queries verify actual data and exact session/build filters through Logfire MCP.
+The saved dashboard has twelve panels. Browser rendering remains unverified because the browser is signed out.
+The Release companion installs successfully. Its profile help works outside the source checkout.
+No iOS Simulator build, long performance run, or baseline gate is required for this companion-only change.
+
+Next investigation
+Let the game optimizer identify a real slowdown before selecting another profiler.
+Add finished-session artifact import with a retained identity manifest and matching binary/symbol validation.
+Evaluate shader-compilation recording options and retained per-frame Metal timelines for hitch investigations.
+Keep CPU waiting and Swift actor contention in Instruments until an explicit summary contract is defined.
+Keep release licensing, version tags, package CI, signed distribution, and second-Mac setup on the packaging backlog.
+
+
+GPU consolidation and merged Log Roll (2026-10-06)
+Goal
+Test Apple's new GPU tools before adding renderer instrumentation or a required observer.
+Bring the merged Log Roll workload into the existing native diagnostics branch.
+
+Changes
+Added optional logfire-apple gpu-capture with bounded capture and replay profiling.
+The command verifies SDK process identity and retains captures, symbols, output, and checksums locally.
+Logfire receives capture identity and at most three cost-ranked encoders and three cost-ranked shaders.
+Raw shader sources, buffers, textures, and property dumps stay local.
+The command creates and terminates its own gpudebug sessions. No daemon or Python runtime is required.
+Added a GPU replay table to the reusable dashboard and the existing hosted dashboard.
+All twelve existing hosted panel definitions remain intact.
+Added doctor --send to verify ingestion with one acknowledged, queryable record.
+Each tester still needs their own project write token on their Mac.
+Frame windows explicitly identify renderer preparation scope and main_thread.measured=false.
+The existing test-game action explicitly selects Neon Stack after the Log Roll merge.
+
+Experiments and limits
+Apple M4 can replay-profile the captured workload without a Metal 4 renderer migration.
+A completed Log Roll renderer window is a better readiness signal than the initial SDK session marker.
+Two early capture attempts fail because Metal capture is not ready yet.
+The first complete Log Roll replay exports six measurements and one capture record without delivery failures.
+Its scene encoder accounts for about 78 percent of that captured workload's replay cost.
+This is not a baseline, GPU utilization reading, or diagnosis of the previous main-thread hitch.
+Shader Wait is an instruction count. It does not measure CPU waiting.
+Rejected immediate timeline extraction as a shader-cost ranking. Reloaded profiles provide the ranked shader table.
+Ranked shader properties do not include active time. The summary does not invent it.
+Apple can acknowledge profile collection while producing no usable cost tables.
+One repeated capture exhibits this condition. The command retains evidence and reports exit 2.
+A subsequent complete capture validates the final cost-ranked path and exports all seven records.
+Default development checks remain short. No GPU capture, iOS Simulator, or long benchmark is added.
+
+Verification
+All 36 Swift SDK and companion tests pass.
+The merged macOS Debug and Release game builds pass.
+The Log Roll engine tests pass with their shared seeded random implementation.
+The ingestion check and GPU summary records are queryable through Logfire MCP.
+The installed Release companion exposes GPU capture help outside the checkout.
+Hosted dashboard definition and queries are verified. Browser rendering remains unverified.
+
+Next
+Add a generic short launcher with renderer readiness and explicit scenario completion.
+Keep Log Roll's two-mazes-then-loss actions in its game adapter. The scenario is not implemented here.
+Add a separate main-thread window with CPU-time deltas and bounded main-queue response probes.
+Keep CPU busy time, queue delay, render preparation, and GPU work as separate measurements.
+Import finished-session artifacts through the same identity and summary contracts.
+
+
+Reusable scenario runner (2026-10-06)
+Goal
+Move process control and evidence collection out of individual game adapters.
+Keep app-owned actions and assertions separate from the optional native profiler.
+
+Implemented
+Added logfire-apple run with a versioned JSON definition and a 20-second default scenario deadline.
+Added DevelopmentScenario for SDK readiness, renderer evidence, completion, and background telemetry flush.
+Added common LOGFIRE_SESSION_ID and LOGFIRE_SESSION_DIR names. Existing Neon names remain fallback options.
+The runner validates the launched PID, kernel process start time, executable, SDK session, and build identity.
+Fast applications can publish valid completion between polls. Successful process exit alone never passes.
+The runner retains scenario inputs, window evidence, host samples, delivery counts, and one report.
+Optional CPU or GPU diagnostics use the run's isolated SDK marker directory and existing native commands.
+Added a scenario-outcome table to the reusable dashboard and the hosted dashboard.
+Default development checks still use Swift tests and a cached macOS Debug build. No scenario, profiler, or Simulator runs by default.
+
+Log Roll adapter
+Seed 777 clears two mazes through the existing autopilot.
+The adapter plans a safe route onto a fire grate and waits for the engine's ordinary loss condition.
+The adapter does not assign the score or game-over state.
+Assertions require exactly two clears and the expected loss location.
+The example uses 65,536 particles and completes in about 12 seconds.
+This run verifies workflow behavior. It is not a performance baseline.
+
+Corrections from experiments
+Removed the old frame reader's restriction to Neon Stack rendering-mode names.
+Instruments can emit a valid running sample with an unavailable-backtrace sentinel.
+The decoder now retains that sample's CPU weight and records an unresolved backtrace.
+It continues to reject broken references and unsupported schemas.
+The SDK stops retaining scenario frame evidence after completion.
+The runner rereads cancellation after an optional blocking profiler callback.
+Rejected copied Apple system binaries inside synthetic app bundles as reliable process fixtures.
+Script fixtures exercise missing-protocol timeout and successful exit without completion instead.
+Synchronous optional profiling can leave gaps in host sampling. Timestamps remain explicit.
+Profiling can extend total command time. App completion must still meet its own deadline.
+
+Verification
+All 44 Swift SDK and companion tests pass. The cached macOS Debug game build passes.
+The engine scenario passes for seeds 42 and 777 and rejects an early crash.
+The live default scenario passes with one complete renderer window and successful app/runner export.
+A non-rendering Foundation protocol fixture passes and exercises between-poll completion.
+The optional CPU flow exports 1,447 running samples and twenty leaf functions.
+SDK, scenario, host, and CPU records join by session/build through Logfire MCP.
+The scenario dashboard query returns the final outcome and actual SDK delivery counts.
+All thirteen prior hosted panel definitions remain intact. The dashboard now has fourteen panels.
+An interrupt during optional CPU collection returns 130 and leaves no owned game process running.
+The installed Release command exposes run help outside the checkout.
+No iOS Simulator or long benchmark is added. GPU replay is verified in the preceding iteration.
+
+Next
+Add the independent main-thread measurement after its timing contract is validated.
+Consider asynchronous profiler orchestration when continuous host sampling is needed during diagnostics.
+Add retained finished-session import and package distribution without expanding ordinary developer checks.
+
+2026-10-06 Native metrics, responsiveness, and trace assessment
+
+Why
+The hosted metrics table contained only five legacy Python instruments.
+The Swift SDK published performance attributes without native metrics.
+Thousands of renderer reports appeared as independent root traces.
+
+Changed
+Added fifteen fixed native OTel instruments with delta histograms/counters and gauges.
+Raw renderer samples export from the existing writer queue. Histogram exemplars retain report trace context.
+Added opt-in independent main-queue probes, main-thread CPU, process CPU, and macOS footprint.
+The reference game enables the monitor. One pending probe bounds its scheduling cost.
+SDK events/windows are logs. Timed operations remain spans and native signposts.
+W3C context groups app, host, profiler, and completion evidence under one scenario root.
+Build traces remain separate and join through embedded build identity.
+Build task totals explicitly describe aggregate parallel costs.
+Added two maze-clear events so scenario progress is visible without per-frame traces.
+Expanded the dashboard from fourteen to twenty panels and validated every query against live Logfire data.
+The optional Python relay forwards metrics as well as traces.
+
+Experiments and corrections
+A controlled sleep and CPU loop both produce about 1.2 seconds of queue delay.
+Only the CPU loop raises main-thread CPU activity, to about 24% over its five-second window.
+Mach resource time units differed on this machine. Replaced the initial process calculation with getrusage timevals.
+Rejected dispatchMain for the probe because it exits the captured main thread. The probe uses CFRunLoopRun.
+The pinned OTel metric registry required an explicit aggregation view. Without it, instruments exported no observations.
+A heavy particle scenario timed out with and without profiling. It is not a passing performance baseline.
+GPU workload capture took about 0.6 seconds. Replay analysis took about 25 seconds.
+Moved replay after the runner stops and reaps the app. The ordinary scenario still meets its 20-second deadline.
+The staged run passed in about 12 seconds and exported six ranked measurements plus capture metadata.
+Added separate timed capture/analysis spans and app/analysis durations.
+The reusable metric catalog records the measured results and interpretation limits.
+
+Validation and gaps
+Fifty Swift tests pass. Release and cached macOS Debug game builds pass.
+The optional relay passes two endpoint tests and Ruff checks.
+Live queries confirm fifteen metric names, matching frame counts, CPU units, and parented game/build evidence.
+All twenty saved dashboard queries pass. Browser rendering was not verified because the UI requires OAuth login.
+CPU profiling still blocks host polling during its collection/decoding. GPU capture can leave a brief polling gap.
+The development exporter has no durable offline queue. MetricKit delivery and physical iOS remain unverified here.
+No Simulator, profiler, controlled probe, or long benchmark is added to the default development check.
+
+Next
+Exercise this package on the collaborator's Mac with the same short scenario.
+Use the new queue/CPU distinction before choosing expensive profiler collection.
+Consider splitting CPU recording from offline decoding when continuous host sampling matters.
+Keep full wait timelines and shader compilation diagnosis in targeted native captures.
+
+2026-10-06 CPU recording and offline analysis follow-up
+
+Why
+CPU recording needs the live process. XML export, decoding, ranking, checksums, and publication need only the retained artifact and identity.
+Processing the artifact during gameplay competes with the app and hides profiler overhead inside its lifetime.
+
+Changed
+Split InstrumentsProfile into recording and analysis phases. Standalone profile retains its single-command interface.
+Scenario run records after readiness, stops/reaps its owned app, then analyzes the recording.
+The capture retains the original session/build identity, binary hash, trace, and available symbols.
+Added development.cpu.record and development.cpu.analysis spans under the run root.
+The recording command's existing poll callback now collects one-second host samples. No observer, daemon, or background command runner was added.
+The recorder is bounded by the remaining scenario budget. Export keeps its separate existing command bounds.
+Scenario and CPU profile dashboard tables expose app lifetime, recording cost, actual interval, and offline analysis cost.
+
+Experiments
+Game Performance Overview did not finish its five-second recording and artifact finalization within the remaining short-run budget.
+The game passed, but the requested profile was correctly marked incomplete. We did not extend the default deadline.
+Selected Time Profiler for the CPU command. Apple's responsiveness guidance starts CPU-busy investigations with Time Profiler.
+Broader Game Performance Overview remains useful in Instruments for longer combined CPU/Metal investigations.
+Time Profiler passed the normal scenario with 18.9 seconds of app lifetime and 4.2 seconds of offline analysis.
+Its actual recording interval was 5.83 seconds. Recording-command wall time was 11.3 seconds.
+Logfire received 854 running samples, forty-two unresolved samples, and twenty ranked leaf functions.
+Eleven host samples belong to the recording span. The maximum live host gap was 1.05 seconds.
+The recording and analysis spans and selected CPU logs share the run trace.
+App and runner telemetry reported zero export failures.
+
+Cancellation and validation
+Interrupting recording returns 130 and reaps the owned app.
+The first offline-analysis interrupt incorrectly returned 2. Added explicit profiler interruption handling to preserve 130/143.
+CPU and GPU analysis use the same exit-status handling. An interrupted run skips subsequent analysis and retains local recordings.
+Fifty Swift tests pass. The two modified hosted dashboard queries pass and match the reusable template.
+The installed Release companion passes with 1,217 CPU samples, twenty ranked functions, and zero delivery failures.
+Its app lifetime is 18.5 seconds. Offline analysis takes 4.3 seconds.
+CPU recording and analysis interrupts return 130 and leave no owned app alive. The GPU analysis interrupt also returns 130.
+
+Limits
+Recording still has startup/finalization cost and perturbs the app. These recordings are diagnostic, not baselines.
+App completion and profiler artifact availability remain separate outcomes.
+Standalone profile leaves the user's existing app running. Only the scenario runner stops an app it launched.
+System Trace, Swift Concurrency, and CPU hardware counters remain targeted investigations outside this CPU sampling summary.
