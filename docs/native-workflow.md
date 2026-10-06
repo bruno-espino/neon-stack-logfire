@@ -19,6 +19,20 @@ Add the directory to PATH if needed. The installer does not modify shell profile
 The executable works outside the source checkout.
 Repeat installation to update it. Signed release distribution remains future work.
 
+The local check and install scripts use the compiler and SDK from one full Xcode installation.
+They honor `DEVELOPER_DIR`. Without an override, they use the selected Xcode or fall back to `/Applications/Xcode.app` when Command Line Tools are selected.
+They require Xcode 27 or newer and print the chosen directory before compilation.
+For another installation, use:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer tools/check-dev.sh
+```
+
+This changes only that command's environment. It does not change the system selection.
+Apple documents both the system selection and the per-command override in [Configuring command-line tools settings](https://developer.apple.com/documentation/xcode/configuring-command-line-tools-settings).
+The MetricKit Swift report tests execute on macOS 27 or iOS 27. They explicitly skip on older runtime systems.
+A new SDK does not supply a new runtime framework on an older Mac.
+
 ```sh
 logfire-apple configure --region us
 logfire-apple doctor --send
@@ -31,6 +45,8 @@ Companion commands use the shared credential file directly.
 It returns exit 2 when credentials are missing or the exporter does not acknowledge the check.
 Configuration alone does not verify ingestion. The write token does not need MCP management permissions.
 Credentials remain in a private runtime file. Configuration is shared by the SDK and companion.
+Prototype users must run `configure` again. The retired prototype credential location is no longer read.
+The supported default is `~/.config/logfire-swift/credentials.env` with permissions `0600`.
 Local Apple monitoring can remain active when network export is disabled.
 Ordinary Xcode Command-R requires neither the companion nor Python.
 It embeds build identity and the SDK exports runtime records when configured.
@@ -45,13 +61,17 @@ tools/check-dev.sh
 tools/check-dev.sh --smoke
 ```
 
-The default command runs the Swift tests and an incremental macOS Debug build.
+The default command checks repository files, artifact-script formatting, game logic, audio decoding, Swift tests, and an incremental macOS Debug build.
 It reuses `tmp/DerivedData-macos`. It does not install a Release companion or launch the game.
-The optional smoke run lasts 12 seconds. It retains one or more complete SDK windows and host samples.
+The optional smoke run uses the offscreen reference renderer for 12 seconds. It retains complete SDK windows and host samples.
+It does not verify display presentation.
 It skips native capture and performs no baseline comparison. A successful smoke run does not establish a performance budget.
 The script uses the freshly built Debug companion. SDK and tool edits do not require repeated Release installation.
 
-Keep all Swift unit tests. Their execution takes less than one second on the current Mac after compilation.
+The repository checker validates local Markdown links, known credential patterns, dashboard JSON, metric columns, and source fingerprints.
+It does not validate hosted dashboard SQL. Run authenticated query checks when dashboard queries change.
+
+Keep all Swift unit tests. Scenario fixtures also compile and exercise a small app protocol.
 Skip iOS Simulator builds during this macOS workflow iteration.
 Run a separate iOS compatibility check when a change requires cross-platform validation.
 Use a 20-second native session only when validating the capture pipeline.
@@ -230,7 +250,9 @@ The private report includes app outcome, session/build identity, binary hash, sc
 Raw captures and local reports remain on the developer's Mac. SDK events export directly when credentials are available.
 The companion exports host samples and `development.run` / `development.run.summary` records with the same app session and scenario IDs.
 Missing credentials or incomplete optional profiling produce observation gaps with exit 2. Use `--no-telemetry` for an intentional local run.
-Timeout uses exit 124. App or protocol failures return nonzero. Successful assertions and complete requested evidence return 0.
+Timeout uses exit 124. App process failures preserve their exit code. Protocol failures return 1.
+Successful assertions and complete requested evidence return 0.
+The report status distinguishes a failed app that exits 2 from incomplete requested evidence that also exits 2.
 The existing `test-game` action remains the Neon Stack performance-comparison adapter.
 
 Renderer windows alone cannot identify expensive SwiftUI or other main-thread code.
@@ -355,6 +377,16 @@ Recursive frames remain separate positions. Path fractions are not inclusive fun
 Logfire receives `development.diagnostic.summary`, selected `development.diagnostic.finding` logs, and `game.cpu.call_path` logs.
 The overview omits duplicate caller stacks. The path records retain the structured frames separately.
 JSON schema metadata lets Logfire decode these attributes as objects and arrays.
+For example, query the structured summary directly:
+
+```sql
+SELECT attributes->'diagnostic.details'->'observations' AS observations
+FROM records
+WHERE span_name = 'development.diagnostic.summary'
+ORDER BY start_timestamp DESC
+LIMIT 10
+```
+
 See Logfire's [attribute serialization](https://pydantic.dev/docs/logfire/instrument/typescript/packages/logfire/#attribute-serialization).
 The dashboard tables include trace and span IDs for [native drilldown](https://pydantic.dev/docs/logfire/observe/write-dashboard-queries/#linking-to-the-live-view).
 Full recordings remain local. A local artifact path does not provide shared artifact storage.

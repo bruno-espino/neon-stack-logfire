@@ -5,9 +5,11 @@ import StateReporting
 import XCTest
 @testable import LogfireSwift
 
-@available(macOS 27.0, iOS 27.0, *)
 final class MetricKitReportsTests: XCTestCase {
     func testDiagnosticSummaryPreservesHistoricalTimeWithoutCurrentSession() throws {
+        guard #available(macOS 27.0, iOS 27.0, *) else {
+            throw XCTSkip("MetricKit Swift reports require macOS 27 or iOS 27")
+        }
         let hang = try JSONDecoder().decode(HangDiagnostic.self, from: Data("""
             {"hangDuration":{"value":2500,"unit":"ms"},
              "callStackTree":{"callStackThreads":[],"callStackPerThread":true,"binaryInfo":[]}}
@@ -36,6 +38,9 @@ final class MetricKitReportsTests: XCTestCase {
     }
 
     func testResourceMetricsNormalizeUnitsAndRetainHistogramBuckets() throws {
+        guard #available(macOS 27.0, iOS 27.0, *) else {
+            throw XCTSkip("MetricKit Swift reports require macOS 27 or iOS 27")
+        }
         let cpu = try JSONDecoder().decode(CPUTimeMetric.self, from: Data("{\"value\":{\"value\":1500,\"unit\":\"ms\"}}".utf8))
         let gpu = try JSONDecoder().decode(GPUTimeMetric.self, from: Data("{\"value\":{\"value\":750,\"unit\":\"ms\"}}".utf8))
         let writes = try JSONDecoder().decode(LogicalDiskWritesMetric.self, from: Data("{\"value\":{\"value\":4096,\"unit\":\"B\"}}".utf8))
@@ -67,6 +72,9 @@ final class MetricKitReportsTests: XCTestCase {
     }
 
     func testHistoricalMetalReportsHaveNoCurrentSessionOrBuild() throws {
+        guard #available(macOS 27.0, iOS 27.0, *) else {
+            throw XCTSkip("MetricKit Swift reports require macOS 27 or iOS 27")
+        }
         let metric = try JSONDecoder().decode(MetalFrameRateMetric.self, from: Data("""
             {"framesPerSecond":{"value":60,"unit":"Hz"},"frameCount":600,
              "activeDrawingDuration":{"value":10,"unit":"s"},"layerName":"Board"}

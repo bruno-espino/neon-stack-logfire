@@ -142,7 +142,7 @@ The companion does not call them.
 ## Validate and inspect
 
 ```sh
-tools/check-dev.sh          # Swift tests and cached macOS Debug build
+tools/check-dev.sh          # Repository, game, Swift tests, and cached macOS Debug build
 tools/check-dev.sh --smoke  # Also run a 12-second SDK-only session
 ```
 
@@ -174,4 +174,4 @@ Lifecycle flushing is best effort. An abrupt debugger stop can lose the last bat
 Native companion capture currently requires a live verified session on macOS 27.
 Real daily MetricKit delivery, physical iOS runtime, and a second tester Mac remain unverified.
 
-Local consolidation checks and migration notes are in [the native cleanup note](docs/NATIVE-CLEANUP.txt). Xcode CI remains deferred.
+Local checks, Xcode selection, and credential migration are in [the native workflow guide](docs/native-workflow.md). Xcode CI remains deferred.

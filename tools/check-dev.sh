@@ -12,13 +12,14 @@ case ${1:-} in
 esac
 if [ "$#" -gt 1 ]; then printf 'Use at most one option.\n' >&2; exit 2; fi
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/tools/xcode-env.sh"
 cd "$root"
-xcrun swift-format lint --strict --configuration .swift-format tools/embed-build.swift tools/check-repository.swift
-swift tools/check-repository.swift
+/usr/bin/xcrun swift-format lint --strict --configuration .swift-format tools/embed-build.swift tools/check-repository.swift
+/usr/bin/xcrun swift tools/check-repository.swift
 tools/check-game.sh
-swift test --quiet
-swift build --product logfire-apple --quiet
-binary_dir=$(swift build --show-bin-path)
+/usr/bin/xcrun swift test --quiet
+/usr/bin/xcrun swift build --product logfire-apple --quiet
+binary_dir=$(/usr/bin/xcrun swift build --show-bin-path)
 "$binary_dir/logfire-apple" build --scenario dev-check -- \
     -project "$root/examples/neon-stack/NeonStack.xcodeproj" -scheme NeonStack \
     -configuration Debug -destination 'platform=macOS,arch=arm64' \
