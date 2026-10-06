@@ -435,6 +435,32 @@
             }
           ]
         }
+      },
+      "GPUReplay": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "GPU replay encoder and shader costs",
+            "description": "One captured workload replay. Up to three cost-ranked encoders and three cost-ranked shaders from Apple tables. Costs within different scopes overlap. Do not sum them or interpret them as live frame latency, utilization, or CPU waiting. Raw captures and resource contents remain local."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'capture.ended_at' AS captured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'gpu.node.label' AS node, attributes->>'gpu.shader.stage' AS stage, CAST(attributes->>'gpu.replay.duration_ms' AS DOUBLE) AS encoder_ms, CAST(attributes->>'gpu.replay.cost_fraction' AS DOUBLE) AS cost_fraction, CAST(attributes->>'gpu.shader.spilled_bytes' AS DOUBLE) AS spilled_bytes, CAST(attributes->>'gpu.shader.wait_instructions' AS DOUBLE) AS wait_instructions FROM records WHERE kind = 'span' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.gpu.replay' ORDER BY captured_end DESC, capture, scope, cost_fraction DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -591,6 +617,25 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/Builds"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "GPU workload replay"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/GPUReplay"
               }
             }
           ]

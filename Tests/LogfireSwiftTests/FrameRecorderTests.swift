@@ -26,6 +26,8 @@ final class FrameRecorderTests: XCTestCase {
         XCTAssertEqual(window.attributes["gpu_command_p95_ms"], .double(4))
         XCTAssertEqual(window.attributes["frame_encode_wall_p95_ms"], .double(3))
         XCTAssertEqual(window.attributes["score"], .int(42))
+        XCTAssertEqual(window.attributes["cpu_frame.scope"], .string("frame_preparation_wall_time"))
+        XCTAssertEqual(window.attributes["main_thread.measured"], .bool(false))
         XCTAssertEqual(window.attributes["session_id"], .string(client.sessionID))
     }
 

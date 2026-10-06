@@ -13,7 +13,8 @@ Configure a write token once with logfire-apple configure --region us.
 Existing private prototype credentials remain compatible.
 Select NeonStack and My Mac. Press Cmd-R. LLDB remains enabled.
 The SDK and ordinary build identity step require no Python or relay.
-Run logfire-apple doctor to inspect setup without displaying credentials.
+Run logfire-apple doctor --send to verify ingestion with one record and inspect setup without displaying credentials.
+Configure a project write token separately on each tester Mac.
 
 Data flow
 Game operation -> Swift SDK -> OTLP HTTPS -> Logfire.
@@ -24,6 +25,7 @@ Apple display/resource measurements -> optional Swift companion -> Logfire.
 Mac CPU/memory/filesystem samples -> attach or test companion -> live game.host.sample records.
 Native capture -> local recording, symbols, checksums, and Logfire metadata.
 Optional Instruments recording -> selected running CPU samples and top leaf functions -> Logfire.
+Optional GPU workload capture -> replay profiling -> selected encoder/shader measurements -> Logfire.
 Host Swift build step -> embedded build identity -> app startup identity record.
 Swift companion build action -> complete build trace, task totals, selected host samples, and .xcresult.
 Swift test-game action -> fixed inputs, SDK windows, Apple capture/state aggregates, and one session report.
@@ -35,6 +37,8 @@ For live measurements, run:
 logfire-apple attach --seconds 30
 For a short live CPU recording on a Release app, run:
 logfire-apple profile --seconds 5
+For GPU inspection, enable MTL_CAPTURE_ENABLED=1 in a diagnostic launch and run:
+logfire-apple gpu-capture --profile
 Use --service neon-stack when multiple instrumented apps run.
 Add --no-telemetry to keep evidence local.
 The companion verifies the process, executable, process start time, and embedded build ID.
@@ -73,6 +77,8 @@ Relay: optional host forwarder for transport comparisons. Direct SDK export need
 metalperftrace: Apple's macOS CLI for live and historical Metal measurements.
 xctrace: Apple's CLI for active Instruments recordings and selected XML exports.
 Leaf function: innermost sampled frame. Its self weight excludes caller time.
+gpucapture: Apple tool for capturing Metal workload boundaries from a capture-enabled process.
+gpudebug: Apple tool for inspecting and replay-profiling captured GPU workloads.
 Capture: Apple recording artifact, distinct from an OpenTelemetry trace.
 Build ID: identifies the app build and joins its runtime records and captures.
 Session ID: identifies one app run and joins independent operation and measurement records.
@@ -85,6 +91,8 @@ Measurement limits
 Callback FPS differs from presented FPS. Preparation wall time differs from CPU utilization.
 GPU command duration is not hardware utilization.
 Native CPU times are not CPU utilization percentages.
+Frame preparation excludes other main-thread and SwiftUI work. The report marks main_thread.measured=false.
+GPU replay timings are not live frame latency. Shader Wait counts instructions, not CPU waiting time.
 Profile weights describe sampled running CPU work. They are not wall time or frame latency.
 Profiled intervals have instrumentation overhead. Keep them separate from baseline comparisons.
 Compare matched Release devices, modes, sizes, seeds, and workloads.

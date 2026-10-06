@@ -21,9 +21,15 @@ Repeat installation to update it. Signed release distribution remains future wor
 
 ```sh
 logfire-apple configure --region us
-logfire-apple doctor
+logfire-apple doctor --send
 ```
 
+Configure each tester Mac with its own project write token through the hidden prompt.
+Do not put a token in the repository or application. SDK runtime export needs `LOGFIRE_DEV_DIRECT=1`.
+Companion commands use the shared credential file directly.
+`doctor --send` exports one `apple.telemetry.check` record and prints its check ID and delivery counters.
+It returns exit 2 when credentials are missing or the exporter does not acknowledge the check.
+Configuration alone does not verify ingestion. The write token does not need MCP management permissions.
 Credentials remain in a private runtime file. Configuration is shared by the SDK and companion.
 Local Apple monitoring can remain active when network export is disabled.
 Ordinary Xcode Command-R requires neither the companion nor Python.
@@ -117,6 +123,75 @@ Profiling adds overhead. Profiled intervals are diagnostic evidence, not baselin
 Apple recommends Time Profiler for CPU busy work. Waiting, thread scheduling, and actor contention require other instruments.
 See [Apple's WWDC26 responsiveness workflow](https://developer.apple.com/videos/play/wwdc2026/268/).
 Instruments 27 also offers flame graphs, top-function views, and recording comparisons for the full local analysis.
+
+## Capture and inspect a GPU workload
+
+Enable `MTL_CAPTURE_ENABLED=1` in a dedicated diagnostic launch or Xcode scheme.
+This loads Apple's capture framework into the app. It is separate from normal performance measurement.
+Run the app with the Swift SDK, then use:
+
+```sh
+logfire-apple gpu-capture --profile --service neon-stack
+```
+
+The companion verifies the SDK process and asks `gpucapture` to capture one boundary completion.
+A layer boundary represents a frame. A queue or device boundary represents a command buffer.
+Use `--count 1` through `--count 3` to bound collection.
+Apple selects the default boundary. Supply `--boundary ID` or `--label NAME` to resolve multiple layers or queues.
+Use `xcrun gpucapture boundaries --pid PID` to inspect the verified target's available boundaries.
+Capture fails clearly when the app is not capturable. Ordinary SDK setup does not enable GPU capture injection.
+
+Capture retains `Frame.gputrace`, available symbols, raw inspection output, and a checksummed manifest.
+The command leaves the app running. It creates and terminates its own GPU debugger sessions with `--oneshot`.
+Static inspection works after capture. Add `--profile` to replay and profile the captured workload.
+Replay profiling requires supported hardware. This path is verified on Apple M4.
+The command uses the default GPU state and overlapping execution. It does not force a high clock state.
+Wait for Metal to produce a renderer window before capture. The SDK session marker can exist before GPU capture is ready.
+Replayer preparation and profiling add time beyond the captured frame. They do not run in default development checks.
+
+Logfire receives `game.profile.capture` and selected `game.gpu.replay` records.
+The current selection contains at most three cost-ranked encoders and three cost-ranked shaders.
+Each row retains its encoder or shader scope. Overlapping costs must not be summed across scopes.
+Apple ranks each scope separately. The retained selection is not a complete shader or encoder inventory.
+Encoder rows contain replay duration and cost fraction.
+Ranked shader rows contain cost fraction, stage, registers, spills, and instruction counts when available.
+Apple does not provide active time in the ranked shader properties.
+The `Wait` shader property is a wait-instruction count. It is not CPU waiting time.
+Replay timing is not live frame latency, current GPU utilization, or a performance baseline.
+Raw shader source, buffers, textures, and complete property dumps remain local.
+
+Apple sometimes reports command errors in output while returning exit 0.
+The companion collects the profile, then reloads embedded results before reading measurements.
+The companion validates JSON and required measurements. Unsupported or incomplete summaries remain observation gaps with exit 2.
+Apple can acknowledge profile collection but retain no usable cost tables. This remains an observation gap, even after profile reload.
+Capture failures retain available output and return a failure. Exporter status remains separate from capture completeness.
+See Apple's [Metal tools for scripts and agents](https://developer.apple.com/metal/tools/).
+
+## Applying the tooling to another game
+
+The SDK, build, CPU profile, GPU capture, attach, and lookback commands are reusable across instrumented applications.
+`test-game` controls Neon Stack's replay protocol. It cannot drive another game merely because `--app` accepts a path.
+The merged Log Roll game supports `NEON_GAME=log-roll` for its benchmark launch.
+The existing `test-game` command explicitly selects `NEON_GAME=neon-stack`.
+Log Roll GPU capture is verified. Its two-mazes-then-loss scenario is not implemented by the shared runner.
+A new game should own its scenario inputs and completion signals.
+The shared runner should own process lifetime, build/session identity, evidence collection, and export.
+A scenario such as two mazes followed by a loss belongs to the game adapter or its UI test.
+Its report needs scenario identity, expected completion, and explicit failures. Missing reports must not count as a pass.
+A generic launcher and scenario contract remain the next consolidation step.
+
+Renderer windows alone cannot identify expensive SwiftUI or other main-thread code.
+`cpu_frame_p95_ms` remains a compatibility alias for preparation wall time. It does not measure the whole CPU or main thread.
+Frame reports now include `cpu_frame.scope=frame_preparation_wall_time` and `main_thread.measured=false`.
+Use CPU or SwiftUI profiling to identify code. Timing signals alone cannot name the expensive function.
+
+The next SDK measurement should be a separate main-thread window, independent of renderer completion.
+It should report main-thread CPU-time deltas and main-queue response delay as distinct values.
+Queue delay includes CPU work, blocking, and scheduler contention. It must not be labeled CPU utilization.
+The monitor must report pending delay during a stall and bound itself to one outstanding probe.
+Log Roll sums three GPU stage durations for its SDK window. That sum measures GPU work, not a critical-path frame deadline.
+This monitor is not implemented in this iteration. Its measurement contract must be validated before it is enabled by default.
+See Apple's [SwiftUI performance analysis](https://developer.apple.com/documentation/xcode/understanding-and-improving-swiftui-performance).
 
 ## Observe a build
 

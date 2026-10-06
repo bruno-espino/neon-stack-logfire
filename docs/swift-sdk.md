@@ -105,6 +105,7 @@ Use `telemetry.state(domain:label:metadata:)` for other application states.
 Call `frames.finish()` after the renderer stops submitting frames. Do not call it inside `onWindow`.
 
 Callback FPS is not presented FPS. Preparation wall time is not CPU utilization.
+Renderer windows exclude other main-thread and SwiftUI work. They publish `main_thread.measured=false` and the preparation measurement scope.
 GPU command duration is not hardware utilization or a full presentation timeline.
 Absent GPU timestamps stay absent. Do not combine window percentiles into a session percentile.
 The recorder retains at most 10,000 samples per window.

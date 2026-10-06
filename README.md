@@ -1,6 +1,7 @@
 # Neon Stack + Logfire
 
-A native Metal falling-block game and an experimental Swift integration for Logfire.
+Two native Metal games and an experimental Swift integration for Logfire.
+Log Roll exercises compute particles, scene rendering, and glow. Neon Stack provides the original falling-block workload.
 The project connects app operations, performance measurements, builds, and Apple profiler captures.
 It targets trusted developer and manual tester machines. It is not an official released Logfire SDK.
 
@@ -25,7 +26,7 @@ Existing prototype credentials remain compatible.
 
 ```sh
 logfire-apple configure --region us
-logfire-apple doctor
+logfire-apple doctor --send
 ```
 
 Use arrows to move and rotate, Space to drop, C to hold or swap, P to pause, and R to restart.
@@ -56,7 +57,7 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes twelve panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, captures, and builds.
+It includes thirteen panels for SDK windows, Apple presentation timings, process memory, host context, CPU profiles, GPU replay costs, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
@@ -83,6 +84,8 @@ Profile records a short Instruments interval and exports selected CPU samples an
 Use a Release build for optimization. The full `.trace` and symbols remain local.
 All three commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.
+For targeted GPU inspection, launch with `MTL_CAPTURE_ENABLED=1` and use `logfire-apple gpu-capture --profile`.
+This captures one boundary by default and profiles its replay. It is separate from ordinary frame-latency measurements.
 
 ## What supplies each measurement
 
@@ -91,6 +94,7 @@ Add `--no-telemetry` to retain evidence locally without export.
 | Game + SDK frame recorder | Callback cadence, frame preparation time, Metal command duration, render context | Five-second windows during gameplay |
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
+| Apple GPU debugger | Captured render/compute workload, selected replay encoder/shader costs, register and spill properties | Optional `gpu-capture --profile`. Raw resources and shader sources stay local. |
 | Instruments Time Profiler | Running CPU samples and top leaf-function weights | Optional `profile` recording. Summaries export after the recording. |
 | MetricKit adapter inside the SDK | Selected CPU/GPU time, disk writes, launch/resume/hang distributions, hitches, daily Metal reports, diagnostic summaries | Delayed reports with historical context. Coverage varies by platform. |
 | macOS host APIs | Whole-host CPU load, selected memory counts, filesystem free bytes | One-second samples during companion builds, game tests, and live attach |
@@ -100,6 +104,8 @@ Add `--no-telemetry` to retain evidence locally without export.
 Performance windows and Apple reports use span attributes. They are not OpenTelemetry metric instruments.
 Callback FPS differs from presented FPS. GPU command duration does not measure GPU utilization.
 Native resource CPU times are not CPU utilization percentages.
+Frame preparation timings exclude other main-thread and SwiftUI work. `main_thread.measured=false` makes that gap explicit.
+GPU replay timing and shader wait-instruction counts are separate from live frame latency and CPU blocking.
 
 ## Build and test with native tools
 

@@ -72,17 +72,35 @@ public enum Companion {
         let values = Array(arguments.dropFirst())
         if action == "configure" { return try configure(values) }
         if action == "doctor" {
+            guard values.isEmpty || values == ["--send"] || values == ["--help"] else { throw CompanionError.message("Use doctor [--send]") }
+            if values == ["--help"] { print("Usage: logfire-apple doctor [--send]. --send verifies ingestion with one telemetry record."); return 0 }
             print("Swift SDK and native companion require no Python runtime.")
             print("Session markers: \(Logfire.developmentSessionsDirectory.path)")
-            do { _ = try configuration(); print("Runtime credentials: configured") }
-            catch { print("Runtime credentials: unavailable. Configure the private development credential file.") }
+            let config: LogfireConfiguration?
+            var configured = true
+            do { config = try configuration(); print("Runtime credentials: configured. Ingestion is not verified until doctor --send.") }
+            catch {
+                print("Runtime credentials: unavailable. Run logfire-apple configure --region us or --region eu on this Mac.")
+                config = nil; configured = false
+            }
             print("Native Metal tools: \(FileManager.default.isExecutableFile(atPath: "/usr/bin/metalperftrace") ? "available" : "unavailable (macOS 27 required)")")
-            return 0
+            print("GPU workload tools: \(FileManager.default.isExecutableFile(atPath: "/usr/bin/gpudebug") ? "available" : "unavailable (macOS 27 required)")")
+            if values == ["--send"] {
+                guard configured else { return 2 }
+                let client = Logfire(serviceName: "logfire-apple-doctor", configuration: config)
+                let id = UUID().uuidString
+                client.event("apple.telemetry.check", attributes: ["check.id": .string(id)])
+                client.flush(); printDelivery(client)
+                print("Ingestion check ID: \(id)")
+                return client.delivery.enabled && client.delivery.exportedSpans == 1 && client.delivery.failedSpans == 0 ? 0 : 2
+            }
+            return configured ? 0 : 2
         }
         if action == "build" { return try NativeBuild.run(values) }
         if action == "test-game" { return try GameTest.run(values) }
         if action == "analyze" { return try SessionAnalysis.run(values) }
         if action == "profile" { return try InstrumentsProfile.run(values) }
+        if action == "gpu-capture" { return try GPUCapture.run(values) }
         guard ["capture", "attach"].contains(action) else { throw CompanionError.message(usage) }
         if values.contains("--help") { print(usage); return 0 }
         guard #available(macOS 27.0, *) else { throw CompanionError.message("Native Metal monitoring requires macOS 27") }
@@ -303,10 +321,11 @@ public enum Companion {
 
     static let usage = """
     Usage: logfire-apple configure [--region us|eu]
-           logfire-apple doctor
+           logfire-apple doctor [--send]
            logfire-apple capture --last 10s [--service NAME] [--no-telemetry]
            logfire-apple attach --seconds 30 [--service NAME] [--no-telemetry]
            logfire-apple profile --seconds 5 [--service NAME] [--no-telemetry]
+           logfire-apple gpu-capture [--profile] [--count 1] [--service NAME] [--no-telemetry]
            logfire-apple build [--scenario NAME] [--no-telemetry] -- [xcodebuild arguments]
            logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
            logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
