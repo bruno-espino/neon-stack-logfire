@@ -87,3 +87,109 @@ Canonical lowercase build IDs preserve joins across the Python observer and Swif
 A twelve-second offscreen replay uses the SDK Metal adapter and retains a valid GPU window.
 Repository and app credential scans report no findings.
 The user chose public repository visibility for game design collaboration.
+
+Native build and automated analysis consolidation
+Deferred the tester report button. Complete the native workflow before adding more entry points.
+Replaced the companion's Python build route with native process handling and macOS host samples.
+Build observation retains Xcode timing totals, issue counts, logs, and .xcresult files.
+Added an installer. The compiled companion works outside the source checkout.
+Added a seeded reference-game test action with one retained session report.
+The host exports SDK windows once. The test app receives no credentials and performs no network export.
+Added state-layer capture summaries and matched Release report comparison.
+The gate separates callback cadence from native presentation measurements.
+It rejects mismatched cohorts, missing data, and excessive native coverage gaps.
+Worst window p95 values remain distinct from session percentiles.
+Legacy Python transport experiments and earlier dashboards remain optional and separate.
+
+Experiments and native limits
+A trimmed Metal recording lost the initial StateReporting transition after warmup.
+Retaining launch context restores state aggregation. Comparison selects a separate measurement slice.
+Rejected packed JSON metadata. It did not fix the missing transition and added adapter complexity.
+Retained long-lived reporters and separate volatile session/build metadata types.
+Apple monitoring can run locally without network export.
+The Apple CLI accepts whole-second aggregation offsets. Fractional seconds and millisecond suffixes fail.
+The companion rounds bounds outward and retains requested, aggregation, and actual measurement dates.
+Retained native slices still omit partial boundary samples.
+The gate permits at most one second of loss at each SDK boundary and reports the covered fraction.
+Two twenty-second runs covered about 93 percent of their fifteen-second SDK measurement intervals.
+Use longer runs and calibrate repeated-run noise before enforcing a CI budget.
+No daemon, relay, or Python environment participates in the primary workflow.
+Deep CPU stacks and scheduling analysis still require Instruments.
+
+Verification for the consolidated workflow
+All 28 Swift SDK and companion tests pass.
+Tests cover cohort rejection, state selection, coverage gaps, zero-baseline regressions, and process-group cancellation.
+Native macOS and iOS Simulator Release builds pass with zero warnings and errors.
+Both app resources contain the exact companion build ID.
+The missing-scheme build preserves Xcode exit 65.
+The installed executable runs from outside the repository.
+Two matched onscreen tests retain three SDK windows and three native summaries each.
+Both tests have no observation gaps. Their comparison passes an experimental 20 percent threshold.
+The host exporters acknowledge nine records per game run without failures.
+A scoped Logfire query verifies build records and correlated native/state/window records.
+An offscreen test retains its SDK GPU window and image without native presentation claims.
+Local documentation links resolve. Credential and private-reference scans report no findings.
+The verification apps stop after their own captures. The repository remains public.
+
+Remaining validation
+The performance budget is not calibrated for CI enforcement.
+Real daily MetricKit delivery, physical iOS runtime, and a second tester Mac remain unverified.
+Finished-session and iOS capture import remain future work.
+Signed executable distribution and a cheaper incremental build-identity helper remain future work.
+Keep the tester report button deferred until these workflow checks settle.
+
+Short macOS iteration and live host context
+Added whole-host samples to existing attach and game-test commands.
+The companion samples CPU load, free/wired/compressed memory, and filesystem free bytes once per second.
+It exports game.host.sample with the app session/build context and whole_host scope.
+The samples remain span attributes. They are not OTel metric instruments or automatic infrastructure dashboards.
+Host sampling requires a companion command. Ordinary Command-R still exports SDK telemetry directly.
+No new daemon or app credential flow is required.
+Host sampling pauses during test capture processing.
+
+Added tools/check-dev.sh for Swift unit tests and a cached macOS Debug build.
+The script uses a fresh Debug companion and avoids repeated Release installation during tool development.
+The optional --smoke flag adds a 12-second SDK-only game run.
+No game run, native capture, iOS Simulator build, or baseline comparison runs by default.
+Kept the 28 unit tests. Their execution takes about 0.64 seconds after compilation.
+A cached macOS development check completes in about 15 seconds on the current machine.
+These timings include local cache state and are not portable performance guarantees.
+Longer runs, budget calibration, and routine iOS Simulator validation remain deferred.
+
+Verification
+The macOS Debug build and all 28 unit tests pass.
+A 12-second smoke run retains one SDK window and 11 whole-host samples without observation gaps.
+A six-second live attach retains five host samples and ten native process/layer summaries.
+The exporters acknowledge 14 smoke records and 15 live-attach records without failures.
+A scoped Logfire query confirms 16 host samples alongside SDK and native records.
+Host CPU fractions remain distinct from the native process CPU-time fields.
+The live verification game stops after its bounded attach.
+No longer game run or iOS Simulator check is required for these companion-only changes.
+
+Packaging and Logfire visualization
+Kept the source Swift SDK and optional native companion as separate installation choices.
+Documented package installation without the companion and the current pilot branch.
+Separated ordinary SDK use from NeonStack-only automated inputs and example build embedding.
+Recorded release gaps. The repository has no license, version tags, package CI, or signed binary distribution.
+The tested upstream 2.6.0 pin is a prerelease. Its HTTP exporter remains experimental.
+Prioritized generic build identity, async spans, short package CI, and second-Mac installation checks.
+Kept longer tests, routine iOS Simulator validation, and the tester report button deferred.
+
+Added dashboards/apple-development.json as a reusable project-independent template.
+Created Apple Development Workflow in the authorized Logfire project through MCP.
+Its ten panels cover SDK windows, native presentation, process memory, whole-host context, captures, and builds.
+Session and build filters connect an investigation without confusing build-command and app-session identities.
+The charts distinguish measurement dates from export dates and interval means from window percentiles.
+Capture scopes remain separate. The charts do not sum overlapping capture aggregates.
+Rejected a mandatory collector and a metrics migration for this iteration.
+Custom record queries already visualize the selected evidence without changing the native development flow.
+An OTel metrics path remains a separate experiment for standard infrastructure dashboard compatibility.
+
+Verification
+All ten panel queries return real data from the authorized project.
+Exact smoke-session filters return one SDK window, eleven host samples, and the matching observed build.
+The saved dashboard contains ten panels, two filters, and SQL identical to the checked-in template.
+The MCP validates and saves the dashboard definition.
+Browser rendering remains unverified. The browser is signed out, and API-key credentials cannot supply an OAuth browser handoff.
+Local JSON, layout, documentation links, whitespace, credential, and private-reference checks pass.
+No app code changed. No additional game session, native recording, or Simulator run was needed.

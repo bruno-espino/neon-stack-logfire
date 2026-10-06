@@ -54,36 +54,15 @@ struct NativeSession {
 
 enum HostCommand {
     static func run(_ executable: String, _ arguments: [String], output: URL, errors: URL,
-                    seconds: Double, stopAtDeadline: Bool = false, onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {
-        _ = FileManager.default.createFile(atPath: output.path, contents: nil)
-        _ = FileManager.default.createFile(atPath: errors.path, contents: nil)
-        let stdout = try FileHandle(forWritingTo: output); let stderr = try FileHandle(forWritingTo: errors)
-        let reader = try FileHandle(forReadingFrom: output)
-        defer { try? stdout.close(); try? stderr.close(); try? reader.close() }
-        let child = Process(); child.executableURL = URL(fileURLWithPath: executable); child.arguments = arguments
-        child.standardOutput = stdout; child.standardError = stderr
-        try child.run()
-        defer {
-            if child.isRunning { kill(child.processIdentifier, SIGKILL); child.waitUntilExit() }
-        }
-        let deadline = ProcessInfo.processInfo.systemUptime + seconds
-        while child.isRunning && ProcessInfo.processInfo.systemUptime < deadline {
-            if let onOutput { try onOutput(reader.readDataToEndOfFile()) }
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        if child.isRunning {
-            child.interrupt()
-            let grace = ProcessInfo.processInfo.systemUptime + 3
-            while child.isRunning && ProcessInfo.processInfo.systemUptime < grace { Thread.sleep(forTimeInterval: 0.05) }
-            if child.isRunning { kill(child.processIdentifier, SIGKILL) }
-            child.waitUntilExit()
-            if let onOutput { try onOutput(reader.readDataToEndOfFile()) }
+                    seconds: Double, stopAtDeadline: Bool = false, onTick: (() throws -> Bool)? = nil,
+                    onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {
+        let result = try CommandRunner.run(executable, arguments, output: output, errors: errors,
+            seconds: seconds, onOutput: onOutput, onTick: onTick)
+        if result.timedOut {
             if stopAtDeadline { return 0 }
             throw CompanionError.message("Apple command exceeded its time limit. Inspect \(errors.path)")
         }
-        child.waitUntilExit()
-        if let onOutput { try onOutput(reader.readDataToEndOfFile()) }
-        return child.terminationStatus
+        return result.exitCode
     }
 }
 
@@ -100,7 +79,9 @@ public enum Companion {
             print("Native Metal tools: \(FileManager.default.isExecutableFile(atPath: "/usr/bin/metalperftrace") ? "available" : "unavailable (macOS 27 required)")")
             return 0
         }
-        if action == "build" { return try runBuild(values) }
+        if action == "build" { return try NativeBuild.run(values) }
+        if action == "test-game" { return try GameTest.run(values) }
+        if action == "analyze" { return try SessionAnalysis.run(values) }
         guard ["capture", "attach"].contains(action) else { throw CompanionError.message(usage) }
         if values.contains("--help") { print(usage); return 0 }
         guard #available(macOS 27.0, *) else { throw CompanionError.message("Native Metal monitoring requires macOS 27") }
@@ -192,9 +173,15 @@ public enum Companion {
         return selected
     }
 
-    static func capture(session: NativeSession, folder: URL, seconds: Double, client: Logfire) throws {
-        let ended = Date().timeIntervalSince1970; let started = max(session.started, ended - seconds)
-        let code = try HostCommand.run("/usr/bin/metalperftrace", ["collect", "--start", "@\(started)", "--end", "@\(ended)",
+    @discardableResult
+    static func capture(session: NativeSession, folder: URL, seconds: Double, client: Logfire,
+                        interval: ClosedRange<Date>? = nil) throws -> [[String: Any]] {
+        let ended = interval?.upperBound.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+        let requestedStart = max(session.started, interval?.lowerBound.timeIntervalSince1970 ?? ended - seconds)
+        let started = interval == nil ? requestedStart : session.started
+        let collectedEnd = interval == nil ? ended : Date().timeIntervalSince1970
+        guard ended > requestedStart, ended <= collectedEnd else { throw CompanionError.message("Invalid capture interval") }
+        let code = try HostCommand.run("/usr/bin/metalperftrace", ["collect", "--start", "@\(started)", "--end", "@\(collectedEnd)",
             "--json", folder.path], output: folder.appendingPathComponent("collect.json"), errors: folder.appendingPathComponent("collect.stderr"), seconds: 60)
         let traces = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).filter { $0.pathExtension == "atrc" }
         guard code == 0, !traces.isEmpty else { throw CompanionError.message("Apple capture failed. Inspect \(folder.path)") }
@@ -206,6 +193,28 @@ public enum Companion {
             guard status == 0 else { throw CompanionError.message("Apple overview failed. Inspect \(folder.path)") }
             let processes = try JSONSerialization.jsonObject(with: Data(contentsOf: overview)) as? [[String: Any]] ?? []
             measurements += processes.flatMap { NativeMeasurements.summaries($0, pid: session.pid, stateDomains: session.stateDomains) }
+            for (index, domain) in session.stateDomains.sorted().enumerated() {
+                let stateFile = trace.deletingPathExtension().appendingPathExtension("state-\(index).json")
+                var command = ["overview", "--json", "--aggregate", "--domain", domain,
+                    "--predicate", "pid == \(session.pid)"]
+                let rawState = interval == nil ? stateFile : trace.deletingPathExtension().appendingPathExtension("state-context-\(index).json")
+                let stateCode = try HostCommand.run("/usr/bin/metalperftrace", command + [trace.path], output: rawState,
+                    errors: folder.appendingPathComponent("state-\(index).stderr"), seconds: 30)
+                guard stateCode == 0 else { throw CompanionError.message("State aggregation failed. Inspect \(folder.path)") }
+                var states = try JSONSerialization.jsonObject(with: Data(contentsOf: rawState)) as? [[String: Any]] ?? []
+                if let interval {
+                    guard let own = states.first(where: { ($0["PID"] as? NSNumber)?.int32Value == session.pid }),
+                          let window = own["Aggregation Window"] as? [String: Any], let start = window["Start"] as? String,
+                          let origin = NativeMeasurements.date(start) else { throw CompanionError.message("Native state context is missing") }
+                    let offsets = try NativeMeasurements.aggregationOffsets(interval, origin: origin)
+                    command += ["--start", "\(offsets.lowerBound)s", "--end", "\(offsets.upperBound)s", trace.path]
+                    let sliced = try HostCommand.run("/usr/bin/metalperftrace", command, output: stateFile,
+                        errors: folder.appendingPathComponent("state-slice-\(index).stderr"), seconds: 30)
+                    guard sliced == 0 else { throw CompanionError.message("State measurement slice failed") }
+                    states = try JSONSerialization.jsonObject(with: Data(contentsOf: stateFile)) as? [[String: Any]] ?? []
+                }
+                measurements += states.flatMap { NativeMeasurements.stateSummaries($0, pid: session.pid) }
+            }
         }
         try session.validate()
         let app = session.executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -216,7 +225,8 @@ public enum Companion {
         for file in files where (try file.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true {
             checksums[String(file.path.dropFirst(folder.path.count + 1))] = hash(try Data(contentsOf: file))
         }
-        let details: [String: Any] = ["capture.id": folder.lastPathComponent, "capture.started_at": started, "capture.ended_at": ended,
+        let details: [String: Any] = ["capture.id": folder.lastPathComponent, "capture.started_at": started, "capture.ended_at": collectedEnd,
+            "measurement.requested_start": requestedStart, "measurement.requested_end": ended,
             "capture.path": folder.path, "capture.tool": "apple.metalperftrace", "capture.storage": "local",
             "capture.kind": "native-lookback", "binary.sha256": hash(try Data(contentsOf: session.executable))]
         var manifest = session.metadata.merging(details) { _, capture in capture }
@@ -229,14 +239,19 @@ public enum Companion {
         client.flush()
         print("Captured \(measurements.count) native summaries: \(folder.appendingPathComponent("manifest.json").path)")
         printDelivery(client)
+        return measurements
     }
 
     static func attach(session: NativeSession, folder: URL, seconds: Double, client: Logfire) throws {
         let output = folder.appendingPathComponent("native.jsonl")
         var updates = JSONUpdates()
         var count = 0
+        var host = SessionHostSamples()
         let code = try HostCommand.run("/usr/bin/metalperftrace", ["listen", "--pid", "\(session.pid)", "--json", "--interval", "1"],
-            output: output, errors: folder.appendingPathComponent("native.stderr"), seconds: seconds, stopAtDeadline: true) { data in
+            output: output, errors: folder.appendingPathComponent("native.stderr"), seconds: seconds, stopAtDeadline: true, onTick: {
+                if host.isDue { try session.validate(); host.tick(client: client, context: session.metadata) }
+                return false
+            }) { data in
                 guard !data.isEmpty else { return }
                 try session.validate()
                 for update in try updates.feed(data) {
@@ -246,6 +261,7 @@ public enum Companion {
                     }
                 }
             }
+        try host.write(to: folder.appendingPathComponent("host-samples.json"))
         guard code == 0 else { throw CompanionError.message("Apple live observation failed. Inspect \(folder.path)") }
         client.flush()
         print("Retained \(count) live native summaries: \(output.path)")
@@ -273,14 +289,9 @@ public enum Companion {
         else { print("Export disabled. Measurements remain local.") }
     }
 
-    static func runBuild(_ arguments: [String]) throws -> Int32 {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let tool = root.appendingPathComponent("tools/xcode-observe/.venv/bin/xcode-observe")
-        guard FileManager.default.isExecutableFile(atPath: tool.path) else {
-            throw CompanionError.message("Full build observation is optional. Install it with uv sync --frozen --project tools/xcode-observe.")
-        }
-        let child = Process(); child.executableURL = tool; child.arguments = arguments
-        try child.run(); child.waitUntilExit(); return child.terminationStatus
+    static func client(local: Bool, service: String) -> Logfire {
+        do { return Logfire(serviceName: service, configuration: local ? nil : try configuration()) }
+        catch { print("Telemetry unavailable. Reports remain local."); return Logfire(serviceName: service, configuration: nil) }
     }
 
     static let usage = """
@@ -288,10 +299,12 @@ public enum Companion {
            logfire-apple doctor
            logfire-apple capture --last 10s [--service NAME] [--no-telemetry]
            logfire-apple attach --seconds 30 [--service NAME] [--no-telemetry]
-           logfire-apple build [observer options] -- [xcodebuild arguments]
+           logfire-apple build [--scenario NAME] [--no-telemetry] -- [xcodebuild arguments]
+           logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
+           logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
     Capture and attach select the latest verified live SDK session automatically.
     Optional overrides: --sessions DIRECTORY --output DIRECTORY.
-    The build action uses the optional Python observer. SDK runs and native captures use Swift only.
+    All actions use Swift and Apple tools. Full reports and captures remain local.
     """
 }
 

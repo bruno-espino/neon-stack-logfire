@@ -105,8 +105,10 @@ public final class FrameRecorder {
         guard elapsed >= 5 else { lock.unlock(); return }
         let fps = 1000 / (frames.reduce(0, +) / Double(frames.count))
         var values = attributes.merging(next.attributes) { _, context in context }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         values.merge([
-            "recorded_at": .string(ISO8601DateFormatter().string(from: wallTime)),
+            "recorded_at": .string(formatter.string(from: windowDate.addingTimeInterval(elapsed))),
             "elapsed_seconds": .double(uptime - began), "window_seconds": .double(elapsed), "frames": .int(frames.count),
             "render_callback_fps": .double(fps), "frame_interval_p50_ms": .double(percentile(frames, 0.5)),
             "frame_interval_p95_ms": .double(percentile(frames, 0.95)),
