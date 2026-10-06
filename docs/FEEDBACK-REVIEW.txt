@@ -19,7 +19,7 @@ Confirmed broader cleanup
 - Relay support and SDK prototype names can retire with their callers. Game-specific NEON settings still have live consumers.
 - The old credential fallback is active on this Mac. Migrate the private file before removing the fallback.
 - The endpoint-only Logfire initializer bypasses validated configuration. No caller supplies that endpoint. Reduce this API.
-- Quick checks omit game engine and feedback tests. Add these checks and native CI separately.
+- Quick checks omit game engine and feedback tests. Add game checks separately. Xcode CI remains deferred at the user's request.
 - The build digest script assumes NeonStack source paths. Make its input root generic and verify a renamed synthetic app.
 
 Do not apply literally

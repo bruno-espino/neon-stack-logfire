@@ -28,7 +28,7 @@ struct ScenarioDefinition: Codable {
         for (key, value) in environment {
             guard key.range(of: "^[A-Za-z_][A-Za-z0-9_]{0,127}$", options: .regularExpression) != nil,
                   !["LOGFIRE_", "OTEL_", "MTL_", "METAL_"].contains(where: key.hasPrefix),
-                  !["NEON_SESSION_ID", "NEON_OBSERVER_DIR", "NEON_PERF_REPORT"].contains(key),
+                  key != "NEON_PERF_REPORT",
                   value.utf8.count <= 2048, !value.contains("\0") else {
                 throw CompanionError.message("Scenario environment cannot override telemetry or process identity")
             }
@@ -138,8 +138,7 @@ enum ScenarioRun {
             .reduce(into: [String: Any]()) { $0[$1.key] = $1.value }
             .merging(["session_id": id, "measurement.source": "native.scenario_runner"]) { _, value in value }
         var environment = ProcessInfo.processInfo.environment.filter {
-            !["LOGFIRE_", "OTEL_", "MTL_", "METAL_", "DYLD_", "XCTest", "XCTEST_"].contains(where: $0.key.hasPrefix) &&
-                !["NEON_SESSION_ID", "NEON_OBSERVER_DIR", "NEON_PERF_REPORT"].contains($0.key)
+            !["LOGFIRE_", "OTEL_", "MTL_", "METAL_", "DYLD_", "XCTest", "XCTEST_"].contains(where: $0.key.hasPrefix) && $0.key != "NEON_PERF_REPORT"
         }
         environment.merge(definition.environment) { _, value in value }
         environment.merge(["LOGFIRE_DEV_DIRECT": client.delivery.enabled ? "1" : "0", "LOGFIRE_SESSION_ID": id,

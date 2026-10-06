@@ -57,6 +57,12 @@ final class DevelopmentScenarioTests: XCTestCase {
         DispatchQueue.global().async {
             XCTAssertTrue(scenario.isReady)
             do {
+                try scenario.finish(passed: false)
+                XCTFail("A concurrent caller must not report completion before the export finishes")
+            } catch {
+                XCTAssertEqual(error as? DevelopmentScenarioError, .completionInProgress)
+            }
+            do {
                 try scenario.record(FrameWindow(started: Date(), ended: Date(), callbackFPS: 60,
                     gpuMeanMilliseconds: nil, attributes: ["frames": .int(300)]))
             } catch { XCTFail("Unexpected record error: \(error)") }

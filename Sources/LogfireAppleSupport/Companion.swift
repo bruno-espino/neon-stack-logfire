@@ -318,12 +318,6 @@ public enum Companion {
     }
 
     /// Logfire decodes these OTLP strings as structured attributes.
-    static func structuredAttribute(_ key: String, value: Any, type: String) throws -> [String: LogfireAttribute] {
-        let schema: [String: Any] = ["type": "object", "properties": [key: ["type": type]]]
-        return [key: .string(String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self)),
-            "logfire.json_schema": .string(String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self))]
-    }
-
     static func structuredAttribute<Value: Encodable>(_ key: String, encoded value: Value, type: String) throws -> [String: LogfireAttribute] {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

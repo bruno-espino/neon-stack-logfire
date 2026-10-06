@@ -23,17 +23,8 @@ public final class Logfire {
     private let deliveryCounters = DeliveryCounters()
     public var delivery: DeliveryStatus { deliveryCounters.snapshot(enabled: provider != nil) }
 
-    public convenience init(serviceName: String, configuration: LogfireConfiguration?, resourceAttributes: [String: LogfireAttribute] = [:]) {
+    public convenience init(serviceName: String, configuration: LogfireConfiguration? = nil, resourceAttributes: [String: LogfireAttribute] = [:]) {
         self.init(serviceName: serviceName, exporter: configuration?.makeExporter(), metricExporter: configuration?.makeMetricExporter(), resourceAttributes: resourceAttributes)
-    }
-
-    public convenience init(serviceName: String, endpoint: URL? = nil) {
-        let exporter = endpoint.map {
-            OtlpHttpTraceExporter(endpoint: $0,
-                config: .init(timeout: 3, compression: .none, exportAsJson: false),
-                envVarHeaders: [], requeueOnFailure: false)
-        }
-        self.init(serviceName: serviceName, exporter: exporter)
     }
 
     init(serviceName: String, exporter: SpanExporter?, metricExporter: MetricExporter? = nil,
@@ -44,7 +35,7 @@ public final class Logfire {
         let suppliedSession: UUID?
         if case .string(let value) = resourceAttributes["session_id"] { suppliedSession = UUID(uuidString: value) }
         else { suppliedSession = nil }
-        sessionID = suppliedSession?.uuidString ?? (environment["LOGFIRE_SESSION_ID"] ?? environment["NEON_SESSION_ID"])
+        sessionID = suppliedSession?.uuidString ?? environment["LOGFIRE_SESSION_ID"]
             .flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
         buildAttributes = Self.buildMetadata(bundle: .main).mapValues { .string($0) }
         var suppliedResource = resourceAttributes
@@ -68,13 +59,6 @@ public final class Logfire {
             provider = nil
             tracer = DefaultTracer.instance
         }
-    }
-
-    public static func developmentEndpoint(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
-        guard let raw = environment["LOGFIRE_DEV_ENDPOINT"], let url = URL(string: raw),
-              url.scheme == "http", url.host == "127.0.0.1", url.path == "/v1/traces",
-              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return nil }
-        return url
     }
 
     /// The caller and Instruments observe the same operation interval.
@@ -151,7 +135,7 @@ public final class Logfire {
         if options.responsiveness { responsiveness = MainThreadMonitor(client: self) }
         lifecycle = AppleLifecycle { [weak self] in self?.flush() }
 #if os(macOS)
-        publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["LOGFIRE_SESSION_DIR"] ?? ProcessInfo.processInfo.environment["NEON_OBSERVER_DIR"]
+        publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["LOGFIRE_SESSION_DIR"]
             ?? Self.developmentSessionsDirectory.path, stateDomains: options.stateDomains)
 #endif
         if !buildAttributes.isEmpty { event("xcode.build.identity", attributes: ["measurement.source": .string("app.build_resource")]) }
@@ -167,7 +151,7 @@ public final class Logfire {
     }
 
     /// The host observer verifies this marker against the running executable and process start time.
-    public func publishDevelopmentSession(directory: String?, stateDomains: Set<String> = []) {
+    private func publishDevelopmentSession(directory: String?, stateDomains: Set<String> = []) {
         guard let directory, let executable = Bundle.main.executableURL else { return }
         let folder = URL(fileURLWithPath: directory, isDirectory: true)
         var marker: [String: Any] = Self.buildMetadata(bundle: .main)

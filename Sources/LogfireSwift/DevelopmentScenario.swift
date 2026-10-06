@@ -1,6 +1,6 @@
 import Foundation
 
-public enum DevelopmentScenarioError: Error { case notReady, reportTooLarge }
+public enum DevelopmentScenarioError: Error { case notReady, completionInProgress, reportTooLarge }
 
 /// A development app supplies readiness and its own scenario assertions.
 public final class DevelopmentScenario {
@@ -80,7 +80,8 @@ public final class DevelopmentScenario {
         lock.lock()
         switch phase {
         case .waiting: lock.unlock(); throw DevelopmentScenarioError.notReady
-        case .finishing, .finished: lock.unlock(); return
+        case .finishing: lock.unlock(); throw DevelopmentScenarioError.completionInProgress
+        case .finished: lock.unlock(); return
         case .ready: phase = .finishing; lock.unlock()
         }
         // Exporters can block or call app code. Keep the scenario lock out of this operation.

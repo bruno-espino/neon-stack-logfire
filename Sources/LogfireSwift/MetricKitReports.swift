@@ -23,16 +23,6 @@ public final class MetricKitReports {
         startReports(enabled: configuration != nil, stateDomains: stateDomains)
     }
 
-    public convenience init(serviceName: String, endpoint: URL?, stateDomains: Set<String>, metadataKeys: Set<String> = []) {
-        let exporter = endpoint.map {
-            OtlpHttpTraceExporter(endpoint: $0,
-                config: .init(timeout: 3, compression: .none, exportAsJson: false),
-                envVarHeaders: [], requeueOnFailure: false)
-        }
-        self.init(serviceName: serviceName, exporter: exporter, stateDomains: stateDomains, metadataKeys: metadataKeys)
-        startReports(enabled: endpoint != nil, stateDomains: stateDomains)
-    }
-
     func startReports(enabled: Bool, stateDomains: Set<String>) {
         if enabled {
             let manager = MetricManager(enabledStateReportingDomains: Set(stateDomains.map { StateReportingDomain(rawValue: $0) }))
