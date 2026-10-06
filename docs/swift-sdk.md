@@ -6,7 +6,7 @@ It supports trusted developer and manual tester builds.
 ## Add the SDK to an app
 
 In Xcode, add `https://github.com/bruno-espino/neon-stack-logfire.git` as a package dependency.
-Select the `native-analysis-workflow` branch for the current consolidation pilot.
+Select the `main` branch for the current development pilot.
 Link only the `LogfireSwift` library product to the application target.
 This branch can change. The project has no version tags yet.
 Use a reviewed revision for a reproducible pilot. Use a semantic version after the first release.
@@ -16,7 +16,7 @@ Swift package consumers can add this dependency and target product:
 
 ```swift
 .package(url: "https://github.com/bruno-espino/neon-stack-logfire.git",
-         branch: "native-analysis-workflow")
+         branch: "main")
 
 .product(name: "LogfireSwift", package: "neon-stack-logfire")
 ```
