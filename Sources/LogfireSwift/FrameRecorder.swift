@@ -41,7 +41,8 @@ public struct FrameWindow {
     }
 }
 
-/// Record completed frames. Callback cadence does not measure display presentation.
+/// Record completed renderer frames. Preparation wall time excludes other main-thread and SwiftUI work.
+/// Callback cadence does not measure display presentation.
 public final class FrameRecorder {
     private let client: Logfire
     private let domain: String
@@ -117,6 +118,8 @@ public final class FrameRecorder {
             "frames_over_25_ms": .int(frames.filter { $0 > 25 }.count),
             "sample_limit_reached": .bool(frames.count == 10000),
             "thermal_state": .int(ProcessInfo.processInfo.thermalState.rawValue),
+            "measurement.source": .string("sdk.frame_recorder"), "measurement.scope": .string("render_callbacks"),
+            "cpu_frame.scope": .string("frame_preparation_wall_time"), "main_thread.measured": .bool(false),
         ]) { _, measured in measured }
         if !gpu.isEmpty { values["gpu_command_p95_ms"] = .double(percentile(gpu, 0.95)) }
         let window = FrameWindow(started: windowDate, ended: windowDate.addingTimeInterval(elapsed), callbackFPS: fps,

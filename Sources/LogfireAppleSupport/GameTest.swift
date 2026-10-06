@@ -69,7 +69,7 @@ enum GameTest {
         let windowFile = folder.appendingPathComponent("performance.jsonl")
         var environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("LOGFIRE_") && !$0.key.hasPrefix("OTEL_") && !$0.key.hasPrefix("NEON_") }
         environment.merge(["LOGFIRE_DEV_DIRECT": "0", "LOGFIRE_TOKEN": "", "NEON_PERF_REPORT": windowFile.path,
-            "NEON_BENCHMARK": "1", "NEON_SEED": String(options.seed), "NEON_RENDER_MODE": options.mode,
+            "NEON_BENCHMARK": "1", "NEON_GAME": "neon-stack", "NEON_SEED": String(options.seed), "NEON_RENDER_MODE": options.mode,
             "NEON_BENCHMARK_SECONDS": String(options.offscreen ? options.seconds : options.seconds + 120),
             "NEON_OFFSCREEN": options.offscreen ? "1" : "0", "NEON_AURORA_LAYERS": String(options.layers), "NEON_SESSION_ID": id]) { _, test in test }
         let client = Companion.client(local: options.local, service: "logfire-apple-test")
