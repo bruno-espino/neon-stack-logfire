@@ -103,6 +103,8 @@ Each capture directory retains `Instruments.trace`, XML exports, available dSYM 
 Open `Instruments.trace` in Instruments for the full CPU call tree and timeline.
 Raw recordings can contain environment data, source paths, stacks, and system context. Keep them private when sharing artifacts.
 Logfire receives the selected process's CPU summary and at most twenty leaf functions.
+It also receives up to twenty caller paths for each main/background thread scope.
+Each path preserves the sampled caller hierarchy. Unresolved frames and truncated stacks remain explicit.
 The export omits raw environment data, source paths, addresses, and full stacks.
 Function names, image identities, build/session identity, measured dates, and the local artifact location are exported.
 The process identity in the recording must match the selected session before export.
@@ -112,6 +114,7 @@ The process identity in the recording must match the selected session before exp
 | `game.profile.capture` | Local artifact location, checksums in the local manifest, binary identity, template, and actual interval |
 | `game.cpu.profile` | Running sample count, total sampled CPU weight, identified main-thread weight, unresolved count, and summary availability |
 | `game.cpu.function` | Rank, leaf symbol, image identity, sample count, sampled CPU weight, and fraction of all selected running weight |
+| `game.cpu.call_path` | Main/background scope, caller-to-leaf frames, rank, sampled weight, scope fraction, and partial-path flags |
 
 The parser resolves Apple's XML references and selects only the target PID's Running samples.
 A leaf function's weight is self weight. Caller time does not enter that function's total.
@@ -316,6 +319,46 @@ Use `--no-native` to explicitly run an SDK-only onscreen experiment.
 A missing native capture remains an observation gap. The command does not silently treat it as a complete test.
 Use `--no-telemetry` to retain all evidence locally.
 
+## Diagnose a scenario run
+
+The generic `run --app APP --scenario FILE` command includes a `diagnostic` object in its existing `report.json`.
+The report combines complete renderer windows, retained responsiveness windows, CPU caller paths, artifact locations, and observation gaps.
+The SDK retains responsiveness windows only when the runner supplies an identified development scenario.
+These small writes occur on the monitor queue. Normal Command-R sessions do not acquire another local recorder.
+
+```sh
+logfire-apple diagnose --report PATH/TO/report.json
+```
+
+This command rebuilds the local diagnosis. It does not launch the application, record another profile, or export telemetry.
+It can recover caller paths from older CPU XML exports after verifying their checksums, process identity, and recording interval.
+It preserves the original run status and delivery counters. Reanalysis does not retroactively repair a failed observation or upload.
+It cannot recover CPU stacks that no tool recorded.
+
+The diagnostic thresholds select investigations. They do not define performance gates.
+The report counts callback intervals above 25 ms and main-queue delays above 100 ms.
+High main-thread CPU in a delayed window suggests Time Profiler analysis.
+Low or unavailable CPU suggests System Trace or Swift Concurrency analysis.
+The five-second CPU average does not prove what the thread did during a brief stall.
+Startup, scheduling, locks, and I/O can all affect probe delay.
+Each finding retains the affected five-second measurement intervals. These intervals are not exact stall timestamps.
+The report never labels GPU command sums as utilization or presented-frame latency.
+Time Profiler setup and finalization can exhaust the short run's remaining budget.
+The runner reports requested evidence as incomplete with exit 2. It does not extend the default app deadline or retry automatically.
+
+Apple recommends [call-tree views](https://developer.apple.com/documentation/xcode/analyzing-cpu-profiles-with-call-tree-views)
+and a [diagnostic flow for responsiveness](https://developer.apple.com/videos/play/wwdc2026/268/).
+Caller paths retain at most 256 frames. The report marks deeper or unresolved paths as partial.
+Each scope keeps up to twenty paths. Their fractions include all running samples in that main/background scope.
+Recursive frames remain separate positions. Path fractions are not inclusive function weights or chronological timelines.
+
+Logfire receives `development.diagnostic.summary`, selected `development.diagnostic.finding` logs, and `game.cpu.call_path` logs.
+The overview omits duplicate caller stacks. The path records retain the structured frames separately.
+JSON schema metadata lets Logfire decode these attributes as objects and arrays.
+See Logfire's [attribute serialization](https://pydantic.dev/docs/logfire/instrument/typescript/packages/logfire/#attribute-serialization).
+The dashboard tables include trace and span IDs for [native drilldown](https://pydantic.dev/docs/logfire/observe/write-dashboard-queries/#linking-to-the-live-view).
+Full recordings remain local. A local artifact path does not provide shared artifact storage.
+
 ## Analyze and compare
 
 ```sh
@@ -384,7 +427,7 @@ Use `Apple Development Workflow` as the name and `apple-development-workflow` as
 Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
 Management credentials belong to the dashboard client. The application needs only its project write token.
 
-The twenty panels query diagnostic `records` and native OTel `metrics`.
+The twenty-two panels query diagnostic `records` and native OTel `metrics`.
 They cover SDK windows, CPU/queue signals, live Apple measurements, host context, CPU profiles, captures, and builds.
 Session and Build accept exact IDs. Empty values disable the filter.
 Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
@@ -396,7 +439,8 @@ The SDK timing chart shows the worst window p95 per bucket. It is not a session 
 Apple timing points average reported interval means. They are not per-frame session means.
 The live FPS chart divides presented frames by measured duration within each session and layer.
 Capture tables retain process, layer, and state-layer scopes separately. Overlapping captures are not summed.
-CPU tables retain each capture separately. They show sampled running work and top leaf functions, not inclusive call trees.
+CPU tables retain each capture separately. They show sampled running work, top leaf functions, and selected caller paths.
+They do not reconstruct the complete inclusive call tree or a chronological timeline.
 CPU rows include the actual recording dates and retain unresolved-sample counts.
 Missing attach data means no observation occurred. It does not mean zero load or zero FPS.
 The tables show at most 100 rows. Charts show at most 10,000 buckets. Narrow the time range for detailed investigation.

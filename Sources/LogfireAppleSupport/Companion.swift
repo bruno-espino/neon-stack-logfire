@@ -1,4 +1,5 @@
 import CryptoKit
+import CoreFoundation
 import Foundation
 import LogfireSwift
 #if os(macOS)
@@ -111,6 +112,7 @@ public enum Companion {
         if action == "test-game" { return try GameTest.run(values) }
         if action == "run" { return try ScenarioRun.run(values) }
         if action == "analyze" { return try SessionAnalysis.run(values) }
+        if action == "diagnose" { return try SessionDiagnostics.run(values) }
         if action == "profile" { return try InstrumentsProfile.run(values) }
         if action == "gpu-capture" { return try GPUCapture.run(values) }
         guard ["capture", "attach"].contains(action) else { throw CompanionError.message(usage) }
@@ -220,7 +222,7 @@ public enum Companion {
         for trace in traces {
             let overview = trace.deletingPathExtension().appendingPathExtension("overview.json")
             let status = try HostCommand.run("/usr/bin/metalperftrace", ["overview", "--json", "--include-state-transitions", "--predicate",
-                "pid == \(session.pid)", trace.path], output: overview, errors: folder.appendingPathComponent("overview.stderr"), seconds: 30)
+                "pid == \(session.pid)", trace.path], output: overview, errors: trace.deletingPathExtension().appendingPathExtension("overview.stderr"), seconds: 30)
             guard status == 0 else { throw CompanionError.message("Apple overview failed. Inspect \(folder.path)") }
             let processes = try JSONSerialization.jsonObject(with: Data(contentsOf: overview)) as? [[String: Any]] ?? []
             measurements += processes.flatMap { NativeMeasurements.summaries($0, pid: session.pid, stateDomains: session.stateDomains) }
@@ -230,7 +232,7 @@ public enum Companion {
                     "--predicate", "pid == \(session.pid)"]
                 let rawState = interval == nil ? stateFile : trace.deletingPathExtension().appendingPathExtension("state-context-\(index).json")
                 let stateCode = try HostCommand.run("/usr/bin/metalperftrace", command + [trace.path], output: rawState,
-                    errors: folder.appendingPathComponent("state-\(index).stderr"), seconds: 30)
+                    errors: trace.deletingPathExtension().appendingPathExtension("state-\(index).stderr"), seconds: 30)
                 guard stateCode == 0 else { throw CompanionError.message("State aggregation failed. Inspect \(folder.path)") }
                 var states = try JSONSerialization.jsonObject(with: Data(contentsOf: rawState)) as? [[String: Any]] ?? []
                 if let interval {
@@ -240,7 +242,7 @@ public enum Companion {
                     let offsets = try NativeMeasurements.aggregationOffsets(interval, origin: origin)
                     command += ["--start", "\(offsets.lowerBound)s", "--end", "\(offsets.upperBound)s", trace.path]
                     let sliced = try HostCommand.run("/usr/bin/metalperftrace", command, output: stateFile,
-                        errors: folder.appendingPathComponent("state-slice-\(index).stderr"), seconds: 30)
+                        errors: trace.deletingPathExtension().appendingPathExtension("state-slice-\(index).stderr"), seconds: 30)
                     guard sliced == 0 else { throw CompanionError.message("State measurement slice failed") }
                     states = try JSONSerialization.jsonObject(with: Data(contentsOf: stateFile)) as? [[String: Any]] ?? []
                 }
@@ -307,9 +309,27 @@ public enum Companion {
     static func attributes(_ values: [String: Any]) -> [String: LogfireAttribute] {
         values.compactMapValues { value in
             if let string = value as? String { return .string(string) }
-            if let number = value as? NSNumber { return .double(number.doubleValue) }
+            if let number = value as? NSNumber {
+                if CFGetTypeID(number) == CFBooleanGetTypeID() { return .bool(number.boolValue) }
+                return .double(number.doubleValue)
+            }
             return nil
         }
+    }
+
+    /// Logfire decodes these OTLP strings as structured attributes.
+    static func structuredAttribute(_ key: String, value: Any, type: String) throws -> [String: LogfireAttribute] {
+        let schema: [String: Any] = ["type": "object", "properties": [key: ["type": type]]]
+        return [key: .string(String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self)),
+            "logfire.json_schema": .string(String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self))]
+    }
+
+    static func structuredAttribute<Value: Encodable>(_ key: String, encoded value: Value, type: String) throws -> [String: LogfireAttribute] {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let schema = ["type": "object", "properties": [key: ["type": type]]] as [String: Any]
+        return [key: .string(String(decoding: try encoder.encode(value), as: UTF8.self)),
+            "logfire.json_schema": .string(String(decoding: try JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]), as: UTF8.self))]
     }
 
     static func fileHash(_ file: URL) throws -> String {
@@ -329,7 +349,7 @@ public enum Companion {
     static func client(local: Bool, service: String, resource: [String: Any] = [:]) -> Logfire {
         let identity = attributes(resource.filter { ["session_id", "build.id", "build.configuration", "build.source_digest", "build.sdk", "git.commit", "scenario.id"].contains($0.key) })
         do { return Logfire(serviceName: service, configuration: local ? nil : try configuration(), resourceAttributes: identity) }
-        catch { print("Telemetry unavailable. Reports remain local."); return Logfire(serviceName: service, configuration: nil) }
+        catch { print("Telemetry unavailable. Reports remain local."); return Logfire(serviceName: service, configuration: nil, resourceAttributes: identity) }
     }
 
     static let usage = """
@@ -343,6 +363,7 @@ public enum Companion {
            logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
            logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu] [--no-telemetry]
            logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
+           logfire-apple diagnose --report REPORT
     Capture, attach, and profile select the latest verified live SDK session automatically.
     Optional overrides: --sessions DIRECTORY --output DIRECTORY.
     All actions use Swift and Apple tools. Full reports and captures remain local.

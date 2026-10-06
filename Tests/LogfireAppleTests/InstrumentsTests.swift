@@ -33,6 +33,14 @@ final class InstrumentsTests: XCTestCase {
         XCTAssertEqual(summary.functions.first?.weightNanoseconds, 2_000_000)
         XCTAssertFalse(String(decoding: try JSONEncoder().encode(summary), as: UTF8.self).contains("/private/source"))
         XCTAssertFalse(summary.functions.contains { $0.symbol == "caller" })
+        let mainPath = try XCTUnwrap(summary.callPaths.first)
+        XCTAssertEqual(mainPath.threadScope, "main")
+        XCTAssertEqual(mainPath.frames.map(\.symbol), ["caller", "render"])
+        XCTAssertEqual(mainPath.samples, 2)
+        XCTAssertEqual(mainPath.weightNanoseconds, 2_000_000)
+        XCTAssertEqual(summary.callPaths.filter { $0.threadScope == "background" }.first?.frames.map(\.symbol), ["update"])
+        XCTAssertEqual(summary.pathSamples, 4)
+        XCTAssertEqual(summary.partialPathSamples, 1)
     }
 
     func testCPUParserRejectsUnknownSchemaBrokenReferencesAndInvalidWeights() throws {
@@ -50,6 +58,45 @@ final class InstrumentsTests: XCTestCase {
         XCTAssertEqual(summary.mainThreadWeightNanoseconds, 4_000_000)
         XCTAssertEqual(summary.unresolvedSamples, 2)
         XCTAssertEqual(summary.functions.map(\.symbol), ["render", "update"])
+        XCTAssertEqual(summary.pathSamples, 4)
+    }
+
+    func testPathsKeepDifferentCallersThreadScopesAndRecursiveFrames() throws {
+        let extra = """
+        <row><process ref="p"/><thread-state ref="s"/><thread ref="t"/><weight ref="w"/>
+        <tagged-backtrace><frame ref="leaf"/><frame name="otherCaller"><binary ref="b"/></frame></tagged-backtrace></row>
+        <row><process ref="p"/><thread-state ref="s"/><thread fmt="worker"/><weight ref="w"/>
+        <tagged-backtrace><frame ref="leaf"/><frame name="caller"><binary ref="b"/></frame></tagged-backtrace></row>
+        <row><process ref="p"/><thread-state ref="s"/><thread ref="t"/><weight ref="w"/>
+        <tagged-backtrace><frame ref="leaf"/><frame ref="leaf"/><frame name="caller"><binary ref="b"/></frame></tagged-backtrace></row>
+        """
+        let summary = try InstrumentsXML.cpu(Data(samples.replacingOccurrences(of: "</node>", with: extra + "</node>").utf8), pid: 42)
+        XCTAssertEqual(summary.functions.first?.samples, 5)
+        XCTAssertEqual(summary.callPaths.filter { $0.frames.map(\.symbol) == ["caller", "render"] }.count, 2)
+        XCTAssertEqual(summary.callPaths.first { $0.frames.map(\.symbol) == ["otherCaller", "render"] }?.samples, 1)
+        XCTAssertEqual(summary.callPaths.first { $0.frames.map(\.symbol) == ["caller", "render", "render"] }?.weightNanoseconds, 1_000_000)
+        XCTAssertEqual(summary.weightNanoseconds, 8_000_000)
+    }
+
+    func testOversizedStackIsExplicitlyPartialAndKeepsTheSampledLeaf() throws {
+        let extra = "<row><process ref=\"p\"/><thread-state ref=\"s\"/><thread ref=\"t\"/><weight ref=\"w\"/><tagged-backtrace>" +
+            String(repeating: "<frame ref=\"leaf\"/>", count: 257) + "</tagged-backtrace></row>"
+        let summary = try InstrumentsXML.cpu(Data(samples.replacingOccurrences(of: "</node>", with: extra + "</node>").utf8), pid: 42)
+        let partial = try XCTUnwrap(summary.callPaths.first { $0.truncated })
+        XCTAssertEqual(partial.frames.count, 256)
+        XCTAssertEqual(partial.frames.last?.symbol, "render")
+        XCTAssertEqual(summary.partialPathSamples, 2)
+    }
+
+    func testUnknownCallerWithoutBinaryKeepsTheResolvedLeafAndMarksAPathGap() throws {
+        let data = samples.replacingOccurrences(of: "<frame name=\"caller\"><binary ref=\"b\"/></frame>", with: "<frame name=\"0xabcdef\"/>")
+        let summary = try InstrumentsXML.cpu(Data(data.utf8), pid: 42)
+        XCTAssertEqual(summary.samples, 4)
+        XCTAssertEqual(summary.functions.first?.symbol, "render")
+        XCTAssertEqual(summary.functions.first?.samples, 2)
+        XCTAssertEqual(summary.callPaths.first?.frames.map(\.symbol), ["<unresolved>", "render"])
+        XCTAssertEqual(summary.partialPathSamples, 3)
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(summary), as: UTF8.self).contains("abcdef"))
     }
 
     func testRecordingIdentityUsesActualDatesWithoutExportingEnvironment() throws {

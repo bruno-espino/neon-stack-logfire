@@ -9,6 +9,7 @@ final class MainThreadMonitor {
     private var port: mach_port_t = 0
     private var probe: TimeInterval?
     private var window = ResponsivenessWindow()
+    private var retentionFailed = false
 
     init(client: Logfire) {
         self.client = client
@@ -43,6 +44,13 @@ final class MainThreadMonitor {
             }
         }
         if let values = window.sample(now: now, mainCPU: cpuTime(), process: Self.processUsage(), pendingAge: age) {
+            do { try DevelopmentScenario(client: client)?.recordResponsiveness(values) }
+            catch {
+                if !retentionFailed {
+                    client.event("development.evidence.failure", attributes: ["evidence.kind": .string("responsiveness")])
+                    retentionFailed = true
+                }
+            }
             client.event("app.responsiveness.window", attributes: values)
             if case .double(let value) = values["main_queue.pending_age_max_ms"] { client.metrics?.record(.mainQueuePending, value: value) }
             if case .double(let value) = values["main_thread.cpu.utilization"] { client.metrics?.record(.mainThreadCPU, value: value) }
