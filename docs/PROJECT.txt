@@ -1,0 +1,113 @@
+NEON STACK + LOGFIRE
+
+Purpose
+Connect Apple performance evidence to its app build and game session.
+Keep Xcode build, run, debug, and profile workflows familiar.
+Status: experimental local development integration. Owner: Bruno.
+Toolchain: Xcode 27.0 (27A266a), Metal Toolchain 27A266a, macOS 27.0.1.
+
+Project
+Game: examples/neon-stack/NeonStack.xcodeproj
+Swift integration: repository-root Swift package
+Host tools: tools/xcode-observe
+Dashboard: tools/xcode-observe/runtime-dashboard.json. Import it into your Logfire project.
+
+Data flow
+Game operations -> Swift OpenTelemetry -> direct HTTPS -> Logfire.
+The optional local relay remains available for transport comparisons.
+Game signposts and StateReporting -> Apple profiling tools.
+Apple live Metal measurements -> host observer -> Logfire.
+Native capture -> local recording, symbols, checksums, and Logfire metadata.
+Runtime data arrives while the game runs. Builds export build context.
+Automated replays generate repeatable runtime sessions for comparisons.
+
+Daily use
+Run `uv sync --project tools/xcode-observe` after tool changes.
+Open the project. Select NeonStack and My Mac. Press Cmd-R.
+This scheme enables direct app telemetry without a relay or live native observer.
+The app reads a configured private credential file at runtime. The bundle contains no token.
+Apple retains native Metal history on macOS 27. Capture it on demand.
+The app publishes a session marker. The scheme retains normal LLDB debugging.
+Use xcode-native-observe attach --latest for explicit live Apple measurements.
+That observer stops after its selected duration or when the game exits.
+One NeonStack scheme covers direct telemetry and normal debugging.
+
+Capture the last 10 seconds
+From the repository root, run:
+tools/xcode-observe/.venv/bin/xcode-native-observe capture \
+  --sessions examples/neon-stack/.xcode-observe/sessions \
+  --artifact-dir examples/neon-stack/.xcode-observe/native \
+  --latest --seconds 10
+Open the saved .atrc file in Instruments. The manifest identifies its session,
+build, timestamps, binary checksum, retained symbols, and artifact checksums.
+Logfire receives selected Apple lookback summaries after the command.
+Include a render-state transition when its context matters. A shorter overview can omit it.
+The session marker still identifies the build.
+
+Terminology
+Build ID: identifies an app build. The app embeds it as a resource.
+Source digest: fingerprints game source, project settings, and Swift integration.
+Session ID: identifies one app run and joins its independent records.
+Span: a timed operation, such as dropping a piece.
+OpenTelemetry / OTLP: standard telemetry API and export protocol.
+Relay: a Mac-only forwarder that adds the host token outside the app.
+Swift package: the distribution format for our experimental native Swift SDK.
+Direct export: the Swift SDK sends OTLP to Logfire without a relay process.
+Signpost: native event or interval on an Instruments timeline.
+StateReporting: native render-mode and workload context on OS/SDK 27.
+Instruments: Apple's detailed CPU, GPU, and scheduling diagnostic tool.
+metalperftrace: Apple's macOS CLI for live and historical Metal measurements.
+Capture: Apple recording artifact, distinct from an OpenTelemetry trace.
+dSYM: debug symbols that identify native functions.
+Build correlation: shared build IDs link builds, sessions, and captures.
+MetricKit: delayed Apple field metrics and diagnostics.
+MetricKitReports: experimental Swift reader for daily Metal metrics on OS 27.
+It preserves historical dates and versions. It omits current-run build and session IDs.
+
+Measurement contract and limits
+Apple presented FPS describes display delivery. Game callback cadence is separate.
+GPU duration does not measure hardware utilization.
+Compare matched Release devices, modes, resolutions, seeds, and workloads.
+Do not combine window percentiles into an invented overall percentile.
+Native observation requires macOS 27. Physical iOS runtime monitoring is unverified.
+Capture files remain local. Logfire stores their metadata and local locations.
+Apple lookback recordings can include other processes. The overview filters our PID.
+Neither transport has a durable queue. Export failures can leave gaps.
+Trusted developer and tester builds are the current scope. Public player telemetry is outside it.
+Cmd-R exports build identity. Full build timing requires xcode-observe.
+
+Verified
+macOS Release and arm64 iOS Simulator Release builds pass.
+All 21 host-tool tests and 8 Swift SDK tests pass.
+Ordinary Cmd-R starts direct app telemetry without a relay or live Metal observer.
+LLDB attaches successfully. Pause and resume work while the app exports telemetry.
+StateReporting appears in Apple measurements when the capture includes its transition.
+Swift windows, native measurements, and captures join their build in Logfire.
+The native capture opens in Instruments. Capture checksums match.
+Release bundle credential checks pass.
+Existing telemetry measures adoption. No PostHog event is added.
+Bruno owns the measure and dashboard.
+
+Aurora experiment
+Aurora adds animated light curtains. Low, Medium, and High use 8, 24, and 48 layers.
+Detail belongs to the performance cohort and native StateReporting metadata.
+Matched texture replays show about 6.6 ms and 9.3 ms mean window GPU p95 at Low and High.
+These values are exploratory M4 measurements. They are not presented FPS.
+
+Next experiment
+Verify direct export on another tester Mac with its own runtime write token.
+Add bounded delivery diagnostics and verify flushing across application lifecycle changes.
+Await a real MetricKit report. Verify its historical version and state context.
+Use Aurora for a repeatable GPU investigation. Inspect native frame evidence.
+Verify the change across matched Release runs and a physical iOS device.
+
+Measurement sources
+SDK operations: game drop, hold, rotate, line clear, and instrumented operation failures.
+Game instrumentation: callback intervals, frame preparation wall time, Metal command duration,
+thermal state, rendering mode, drawable size, and Aurora detail. The SDK exports these values.
+Apple native tools: presented FPS, skipped frames, frame-on-glass intervals, and drawable waits.
+MetricKit bridge: delayed daily Metal reports. Real Apple delivery remains unverified.
+Build tools: xcodebuild duration, task totals, warnings, errors, and exit status.
+Host build samples: machine CPU, memory, and free disk. These are not continuous runtime monitoring.
+Native captures: local recordings and symbols. Logfire receives selected summaries and metadata.
+Runtime performance values currently use span attributes. They are not OTel metric instruments.

@@ -1,0 +1,35 @@
+[project]
+name = "xcode-observe"
+version = "0.1.0"
+description = "Observe Xcode builds and Apple build hosts with Logfire."
+requires-python = ">=3.14"
+dependencies = ["httpx2>=2.3,<3", "logfire[system-metrics]>=5.1,<6", "pydantic>=2.12,<3", "psutil>=7,<8"]
+
+[project.scripts]
+xcode-observe = "xcode_observe.cli:main"
+xcode-game-profile = "xcode_observe.game_profile:main"
+xcode-dev-relay = "xcode_observe.dev_relay:main"
+xcode-build-identity = "xcode_observe.build_identity:main"
+xcode-native-observe = "xcode_observe.native_observe:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=9,<10", "ruff>=0.14"]
+
+[tool.uv.workspace]
+members = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S101", "BLE"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

@@ -1,0 +1,50 @@
+NEON STACK + LOGFIRE WORKLOG
+
+Purpose
+Make native Apple development telemetry useful with a familiar Xcode workflow.
+Use the game as a repeatable workload for app and GPU investigations.
+
+Implemented
+Built a Metal falling-block game for macOS and iOS Simulator.
+Added hold/swap, clear feedback, synthesized sound, and adjustable Aurora rendering.
+Added an experimental native Swift package over the upstream OpenTelemetry SDK.
+Direct OTLP export supports trusted development and tester builds.
+Added runtime operation spans and five-second performance windows.
+Added build identity and session IDs to join builds, game records, and captures.
+Added optional host build observation, seeded replays, and Apple native capture commands.
+Added an experimental MetricKit 27 reader with historical report context.
+
+Workflow decisions
+Ordinary Cmd-R uses one NeonStack scheme with LLDB and direct Swift export.
+Removed redundant schemes. No relay or native observer starts during ordinary development.
+The relay remains an optional transport experiment. It has no durable queue.
+Native signposts stay available in Instruments. The SDK does not import arbitrary signposts.
+Apple capture files remain local. Logfire receives metadata and selected measurements.
+Native captures use explicit commands because they add overhead and can include other processes.
+
+Standalone extraction
+Moved the Swift package to the repository root for direct Swift package integration.
+Placed the game under examples/neon-stack and retained optional host tools under tools/.
+Removed the private monorepo fixture dependency from the five-build scenario runner.
+Excluded credentials, build products, captures, local caches, and monorepo history.
+Retained public upstream dependency lock files for reproducible setup.
+
+Verification boundaries
+The original prototype passed macOS and iOS Simulator Release builds.
+The original prototype passed 8 Swift SDK tests and 21 host-tool tests.
+Direct app telemetry and LLDB pause/resume were verified in the original Xcode project.
+The original native capture opened in Instruments and matched its manifest checksums.
+Standalone extraction passes 8 Swift SDK tests and 21 host-tool tests.
+The standalone game passes rule, replay, animation, and native audio checks.
+Fresh standalone macOS and iOS Simulator Release builds pass with signing disabled.
+Python lint and formatting checks pass. Local documentation links resolve.
+Repository credential and private-reference scans report no findings.
+The macOS app contains build identity and passes the host-token scan.
+Real daily MetricKit delivery and physical iOS runtime remain unverified.
+
+Next steps
+Verify direct export on a second tester Mac with its own runtime write token.
+Add bounded delivery diagnostics and test application lifecycle flushing.
+Compare matched Aurora Release replays and inspect native presentation evidence.
+Verify a physical iOS run. Await and validate a real daily MetricKit report.
+Assess a supported Swift SDK only after these developer workflow checks succeed.

@@ -1,0 +1,448 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "neon-stack-performance"
+  },
+  "spec": {
+    "display": {
+      "name": "Neon Stack Performance",
+      "description": "Native Metal timing summaries correlated with builds. Use local Instruments traces for detailed diagnosis."
+    },
+    "datasources": {},
+    "variables": [],
+    "panels": {
+      "CPU": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Frame preparation wall time",
+            "description": "Elapsed CPU-side frame preparation, including waits. This is not CPU utilization. Each point averages window p95 values."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "show": true,
+                "label": "ms"
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, (attributes->>'recorded_at')::timestamp) AS time, attributes->>'session_id' AS session, avg((attributes->>'cpu_frame_p95_ms')::double) AS milliseconds FROM records WHERE service_name IN ('xcode-observe', 'neon-stack') AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "groupBy": "session",
+                    "metrics": [
+                      "milliseconds"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "GPU": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Metal command GPU time p95",
+            "description": "Window summaries plotted at measurement time. Each series identifies a session. Offscreen runs measure a paced texture loop; onscreen runs measure renderer callbacks."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "show": true,
+                "label": "ms"
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, (attributes->>'recorded_at')::timestamp) AS time, attributes->>'session_id' AS session, avg((attributes->>'gpu_command_p95_ms')::double) AS milliseconds FROM records WHERE service_name IN ('xcode-observe', 'neon-stack') AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "groupBy": "session",
+                    "metrics": [
+                      "milliseconds"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Cohorts": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Compare like-for-like runs",
+            "description": "Average window p95 is not an overall p95. Match seed, drawable size, build commit, Mac model, OS, and profiler mode. Offscreen runs measure a paced texture loop; onscreen runs measure renderer callbacks. Use a known build trace to distinguish uncommitted build artifacts. Match Aurora layer count."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT w.attributes->>'render_mode' AS mode, coalesce(w.attributes->>'aurora_layers', '0') AS aurora_layers, w.attributes->>'workload' AS workload, s.attributes->>'game.seed' AS seed, s.attributes->>'game.instrumented' AS instrumented, w.attributes->>'drawable_width' AS width, w.attributes->>'drawable_height' AS height, s.attributes->>'host.model' AS mac_model, s.attributes->>'host.macos_version' AS macos, s.attributes->>'git.commit' AS commit, s.attributes->>'build.trace_id' AS build_trace, count(DISTINCT w.trace_id) AS sessions, count(*) AS windows, avg((w.attributes->>'frame_interval_p95_ms')::double) AS mean_window_interval_p95_ms, avg((w.attributes->>'gpu_command_p95_ms')::double) AS mean_window_gpu_p95_ms FROM records w JOIN records s ON w.trace_id = s.trace_id AND s.span_name = 'game.session' AND s.kind = 'span' WHERE w.service_name = 'xcode-observe' AND w.span_name = 'game.performance.window' GROUP BY mode, aurora_layers, workload, seed, instrumented, width, height, mac_model, macos, commit, build_trace ORDER BY mean_window_gpu_p95_ms DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Windows": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Native performance windows",
+            "description": "Percentiles cover individual five-second windows after warmup. Callback FPS is not presented FPS. Offscreen runs measure a paced texture loop; onscreen runs measure renderer callbacks."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'recorded_at' AS measured, attributes->>'render_mode' AS mode, attributes->>'workload' AS workload, (attributes->>'render_callback_fps')::double AS render_rate_hz, (attributes->>'frame_interval_p95_ms')::double AS interval_p95_ms, (attributes->>'cpu_frame_p95_ms')::double AS cpu_p95_ms, (attributes->>'gpu_command_p95_ms')::double AS gpu_command_p95_ms, (attributes->>'frames_over_25_ms')::bigint AS intervals_over_25_ms, (attributes->>'lines')::bigint AS lines, attributes->>'thermal_state' AS thermal_state, trace_id FROM records WHERE service_name IN ('xcode-observe', 'neon-stack') AND span_name = 'game.performance.window' ORDER BY attributes->>'recorded_at' DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Sessions": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Game sessions",
+            "description": "Fixed-seed replay. Profiled sessions include Instruments overhead. Offscreen runs measure a paced texture loop; onscreen runs measure renderer callbacks."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp AS exported, attributes->>'game.render_mode' AS mode, attributes->>'game.workload' AS workload, attributes->>'game.seed' AS seed, attributes->>'game.instrumented' AS instrumented, attributes->>'game.windows' AS windows, attributes->>'host.model' AS mac_model, attributes->>'git.commit' AS commit, attributes->>'build.trace_id' AS build_trace, trace_id FROM records WHERE service_name = 'xcode-observe' AND span_name = 'game.session' AND kind = 'span' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "FrameIntervals": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Renderer callback interval p95",
+            "description": "Window summaries plotted at measurement time. Each series identifies a session. Offscreen runs measure a paced texture loop; onscreen runs measure renderer callbacks."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "show": true,
+                "label": "ms"
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, (attributes->>'recorded_at')::timestamp) AS time, attributes->>'session_id' AS session, avg((attributes->>'frame_interval_p95_ms')::double) AS milliseconds FROM records WHERE service_name IN ('xcode-observe', 'neon-stack') AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time LIMIT 10000",
+                    "groupBy": "session",
+                    "metrics": [
+                      "milliseconds"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "NativeOperations": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Live Swift operations",
+            "description": "Native operations arrive during ordinary Xcode runs. Join independent windows by session_id. Nested operations share a trace."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, span_name, attributes->>'session_id' AS session, attributes->>'render_mode' AS mode, attributes->>'cleared_lines' AS cleared_lines, attributes->>'all_clear' AS all_clear, trace_id FROM records WHERE service_name = 'neon-stack' AND kind = 'span' AND span_name != 'game.performance.window' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "NativeDisplay": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Apple display delivery",
+            "description": "Presented frames and frame-on-glass intervals come from Apple. CPU and GPU wall times are durations, not hardware utilization."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, attributes->>'session_id' AS session, attributes->>'build.id' AS build, (attributes->>'presented_fps')::double AS presented_fps, (attributes->>'frame_on_glass_mean_ms')::double AS glass_interval_mean_ms, (attributes->>'gpu_wall_mean_ms')::double AS gpu_wall_mean_ms, (attributes->>'drawable_wait_mean_ms')::double AS drawable_wait_mean_ms, attributes->>'game.native.states' AS native_states FROM records WHERE span_name = 'game.native.performance' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "BuildIdentity": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "App build identities",
+            "description": "Cmd-R records app identity. Wrapped xcodebuild records full build timing. Join runtime records by build.id."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, span_name, attributes->>'build.id' AS build, attributes->>'build.configuration' AS configuration, attributes->>'build.sdk' AS sdk, attributes->>'xcode.version' AS xcode, attributes->>'git.commit' AS commit, attributes->>'build.source_digest' AS source_digest, trace_id FROM records WHERE span_name IN ('xcode.build.identity','xcode.build') AND kind = 'span' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Captures": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Native captures attached to sessions",
+            "description": "Artifacts remain on the recording Mac. Use capture.path to open the native recording and manifest locally."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, attributes->>'capture.id' AS capture, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'build.trace_id' AS build_trace, attributes->>'capture.started_at' AS capture_start, attributes->>'capture.ended_at' AS capture_end, attributes->>'capture.path' AS local_artifact, attributes->>'capture.storage' AS storage FROM records WHERE span_name = 'game.profile.capture' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "CaptureSummary": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Apple lookback measurements",
+            "description": "Selected per-layer summaries from on-demand captures. No live observer is required. Detailed recordings stay local."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, attributes->>'capture.id' AS capture, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'presented_fps' AS presented_fps, attributes->>'gpu_wall_mean_ms' AS gpu_wall_mean_ms, attributes->>'drawable_wait_mean_ms' AS drawable_wait_mean_ms, attributes->>'game.native.states' AS states FROM records WHERE span_name = 'game.native.capture_summary' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/Sessions"
+              }
+            },
+            {
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Windows"
+              }
+            },
+            {
+              "x": 0,
+              "y": 13,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Cohorts"
+              }
+            },
+            {
+              "x": 0,
+              "y": 20,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/FrameIntervals"
+              }
+            },
+            {
+              "x": 12,
+              "y": 20,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/GPU"
+              }
+            },
+            {
+              "x": 0,
+              "y": 27,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPU"
+              }
+            },
+            {
+              "x": 0,
+              "y": 34,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/NativeOperations"
+              }
+            },
+            {
+              "x": 0,
+              "y": 41,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/NativeDisplay"
+              }
+            },
+            {
+              "x": 0,
+              "y": 48,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/BuildIdentity"
+              }
+            },
+            {
+              "x": 0,
+              "y": 55,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Captures"
+              }
+            },
+            {
+              "x": 0,
+              "y": 62,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CaptureSummary"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "1h",
+    "refreshInterval": "10s"
+  }
+}

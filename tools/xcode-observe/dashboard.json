@@ -1,0 +1,335 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "xcode-builds"
+  },
+  "spec": {
+    "display": {
+      "name": "Xcode Builds",
+      "description": "Experimental Apple build observation. Timestamped host samples accompany build outcomes and aggregate task work."
+    },
+    "duration": "1h",
+    "refreshInterval": "0s",
+    "variables": [],
+    "panels": {
+      "Builds": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Recent Xcode builds",
+            "description": "Build duration includes the wrapped xcodebuild process. Open a trace from Live using its trace ID."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp AS started, attributes->>'build.scenario' AS scenario,\n attributes->>'build.scheme' AS scheme, attributes->>'build.destination' AS destination,\n attributes->>'build.cache_state' AS cache, (attributes->>'build.exit_code')::bigint AS exit_code,\n (attributes->>'build.duration_seconds')::double AS duration_seconds,\n (attributes->>'host.sample_count')::bigint AS samples, attributes->>'build.id' AS build_id, trace_id\nFROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.build' AND kind = 'span' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Cohorts": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Comparable successful builds",
+            "description": "Match scheme, configuration, destination, actions, project-clean cache state, scenario, Xcode version, and Mac model. Small counts are exploratory."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'build.scheme' AS scheme, attributes->>'build.configuration' AS configuration,\n attributes->>'build.destination' AS destination, attributes->>'build.actions' AS actions,\n attributes->>'build.cache_state' AS cache, attributes->>'build.scenario' AS scenario,\n attributes->>'xcode.version' AS xcode, attributes->>'host.model' AS mac_model,\n count(*) AS builds, avg((attributes->>'build.duration_seconds')::double) AS mean_seconds,\n min((attributes->>'build.duration_seconds')::double) AS min_seconds,\n max((attributes->>'build.duration_seconds')::double) AS max_seconds\nFROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.build' AND kind = 'span' AND (attributes->>'build.exit_code')::bigint = 0\nGROUP BY scheme, configuration, destination, actions, cache, scenario, xcode, mac_model\nORDER BY mean_seconds DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "TaskWork": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Aggregate compiler work",
+            "description": "Tasks can overlap. These work totals are not a phase timeline or critical path."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp AS started, attributes->>'build.scenario' AS scenario,\n (attributes->'xcode.task_seconds'->>'SwiftCompile')::double AS swift_seconds,\n coalesce((attributes->'xcode.task_seconds'->>'CompileMetalFile')::double, (attributes->'xcode.task_seconds'->>'Metal')::double) AS metal_seconds,\n (attributes->'xcode.task_seconds'->>'Ld')::double AS linker_seconds, trace_id\nFROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.build' AND kind = 'span' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "CPU": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Host CPU during builds",
+            "description": "Whole-machine usage. Each series identifies a build; concurrent work can contribute."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "show": true,
+                "label": "%"
+              },
+              "visual": {
+                "display": "line",
+                "areaOpacity": 0.15
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, attributes->>'build.id' AS build_id, avg((attributes->>'cpu_utilization')::double) * 100 AS cpu_percent FROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.host.sample' GROUP BY time, build_id ORDER BY time LIMIT 10000",
+                    "groupBy": "build_id",
+                    "metrics": [
+                      "cpu_percent"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Memory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Host memory during builds",
+            "description": "Used memory based on operating-system available memory."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "show": true,
+                "label": "%"
+              },
+              "visual": {
+                "display": "line",
+                "areaOpacity": 0.15
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, attributes->>'build.id' AS build_id, avg((attributes->>'memory_utilization')::double) * 100 AS memory_percent FROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.host.sample' GROUP BY time, build_id ORDER BY time LIMIT 10000",
+                    "groupBy": "build_id",
+                    "metrics": [
+                      "memory_percent"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Disk": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Available filesystem space",
+            "description": "Space on the filesystem containing the working directory."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "show": true,
+                "label": "GiB"
+              },
+              "visual": {
+                "display": "line",
+                "areaOpacity": 0.15
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, attributes->>'build.id' AS build_id, avg((attributes->>'disk_free_bytes')::double) * 1.0 / 1073741824 AS free_gib FROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.host.sample' GROUP BY time, build_id ORDER BY time LIMIT 10000",
+                    "groupBy": "build_id",
+                    "metrics": [
+                      "free_gib"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Swap": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Host swap usage",
+            "description": "Swap in use across the entire host. This is not a build-specific allocation."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "show": true,
+                "label": "MiB"
+              },
+              "visual": {
+                "display": "line",
+                "areaOpacity": 0.15
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, start_timestamp) AS time, attributes->>'build.id' AS build_id, avg((attributes->>'swap_used_bytes')::double) * 1.0 / 1048576 AS swap_mib FROM records WHERE service_name = 'xcode-observe' AND span_name = 'xcode.host.sample' GROUP BY time, build_id ORDER BY time LIMIT 10000",
+                    "groupBy": "build_id",
+                    "metrics": [
+                      "swap_mib"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Builds"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Cohorts"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/TaskWork"
+              }
+            },
+            {
+              "x": 0,
+              "y": 20,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPU"
+              }
+            },
+            {
+              "x": 12,
+              "y": 20,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Memory"
+              }
+            },
+            {
+              "x": 0,
+              "y": 27,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Disk"
+              }
+            },
+            {
+              "x": 12,
+              "y": 27,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/Swap"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

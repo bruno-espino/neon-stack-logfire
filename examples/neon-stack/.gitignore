@@ -1,0 +1,4 @@
+.xcode-observe/
+DerivedData/
+*.xcuserstate
+xcuserdata/

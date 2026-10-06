@@ -1,0 +1,105 @@
+import Foundation
+import XCTest
+import OpenTelemetrySdk
+@testable import LogfireSwift
+
+final class CaptureExporter: SpanExporter {
+    private let lock = NSLock()
+    private var values: [SpanData] = []
+    var spans: [SpanData] { lock.lock(); defer { lock.unlock() }; return values }
+    func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
+        lock.lock(); defer { lock.unlock() }; values += spans; return .success
+    }
+    func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+    func shutdown(explicitTimeout: TimeInterval?) {}
+}
+
+final class LogfireTests: XCTestCase {
+    func testBuildMetadataExcludesUnrelatedBundleData() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bundle")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let data = try JSONSerialization.data(withJSONObject: ["build.id": "build-42", "secret": "synthetic"])
+        try data.write(to: directory.appendingPathComponent("LogfireBuild.json"))
+        let bundle = try XCTUnwrap(Bundle(path: directory.path))
+        XCTAssertEqual(Logfire.buildMetadata(bundle: bundle), ["build.id": "build-42"])
+    }
+    func testThrownOperationEndsAnErrorSpan() {
+        enum Failure: Error { case intentional }
+        let exporter = CaptureExporter()
+        let client = Logfire(serviceName: "native-test", exporter: exporter)
+        XCTAssertThrowsError(try client.withSpan("failure") { throw Failure.intentional })
+        client.flush()
+        XCTAssertEqual(exporter.spans.count, 1)
+        XCTAssertEqual(exporter.spans.first?.status, .error(description: "Operation failed"))
+    }
+
+    func testNestedOperationsAndMeasurementTimestamps() {
+        let exporter = CaptureExporter()
+        let client = Logfire(serviceName: "native-test", exporter: exporter)
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+        client.withSpan("outer") { client.event("inner", attributes: ["lines": .int(4)]) }
+        client.window("window", started: started, ended: started.addingTimeInterval(5), attributes: ["frames": .int(300)])
+        client.flush()
+        let spans = exporter.spans
+        XCTAssertEqual(spans.count, 3)
+        let outer = spans.first { $0.name == "outer" }!
+        let inner = spans.first { $0.name == "inner" }!
+        let window = spans.first { $0.name == "window" }!
+        XCTAssertEqual(inner.traceId, outer.traceId)
+        XCTAssertEqual(inner.parentSpanId, outer.spanId)
+        XCTAssertEqual(window.startTime, started)
+        XCTAssertEqual(window.endTime, started.addingTimeInterval(5))
+        XCTAssertEqual(window.attributes["frames"], .int(300))
+        XCTAssertEqual(window.attributes["session_id"], .string(client.sessionID))
+        XCTAssertEqual(window.resource.attributes["service.name"], .string("native-test"))
+    }
+
+    func testEndpointRequiresExplicitLoopbackConfiguration() {
+        XCTAssertNil(Logfire.developmentEndpoint(environment: [:]))
+        XCTAssertNil(Logfire.developmentEndpoint(environment: ["LOGFIRE_DEV_ENDPOINT": "https://remote.example/v1/traces"]))
+        XCTAssertNil(Logfire.developmentEndpoint(environment: ["LOGFIRE_DEV_ENDPOINT": "http://secret@127.0.0.1:4318/v1/traces"]))
+        XCTAssertEqual(Logfire.developmentEndpoint(environment: ["LOGFIRE_DEV_ENDPOINT": "http://127.0.0.1:4318/v1/traces"])?.port, 4318)
+    }
+
+    func testDirectExportRequiresRuntimeOptInAndCompleteCredentials() throws {
+        let missingFile = URL(fileURLWithPath: "/unavailable-logfire-credentials")
+        XCTAssertNil(try LogfireConfiguration.development(environment: [
+            "LOGFIRE_TOKEN": "synthetic", "LOGFIRE_BASE_URL": "https://logfire-us.pydantic.dev",
+        ], credentialsFile: missingFile))
+        XCTAssertThrowsError(try LogfireConfiguration.development(environment: [
+            "LOGFIRE_DEV_DIRECT": "1", "LOGFIRE_TOKEN": "synthetic",
+        ], credentialsFile: missingFile)) { error in
+            XCTAssertEqual(error as? LogfireConfigurationError, .missingCredentials)
+        }
+        let configuration = try XCTUnwrap(LogfireConfiguration.development(environment: [
+            "LOGFIRE_DEV_DIRECT": "1", "LOGFIRE_TOKEN": "synthetic",
+            "LOGFIRE_BASE_URL": "https://logfire-us.pydantic.dev/",
+        ], credentialsFile: missingFile))
+        XCTAssertEqual(configuration.endpoint.absoluteString, "https://logfire-us.pydantic.dev/v1/traces")
+    }
+
+    func testPrivateFileConfiguresDirectExportAndRejectsUnsafeTransport() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try "# Development only\nLOGFIRE_TOKEN=synthetic\nLOGFIRE_BASE_URL=https://logfire-eu.pydantic.dev\n"
+            .write(to: file, atomically: true, encoding: .utf8)
+        let configuration = try XCTUnwrap(LogfireConfiguration.development(
+            environment: ["LOGFIRE_DEV_DIRECT": "1"], credentialsFile: file))
+        XCTAssertEqual(configuration.endpoint.host, "logfire-eu.pydantic.dev")
+        for endpoint in ["http://remote.example/v1/traces", "http://127.0.0.1:4318/v1/traces",
+                         "https://secret@remote.example/v1/traces", "https://remote.example/v1/traces?token=secret"] {
+            XCTAssertThrowsError(try LogfireConfiguration(endpoint: XCTUnwrap(URL(string: endpoint)), token: "synthetic"))
+        }
+        XCTAssertThrowsError(try LogfireConfiguration(endpoint: configuration.endpoint, token: "synthetic\nsecret")) { error in
+            XCTAssertEqual(String(describing: error), "The write token must be nonempty and contain no whitespace.")
+        }
+    }
+
+    func testRelayRemainsAnExplicitUnauthenticatedOption() throws {
+        let configuration = try XCTUnwrap(LogfireConfiguration.development(environment: [
+            "LOGFIRE_DEV_ENDPOINT": "http://127.0.0.1:4318/v1/traces",
+        ]))
+        XCTAssertEqual(configuration.endpoint.port, 4318)
+    }
+}
