@@ -83,8 +83,7 @@ enum OffscreenReplay {
                         try savePreview(texture, at: URL(fileURLWithPath: output).deletingLastPathComponent().appendingPathComponent(name + ".png"))
                     }
                 }
-                let gpu = command.gpuStartTime > 0 ? (command.gpuEndTime - command.gpuStartTime) * 1000 : nil
-                recorder.record(frameMilliseconds: interval, cpuMilliseconds: cpu, gpuMilliseconds: gpu,
+                recorder.record(commandBuffer: command, frameMilliseconds: interval, cpuMilliseconds: cpu,
                                 mode: mode, lines: engine.lines, score: engine.score, width: 600, height: 1200,
                                 workload: "offscreen", auroraLayers: detail)
                 frame += 1

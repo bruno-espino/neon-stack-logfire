@@ -11,6 +11,11 @@ public final class Logfire {
     private let signposter = OSSignposter(subsystem: "dev.logfire.swift", category: .pointsOfInterest)
     public let sessionID: String
     private let buildAttributes: [String: AttributeValue]
+    private let serviceName: String
+    private var appleReports: AnyObject?
+    private var lifecycle: AppleLifecycle?
+    private let deliveryCounters = DeliveryCounters()
+    public var delivery: DeliveryStatus { deliveryCounters.snapshot(enabled: provider != nil) }
 
     public convenience init(serviceName: String, configuration: LogfireConfiguration?) {
         self.init(serviceName: serviceName, exporter: configuration?.makeExporter())
@@ -26,10 +31,11 @@ public final class Logfire {
     }
 
     init(serviceName: String, exporter: SpanExporter?) {
+        self.serviceName = serviceName
         sessionID = ProcessInfo.processInfo.environment["NEON_SESSION_ID"].flatMap(UUID.init(uuidString:))?.uuidString ?? UUID().uuidString
         buildAttributes = Self.buildMetadata(bundle: .main).mapValues { .string($0) }
         if let exporter {
-            let processor = BatchSpanProcessor(spanExporter: exporter, scheduleDelay: 1,
+            let processor = BatchSpanProcessor(spanExporter: ObservedExporter(exporter, counters: deliveryCounters), scheduleDelay: 1,
                 exportTimeout: 3, maxQueueSize: 256, maxExportBatchSize: 64)
             let provider = TracerProviderBuilder()
                 .with(resource: Resource(attributes: [
@@ -87,7 +93,31 @@ public final class Logfire {
     }
 
     /// Call from a background queue when the application enters the background.
-    public func flush() { provider?.forceFlush(timeout: 3) }
+    public func flush() {
+        provider?.forceFlush(timeout: 3)
+#if canImport(MetricKit)
+        if #available(macOS 27.0, iOS 27.0, *) { (appleReports as? MetricKitReports)?.flush() }
+#endif
+    }
+
+    func startAppleMonitoring(serviceName: String, configuration: LogfireConfiguration?, options: AppleMonitoring) {
+        guard configuration != nil else { return }
+#if canImport(MetricKit)
+        if #available(macOS 27.0, iOS 27.0, *), options.metricKit {
+            let reports = MetricKitReports(serviceName: serviceName,
+                exporter: configuration.map { ObservedExporter($0.makeExporter(), counters: deliveryCounters) },
+                stateDomains: options.stateDomains, metadataKeys: options.metadataKeys)
+            reports.startReports(enabled: true, stateDomains: options.stateDomains)
+            appleReports = reports
+        }
+#endif
+        lifecycle = AppleLifecycle { [weak self] in self?.flush() }
+#if os(macOS)
+        publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["NEON_OBSERVER_DIR"]
+            ?? Self.developmentSessionsDirectory.path, stateDomains: options.stateDomains)
+#endif
+        if !buildAttributes.isEmpty { event("xcode.build.identity", attributes: ["measurement.source": .string("app.build_resource")]) }
+    }
 
     public static func buildMetadata(bundle: Bundle) -> [String: String] {
         guard let url = bundle.url(forResource: "LogfireBuild", withExtension: "json"),
@@ -99,7 +129,7 @@ public final class Logfire {
     }
 
     /// The host observer verifies this marker against the running executable and process start time.
-    public func publishDevelopmentSession(directory: String?) {
+    public func publishDevelopmentSession(directory: String?, stateDomains: Set<String> = []) {
         guard let directory, let executable = Bundle.main.executableURL else { return }
         let folder = URL(fileURLWithPath: directory, isDirectory: true)
         var marker: [String: Any] = Self.buildMetadata(bundle: .main)
@@ -107,6 +137,8 @@ public final class Logfire {
         marker["pid"] = ProcessInfo.processInfo.processIdentifier
         marker["executable"] = executable.path
         marker["started_at"] = Date().timeIntervalSince1970
+        marker["service.name"] = serviceName
+        marker["state_domains"] = stateDomains.sorted()
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                    attributes: [.posixPermissions: 0o700])

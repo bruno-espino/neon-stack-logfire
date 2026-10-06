@@ -16,7 +16,8 @@ from xcode_observe.telemetry import Telemetry
 
 
 def load_host_credentials() -> None:
-    path = STATE / "credentials.env"
+    preferred = Path.home() / ".config" / "logfire-swift" / "credentials.env"
+    path = preferred if preferred.is_file() else STATE / "credentials.env"
     if path.is_file():
         for line in path.read_text().splitlines():
             key, separator, value = line.partition("=")

@@ -3,7 +3,7 @@ import XCTest
 import OpenTelemetrySdk
 @testable import LogfireSwift
 
-final class CaptureExporter: SpanExporter {
+final class CaptureExporter: SpanExporter, @unchecked Sendable {
     private let lock = NSLock()
     private var values: [SpanData] = []
     var spans: [SpanData] { lock.lock(); defer { lock.unlock() }; return values }
@@ -15,6 +15,21 @@ final class CaptureExporter: SpanExporter {
 }
 
 final class LogfireTests: XCTestCase {
+    func testDeliveryCountersExposeFailuresWithoutChangingOperations() {
+        final class FailedExporter: SpanExporter, @unchecked Sendable {
+            func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .failure }
+            func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+            func shutdown(explicitTimeout: TimeInterval?) {}
+        }
+        let client = Logfire(serviceName: "delivery-test", exporter: FailedExporter())
+        XCTAssertEqual(client.withSpan("game-operation") { 42 }, 42)
+        client.flush()
+        XCTAssertTrue(client.delivery.enabled)
+        XCTAssertEqual(client.delivery.failedSpans, 1)
+        XCTAssertEqual(client.delivery.exportedSpans, 0)
+        XCTAssertEqual(client.delivery.attemptedBatches, 1)
+    }
+
     func testBuildMetadataExcludesUnrelatedBundleData() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bundle")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

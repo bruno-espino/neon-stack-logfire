@@ -18,6 +18,9 @@ public enum LogfireConfigurationError: Error, CustomStringConvertible {
 public struct LogfireConfiguration {
     public let endpoint: URL
     private let token: String?
+    public static var developmentCredentialFile: URL {
+        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/logfire-swift/credentials.env")
+    }
 
     public init(endpoint: URL, token: String? = nil) throws {
         guard endpoint.host != nil, endpoint.user == nil, endpoint.password == nil,
@@ -39,8 +42,9 @@ public struct LogfireConfiguration {
         }
         var values = environment
         if values["LOGFIRE_TOKEN"] == nil && values["LOGFIRE_BASE_URL"] == nil {
-            let file = credentialsFile ?? environment["LOGFIRE_DEV_CREDENTIALS"].map { URL(fileURLWithPath: $0) }
-                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/xcode-observe/credentials.env")
+            let legacy = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/xcode-observe/credentials.env")
+            let defaultFile = FileManager.default.fileExists(atPath: developmentCredentialFile.path) ? developmentCredentialFile : legacy
+            let file = credentialsFile ?? environment["LOGFIRE_DEV_CREDENTIALS"].map { URL(fileURLWithPath: $0) } ?? defaultFile
             let data: Data
             do { data = try Data(contentsOf: file) }
             catch { throw LogfireConfigurationError.unreadableCredentials }

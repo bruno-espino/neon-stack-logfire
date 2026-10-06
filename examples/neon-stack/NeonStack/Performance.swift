@@ -1,137 +1,81 @@
 import Foundation
-import QuartzCore
 import LogfireSwift
-#if canImport(StateReporting)
-import StateReporting
-
-@available(macOS 27.0, iOS 27.0, *)
-@ReportableMetadata
-struct RenderStateMetadata { let workload: String; let auroraLayers: Int }
-
-@available(macOS 27.0, iOS 27.0, *)
-@ReportableMetadata
-struct SessionStateMetadata { let sessionID: String; let buildID: String }
-
-@available(macOS 27.0, iOS 27.0, *)
-enum NativeGameState {
-    static let reporter = StateReporter.reporter(for: "dev.example.NeonStack.rendering",
-        stableMetadata: RenderStateMetadata.self, volatileMetadata: SessionStateMetadata.self)
-    static func report(mode: String, workload: String, auroraLayers: Int) {
-        reporter.reportTransition(to: mode, stableMetadata: RenderStateMetadata(workload: workload, auroraLayers: auroraLayers),
-            volatileMetadata: SessionStateMetadata(sessionID: GameTelemetry.client.sessionID,
-                buildID: Logfire.buildMetadata(bundle: .main)["build.id"] ?? "unknown"))
-    }
-}
-#endif
+import Metal
 
 enum GameTelemetry {
-    static let configuration: LogfireConfiguration? = {
-        do { return try LogfireConfiguration.development() }
-        catch { print("Logfire development configuration unavailable. Check the runtime credentials."); return nil }
-    }()
-    static let fieldReports: AnyObject? = {
-        if #available(macOS 27.0, iOS 27.0, *) {
-            return MetricKitReports(serviceName: "neon-stack", configuration: configuration,
-                stateDomains: ["dev.example.NeonStack.rendering"], metadataKeys: ["workload", "auroraLayers"])
-        }
-        return nil
-    }()
     static let client: Logfire = {
-        let client = Logfire(serviceName: "neon-stack", configuration: configuration)
-        client.publishDevelopmentSession(directory: ProcessInfo.processInfo.environment["NEON_OBSERVER_DIR"])
-        return client
+        do {
+            return try Logfire.development(serviceName: "neon-stack", apple: .init(
+                stateDomains: ["dev.example.NeonStack.rendering"],
+                metadataKeys: ["workload", "aurora_layers", "particles"]))
+        } catch {
+            print("Logfire development configuration unavailable. Check the runtime credentials.")
+            return Logfire(serviceName: "neon-stack", configuration: nil)
+        }
     }()
 }
 
 final class PerformanceRecorder {
     private let lock = NSLock()
-    private let writer = DispatchQueue(label: "dev.example.NeonStack.performance-writer")
-    private let started = CACurrentMediaTime()
-    private var windowStarted: Double = 0
-    private var frames: [Double] = []
-    private var cpu: [Double] = []
-    private var gpu: [Double] = []
-    private var stageSamples: [String: [Double]] = [:]
     private var latest: (Double, Double)?
-    private var cohort: String?
     private let output = ProcessInfo.processInfo.environment["NEON_PERF_REPORT"]
+    private var recorder: FrameRecorder!
+    private var stageSamples: [String: [(uptime: Double, milliseconds: Double)]] = [:]
 
-    func record(frameMilliseconds: Double, cpuMilliseconds: Double, gpuMilliseconds: Double?,
-                mode: String, lines: Int, score: Int, width: Int, height: Int, workload: String = "onscreen", auroraLayers: Int = 0,
-                game: String = "neon-stack", particles: Int = 0, stages: [String: Double] = [:]) {
-        let now = CACurrentMediaTime()
-        guard now - started >= 2 else { return }
-        lock.lock()
-        let currentCohort = "\(game)/\(mode)/\(workload)/\(width)/\(height)/\(auroraLayers)/\(particles)"
-        if cohort != currentCohort {
-            cohort = currentCohort
-            frames.removeAll(keepingCapacity: true); cpu.removeAll(keepingCapacity: true); gpu.removeAll(keepingCapacity: true)
-            stageSamples.removeAll()
-            windowStarted = now
-#if canImport(StateReporting)
-            if #available(macOS 27.0, iOS 27.0, *) { NativeGameState.report(mode: mode, workload: workload, auroraLayers: auroraLayers) }
-#endif
-        }
-        if windowStarted == 0 { windowStarted = now }
-        frames.append(frameMilliseconds); cpu.append(cpuMilliseconds)
-        if let value = gpuMilliseconds, value > 0 { gpu.append(value) }
-        for (stage, value) in stages where value > 0 { stageSamples[stage, default: []].append(value) }
-        guard now - windowStarted >= 5 else { lock.unlock(); return }
-        let elapsed = now - windowStarted
-        let fps = 1000 / (frames.reduce(0, +) / Double(frames.count))
-        let gpuMean = gpu.isEmpty ? 0 : gpu.reduce(0, +) / Double(gpu.count)
-        latest = (fps, gpuMean)
-        var data: [String: Any] = [
-            "recorded_at": ISO8601DateFormatter().string(from: Date()),
-            "elapsed_seconds": now - started, "window_seconds": elapsed, "frames": frames.count,
-            "render_mode": mode, "render_callback_fps": fps,
-            "frame_interval_p50_ms": percentile(frames, 0.5), "frame_interval_p95_ms": percentile(frames, 0.95),
-            "cpu_frame_p95_ms": percentile(cpu, 0.95), "gpu_samples": gpu.count,
-            "frames_over_25_ms": frames.filter { $0 > 25 }.count,
-            "lines": lines, "score": score, "drawable_width": width, "drawable_height": height,
-            "thermal_state": ProcessInfo.processInfo.thermalState.rawValue,
-            "workload": workload, "aurora_layers": auroraLayers, "game": game,
-        ]
-        if particles > 0 { data["particles"] = particles }
-        if !gpu.isEmpty { data["gpu_command_p95_ms"] = percentile(gpu, 0.95) }
-        for (stage, values) in stageSamples where !values.isEmpty { data["gpu_\(stage)_p95_ms"] = percentile(values, 0.95) }
-        frames.removeAll(keepingCapacity: true); cpu.removeAll(keepingCapacity: true); gpu.removeAll(keepingCapacity: true)
-        stageSamples.removeAll()
-        windowStarted = now
-        lock.unlock()
-        let snapshot = data
-        let ended = Date()
-        writer.async {
-            var attributes: [String: LogfireAttribute] = [:]
-            for (key, value) in snapshot {
-                if let value = value as? String { attributes[key] = .string(value) }
-                else if let value = value as? Int { attributes[key] = .int(value) }
-                else if let value = value as? Double { attributes[key] = .double(value) }
-            }
-            attributes["frame_encode_wall_p95_ms"] = attributes["cpu_frame_p95_ms"]
-            GameTelemetry.client.window("game.performance.window", started: ended.addingTimeInterval(-elapsed),
-                                        ended: ended, attributes: attributes)
-            guard let output = self.output else { return }
+    init() {
+        recorder = FrameRecorder(client: GameTelemetry.client,
+        stateDomain: "dev.example.NeonStack.rendering") { [weak self] window in
+            guard let self else { return }
+            lock.lock(); latest = (window.callbackFPS, window.gpuMeanMilliseconds ?? 0); lock.unlock()
+            guard let output else { return }
             do {
-                let encoded = try JSONSerialization.data(withJSONObject: snapshot, options: [.sortedKeys]) + Data([10])
                 let url = URL(fileURLWithPath: output)
                 if !FileManager.default.fileExists(atPath: output) {
                     _ = FileManager.default.createFile(atPath: output, contents: nil, attributes: [.posixPermissions: 0o600])
                 }
                 let file = try FileHandle(forWritingTo: url)
                 defer { try? file.close() }
-                try file.seekToEnd(); try file.write(contentsOf: encoded)
-            } catch { print("Performance report write failed: \(error.localizedDescription)") }
+                try file.seekToEnd(); try file.write(contentsOf: window.encodedReport())
+            } catch { print("Performance report write failed") }
         }
     }
-    private func percentile(_ values: [Double], _ quantile: Double) -> Double {
-        let sorted = values.sorted()
-        return sorted[max(0, Int(ceil(Double(sorted.count) * quantile)) - 1)]
+
+    func record(commandBuffer: MTLCommandBuffer, frameMilliseconds: Double, cpuMilliseconds: Double,
+                mode: String, lines: Int, score: Int, width: Int, height: Int, workload: String = "onscreen", auroraLayers: Int = 0) {
+        recorder.record(commandBuffer: commandBuffer, frameMilliseconds: frameMilliseconds, preparationMilliseconds: cpuMilliseconds,
+            context: RenderContext(mode: mode, width: width, height: height, workload: workload,
+                metadata: ["aurora_layers": .int(auroraLayers)]),
+            attributes: ["lines": .int(lines), "score": .int(score)])
     }
+
+    /// Flappy Log submits three command buffers per frame. Each window reports their summed GPU time and,
+    /// for each stage, the p95 over the last five seconds, which matches the recorder's window length.
+    func record(gpuStages: [String: Double], frameMilliseconds: Double, cpuMilliseconds: Double,
+                score: Int, width: Int, height: Int, workload: String = "onscreen", particles: Int) {
+        let now = ProcessInfo.processInfo.systemUptime
+        var attributes: [String: LogfireAttribute] = ["score": .int(score)]
+        lock.lock()
+        for (stage, value) in gpuStages where value > 0 { stageSamples[stage, default: []].append((now, value)) }
+        for stage in stageSamples.keys {
+            stageSamples[stage]?.removeAll { now - $0.uptime > 5 }
+            let sorted = (stageSamples[stage] ?? []).map(\.milliseconds).sorted()
+            if !sorted.isEmpty {
+                attributes["gpu_\(stage)_p95_ms"] = .double(sorted[max(0, Int(ceil(Double(sorted.count) * 0.95)) - 1)])
+            }
+        }
+        lock.unlock()
+        let total = gpuStages.values.reduce(0, +)
+        recorder.record(frameMilliseconds: frameMilliseconds, preparationMilliseconds: cpuMilliseconds,
+            gpuMilliseconds: total > 0 ? total : nil,
+            context: RenderContext(mode: "flappy-log", width: width, height: height, workload: workload,
+                metadata: ["game": .string("flappy-log"), "particles": .int(particles)]),
+            attributes: attributes)
+    }
+
     func display() -> (Double, Double)? {
         lock.lock(); defer { lock.unlock() }
         let result = latest; latest = nil
         return result
     }
-    func finish() { writer.sync {}; GameTelemetry.client.flush() }
+    func finish() { recorder.finish() }
 }

@@ -189,10 +189,8 @@ final class FlappyViewRenderer: NSObject, MTKViewDelegate {
         renderer.render(engine: game.engine, particles: detail, seconds: game.paused ? 0 : delta,
                         target: drawable.texture, present: drawable) { [weak self] cpu, stages in
             guard let self else { return }
-            let gpu = stages.values.reduce(0, +)
-            self.performance.record(frameMilliseconds: delta * 1000, cpuMilliseconds: cpu, gpuMilliseconds: gpu > 0 ? gpu : nil,
-                                    mode: "flappy-log", lines: 0, score: score, width: Int(size.width), height: Int(size.height),
-                                    game: "flappy-log", particles: detail, stages: stages)
+            self.performance.record(gpuStages: stages, frameMilliseconds: delta * 1000, cpuMilliseconds: cpu,
+                                    score: score, width: Int(size.width), height: Int(size.height), particles: detail)
             self.smoothed.withLock { stats in
                 let blend = 0.1
                 stats.fps += ((delta > 0 ? 1 / delta : 0) - stats.fps) * blend
@@ -437,10 +435,8 @@ enum FlappyOffscreenReplay {
                 let done = DispatchSemaphore(value: 0)
                 let score = engine.score
                 renderer.render(engine: engine, particles: detail, seconds: delta, target: texture) { cpu, stages in
-                    let gpu = stages.values.reduce(0, +)
-                    recorder.record(frameMilliseconds: delta * 1000, cpuMilliseconds: cpu, gpuMilliseconds: gpu > 0 ? gpu : nil,
-                                    mode: "flappy-log", lines: 0, score: score, width: 1280, height: 720,
-                                    workload: "offscreen", game: "flappy-log", particles: detail, stages: stages)
+                    recorder.record(gpuStages: stages, frameMilliseconds: delta * 1000, cpuMilliseconds: cpu,
+                                    score: score, width: 1280, height: 720, workload: "offscreen", particles: detail)
                     done.signal()
                 }
                 done.wait()
