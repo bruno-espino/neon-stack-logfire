@@ -76,6 +76,32 @@ final class InstrumentsTests: XCTestCase {
         XCTAssertEqual(summary.callPaths.first { $0.frames.map(\.symbol) == ["otherCaller", "render"] }?.samples, 1)
         XCTAssertEqual(summary.callPaths.first { $0.frames.map(\.symbol) == ["caller", "render", "render"] }?.weightNanoseconds, 1_000_000)
         XCTAssertEqual(summary.weightNanoseconds, 8_000_000)
+        let callers = try XCTUnwrap(summary.callers)
+        let mainRender = try XCTUnwrap(callers.first { $0.threadScope == "main" && $0.function.symbol == "render" })
+        XCTAssertEqual(mainRender.function.samples, 4)
+        XCTAssertEqual(mainRender.function.weightNanoseconds, 4_000_000, "Recursive frames count once per running sample")
+        XCTAssertEqual(callers.first { $0.threadScope == "main" && $0.function.symbol == "caller" }?.function.weightNanoseconds, 3_000_000)
+        XCTAssertEqual(callers.first { $0.threadScope == "background" && $0.function.symbol == "render" }?.function.weightNanoseconds, 1_000_000)
+        XCTAssertFalse(callers.contains { $0.function.symbol == "<unresolved>" })
+    }
+
+    func testInclusiveCallersStayBoundedAndOlderSummariesRemainReadable() throws {
+        let extra = (0..<30).map { index in
+            "<row><process ref=\"p\"/><thread-state ref=\"s\"/><thread ref=\"t\"/><weight ref=\"w\"/>" +
+            "<tagged-backtrace><frame ref=\"leaf\"/><frame name=\"caller\(index)\"><binary ref=\"b\"/></frame></tagged-backtrace></row>"
+        }.joined()
+        let summary = try InstrumentsXML.cpu(Data(samples.replacingOccurrences(of: "</node>", with: extra + "</node>").utf8), pid: 42)
+        let callers = try XCTUnwrap(summary.callers)
+        XCTAssertEqual(callers.filter { $0.threadScope == "main" }.count, 20)
+        XCTAssertEqual(callers.filter { $0.threadScope == "background" }.count, 1)
+        XCTAssertEqual(callers.first?.function.symbol, "render")
+        XCTAssertEqual(callers.first?.function.weightNanoseconds, 32_000_000)
+        XCTAssertEqual(summary.mainThreadWeightNanoseconds, 33_000_000, "Unresolved samples stay in the denominator")
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(summary)) as? [String: Any])
+        legacy.removeValue(forKey: "callers")
+        let decoded = try JSONDecoder().decode(CPUProfileSummary.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(decoded.callers)
+        XCTAssertEqual(decoded.samples, summary.samples)
     }
 
     func testOversizedStackIsExplicitlyPartialAndKeepsTheSampledLeaf() throws {

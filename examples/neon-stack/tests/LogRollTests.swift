@@ -13,6 +13,24 @@ import Foundation
     }
 
     static func main() {
+        let experiment = ["LOGFIRE_SCENARIO_ID": LogRollScenario.id, "LOG_ROLL_HUD_POLICY": "every-frame"]
+        var bounded = LogRollHUDSchedule(environment: [:]), everyFrame = LogRollHUDSchedule(environment: experiment)
+        precondition(LogRollHUDSchedule(environment: ["LOG_ROLL_HUD_POLICY": "every-frame"]).policy == .bounded,
+                     "The fault must require an identified development scenario")
+        precondition(LogRollHUDSchedule(environment: ["LOGFIRE_SCENARIO_ID": LogRollScenario.id, "LOG_ROLL_HUD_POLICY": "typo"]).policy == .bounded,
+                     "Unknown policies must preserve normal updates")
+        for frame in 0..<120 {
+            let changed = frame == 0 || frame == 60
+            let limited = bounded.refresh(changed: changed, now: Double(frame) / 120)
+            let repeated = everyFrame.refresh(changed: changed, now: Double(frame) / 120)
+            precondition(!changed || limited.hud && limited.map, "Changed HUD values must appear immediately")
+            precondition(repeated.hud && repeated.map, "The fault must publish every update")
+        }
+        precondition(bounded.hudPublications == 2 && bounded.mapPublications <= 30,
+                     "Unchanged HUD values must avoid full-screen updates and bound map updates")
+        precondition(everyFrame.hudPublications == 120 && everyFrame.mapPublications == 120,
+                     "The experiment must retain work counts for both publication paths")
+
         for seed: UInt64 in 1...40 {
             var random = SeededRandom(state: seed)
             let maze = Maze(half: 4 + Int(seed % 8), jetDensity: 0.22, gateDensity: 0.25, random: &random)

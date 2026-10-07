@@ -502,3 +502,23 @@ It retains SDK frames/responsiveness and eleven native shader windows with zero 
 Logfire queries verify 43 records in one run trace and one build. The same build ID identifies the separate observed Xcode build trace.
 The bundled MCP connection did not return promptly. The existing authenticated US MCP endpoint verified ingestion and updated the dashboard.
 Next: verify the same protocol in a real engine integration, validate setup with another developer, and decide how teams share raw profiler artifacts.
+
+2026-10-07: Reproducible SwiftUI CPU investigation
+Recreated the former every-frame HUD publication bug only under the existing Log Roll development scenario.
+Rejected artificial busy loops. The current bounded publication policy supplies a real comparison with identical gameplay.
+Added an optional Swift case runner. It discards two warmups, alternates five runs per policy, and checks Release identity, context, work counts, and assertions.
+Ten measured runs passed. Median main-thread CPU was 29.0% versus 8.1% of one core, with non-overlapping ranges.
+Both policies remained near 60 callback FPS and about 12.1 seconds. This establishes CPU savings, not an FPS or GPU improvement.
+Logfire MCP queries reproduced all ten local CPU ratios from twenty responsiveness windows. Build and run traces share the same build ID.
+Native samples confirmed SwiftUI graph-update work. Individual leaf functions and caller paths split that cost into small entries.
+Added bounded inclusive caller summaries to the existing decoder, manifest, diagnostic report, and Logfire export. Recursive functions count once per sample.
+Caller weights overlap. They are not wall time, blocked time, or a sum of independent costs.
+Older summaries remain readable. Offline diagnosis verifies hashes and identity before it recovers the new data from retained XML.
+The fresh native run exported forty callers. Logfire verified GraphHost.flushTransactions at 66.7% of main-thread running weight.
+Added the twenty-fourth dashboard panel after validating its SQL. Preserved all previous hosted panels.
+The cold profiler attempt exceeded its remaining recording budget and returned incomplete. Warm retries passed under the same app deadline.
+Raw recordings remain local. No native capture, profiler, longer deadline, iOS Simulator, or CI job was added to the default check.
+The case runner initially let its Debug-build rejection escape as a Swift error. It now reports the error and exits 2 before launching an app.
+The final local check passes all 75 Swift tests, game checks, repository checks, formatting, and the macOS Debug build. The Release companion is installed.
+Next: try a fresh regression with another developer, without naming the fault in advance. Measure investigation time before claiming workflow savings.
+See docs/cpu-investigation.md for commands, measurement ranges, scope limits, and the Apple guidance used.

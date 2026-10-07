@@ -33,7 +33,7 @@ final class LogRollState: ObservableObject {
     var engine: LogRollEngine { didSet { refresh() } }
     let map: MazeFeed
     private var shown: RollHUD
-    private var mapShown = 0.0
+    private var hudSchedule = LogRollHUDSchedule()
     @Published var paused = false
     @Published var detail: FireDetail
     @Published var best = 0
@@ -56,8 +56,9 @@ final class LogRollState: ObservableObject {
     private func refresh() {
         let hud = RollHUD(engine), now = CACurrentMediaTime()
         let changed = hud != shown
-        if changed { shown = hud; objectWillChange.send() }
-        if changed || now - mapShown >= 1.0 / 30 { mapShown = now; map.engine = engine }
+        let refresh = hudSchedule.refresh(changed: changed, now: now)
+        if refresh.hud { shown = hud; objectWillChange.send() }
+        if refresh.map { map.engine = engine }
     }
     func press(_ direction: Direction) {
         guard !benchmark, !paused else { return }
@@ -104,9 +105,15 @@ final class LogRollState: ObservableObject {
         }
         if !scenarioReported, let scenario, let passed = scenario.outcome, GameTelemetry.scenario?.isReady == true {
             scenarioReported = true
-            let details = ["mazes_cleared": String(engine.score),
+            let details = ["hud_policy": hudSchedule.policy.rawValue,
+                    "hud_publications": String(hudSchedule.hudPublications), "map_publications": String(hudSchedule.mapPublications),
+                    "mazes_cleared": String(engine.score),
                     "game_over": String(engine.gameOver), "moves": String(engine.moves), "turns": String(engine.turns),
                     "simulation_seconds": String(engine.seconds), "failure": scenario.failure]
+            GameTelemetry.client.event("game.hud.summary", attributes: [
+                "experiment.variant": .string(hudSchedule.policy.rawValue),
+                "hud.publications": .int(hudSchedule.hudPublications), "map.publications": .int(hudSchedule.mapPublications),
+                "scenario.passed": .bool(passed), "score": .int(engine.score), "moves": .int(engine.moves), "turns": .int(engine.turns)])
             DispatchQueue.global(qos: .utility).async {
                 do { try GameTelemetry.scenario?.finish(passed: passed, details: details) }
                 catch { print("Scenario completion report failed: \(error)") }

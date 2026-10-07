@@ -46,8 +46,9 @@ They use `metric_*` functions on `value`. They do not decode histogram buckets d
 
 ## Dashboard and investigation
 
-The reusable [dashboard](../dashboards/apple-development.json) has twenty-three panels.
+The reusable [dashboard](../dashboards/apple-development.json) has twenty-four panels.
 It includes frame distributions, slow-frame share, CPU activity, queue delays, GPU stages, build task totals, caller paths, diagnoses, and shader compiler updates.
+The inclusive CPU caller table aggregates functions across different sampled paths. Its overlapping weights are not additional metrics or wall time.
 Select a Session to inspect one run. Select its Build to inspect the associated build.
 New metric queries select `logfire.metric_schema.version=1` to exclude incompatible early experiments.
 Capture summaries and live measurements remain separate.
