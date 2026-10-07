@@ -30,6 +30,7 @@ Xcode build -> companion -> build span, task totals, selected host samples, and 
 Embedded build identity -> native build script -> SDK resource attributes and session marker.
 App assertions -> DevelopmentScenario handshake -> runner lifetime control and report.
 Retained report -> diagnose -> new local diagnosis without another app run.
+Completed native thread recording -> diagnose --trace -> bounded main-thread states and syscall evidence; --publish explicitly sends it.
 
 Terminology
 SDK: Swift package for app-owned telemetry, state, frame windows, and optional Apple monitoring.
@@ -43,6 +44,7 @@ StateReporting: named app workload state for Apple's measurements. It does not c
 MetricKit: Apple-delivered historical metrics and diagnostics. It is not a live per-frame feed.
 Capture manifest: original session/build identity, interval, binary, available symbols, and artifact checksums.
 Structured details: JSON plus logfire.json_schema. Logfire stores a queryable object or array in record attributes.
+Thread states: native running, blocked, runnable, and scheduling intervals. Normal waits are not automatically defects.
 Scenario outcome: distinguishes assertions, evidence gaps, timeout, interruption, and process failure.
 Regression gate: compares compatible Release runs and rejects missing or incompatible evidence.
 

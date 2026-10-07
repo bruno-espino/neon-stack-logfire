@@ -372,6 +372,63 @@ It can recover caller paths from older CPU XML exports after verifying their che
 It preserves the original run status and delivery counters. Reanalysis does not retroactively repair a failed observation or upload.
 It cannot recover CPU stacks that no tool recorded.
 
+Import a completed native recording into the same report:
+
+```sh
+logfire-apple diagnose --report PATH/TO/report.json --trace PATH/TO/Instruments.trace
+logfire-apple diagnose --report PATH/TO/report.json --trace PATH/TO/Instruments.trace --publish
+```
+
+The first command stays local. The second explicitly publishes the imported summary and selected syscall records.
+Each import creates a new capture ID. Do not add overlapping imports together.
+The importer requires the original `sessions/PID.json` marker beside the report.
+It checks the recording's target PID, executable path, session identity, and overlap with the retained app lifetime.
+It rejects multiple recording runs and ambiguous or missing `thread-state` and `syscall` tables.
+The import does not independently verify the recording's binary hash. That hash remains the retained report's attribution.
+The importer preserves raw exports with checksums. Later diagnosis verifies and decodes them again instead of trusting a cached summary.
+
+`diagnostic.threadTimelines` retains main-thread state totals and unobserved time for each capture.
+It also retains at most twenty longest non-running intervals and twenty syscall summaries.
+State intervals are clipped to the overlap between the recording and the app lifetime.
+Syscall summaries include only complete calls inside that interval. Boundary omissions and missing Wait Time fields remain explicit.
+The parser reads columns by their exported schema positions. Sentinels and XML references do not change column positions.
+Apple's combined `ThreadActivity` table nests state evidence under syscall rows. Summing only its state-named rows loses some blocked time.
+The importer therefore reads the dedicated tables discovered in the recording's table of contents.
+
+Blocked time includes normal timer sleeps and event-loop waits. It does not establish a hang or name a lock owner.
+Runnable and preempted time can reflect host contention. External host load must be considered before comparing timings.
+Syscall wall time and Apple's Wait Time field overlap thread states. Do not add these measurements together.
+Thread timelines remain diagnostic evidence. They do not create a performance gate or infer GPU scheduling and frame deadlines.
+
+Logfire receives `development.thread.timeline` with a queryable `timeline.details` object.
+Separate `development.thread.syscall` records preserve syscall counts, wall time, and measured Wait Time coverage.
+These records retain the native measurement interval, capture ID, session ID, and available build identity.
+The offline import has its own analysis trace. `source.run_trace_id` identifies the original run when available.
+It does not recreate a parent span that the retained report did not save.
+`--publish` returns exit 2 if the exporter does not acknowledge all imported records. The local evidence remains available.
+Raw syscall arguments, backtraces, thread wakeup identities, and complete recordings stay local.
+
+Query the imported details in Logfire:
+
+```sql
+SELECT attributes->>'capture.id' AS capture,
+       attributes->'timeline.details'->'statesMilliseconds' AS states_ms,
+       attributes->'timeline.details'->'syscalls' AS syscalls
+FROM records
+WHERE span_name = 'development.thread.timeline'
+ORDER BY start_timestamp DESC
+LIMIT 100
+```
+
+The controlled Xcode 27 probe confirms all fifteen intentional timer-sleep syscalls and the native main-thread ID.
+This validates decoding and attribution of that probe. It does not establish a game defect or an optimization result.
+Its retained report fixture uses the probe's logged process identity and timestamps. It is not an SDK game-session capture.
+The short game capture attempts did not produce a valid finalized recording within their budgets.
+Trace finalization spent substantial time compressing data after the probe exited.
+Live captures and comparisons were then paused because the developer reported heavy host CPU use.
+Default Command-R, scenario deadlines, and development checks remain unchanged.
+Validate Metal System Trace's GPU scheduling and presentation tables in a quiet-host game recording before adding a decoder for them.
+
 The diagnostic thresholds select investigations. They do not define performance gates.
 The report counts callback intervals above 25 ms and main-queue delays above 100 ms.
 High main-thread CPU in a delayed window suggests Time Profiler analysis.
