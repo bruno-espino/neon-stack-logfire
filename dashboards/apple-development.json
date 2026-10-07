@@ -789,6 +789,84 @@
             }
           ]
         }
+      },
+      "NativeThreadStates": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Native main-thread states",
+            "description": "State durations describe each instrumented capture. Normal sleeps and event-loop waits count as blocked. Runnable/preempted intervals can reflect host contention. Captures overlap and must not be summed."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, CAST(attributes->>'thread.state.Running.ms' AS DOUBLE) AS running_ms, CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE) AS blocked_ms, CAST(attributes->>'thread.state.Runnable.ms' AS DOUBLE) AS runnable_ms, CAST(attributes->>'thread.state.Preempted.ms' AS DOUBLE) AS preempted_ms, CAST(attributes->>'timeline.unobserved_ms' AS DOUBLE) AS unobserved_ms, attributes->'timeline.details'->'correlationGaps' AS correlation_gaps FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.thread.timeline' ORDER BY measured_end DESC, capture LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "NativeThreadWindows": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Main-thread states in SDK investigation windows",
+            "description": "SDK windows are coarse observation periods, not exact stalled frames. Coverage is observed state time divided by the requested window duration. Missing coverage is unknown. Temporal overlap does not establish causation. Windows and captures can overlap."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, attributes->>'diagnostic.finding_id' AS finding, attributes->>'window.source' AS window_source, CAST(attributes->>'window.coverage_fraction' AS DOUBLE) AS coverage_fraction, CAST(attributes->>'window.requested_ms' AS DOUBLE) AS requested_ms, CAST(attributes->>'thread.state.Running.ms' AS DOUBLE) AS running_ms, CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE) AS blocked_ms, CAST(attributes->>'thread.state.Runnable.ms' AS DOUBLE) AS runnable_ms, CAST(attributes->>'thread.state.Preempted.ms' AS DOUBLE) AS preempted_ms FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.thread.window' ORDER BY measured_end DESC, capture LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "NativeSyscalls": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Native main-thread syscalls",
+            "description": "Up to 20 syscall summaries per capture. Calls cut by a boundary are omitted. Wait Time is available only for measured calls. Syscalls overlap state evidence. Their names alone do not identify a synchronization owner or prove a game defect."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, attributes->>'syscall.name' AS syscall, CAST(attributes->>'syscall.calls' AS DOUBLE) AS calls, CAST(attributes->>'syscall.wall_ms' AS DOUBLE) AS wall_ms, CAST(attributes->>'syscall.wait_ms' AS DOUBLE) AS measured_wait_ms, CAST(attributes->>'syscall.measured_wait_calls' AS DOUBLE) AS measured_wait_calls, CAST(attributes->>'syscall.longest_ms' AS DOUBLE) AS longest_ms FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.thread.syscall' ORDER BY measured_end DESC, capture, wall_ms DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -1103,6 +1181,43 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/CPUCallers"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Native main-thread investigations"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/NativeThreadStates"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/NativeThreadWindows"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/NativeSyscalls"
               }
             }
           ]

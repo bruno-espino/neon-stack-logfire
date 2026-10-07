@@ -122,6 +122,7 @@ public final class FrameRecorder {
             "sample_limit_reached": .bool(frames.count == 10000),
             "thermal_state": .int(ProcessInfo.processInfo.thermalState.rawValue),
             "measurement.source": .string("sdk.frame_recorder"), "measurement.scope": .string("render_callbacks"),
+            "session_id": .string(client.sessionID), "pid": .int(Int(ProcessInfo.processInfo.processIdentifier)),
             "cpu_frame.scope": .string("frame_preparation_wall_time"), "main_thread.measured": .bool(false),
         ]) { _, measured in measured }
         if !gpu.isEmpty { values["gpu_command_p95_ms"] = .double(percentile(gpu, 0.95)) }

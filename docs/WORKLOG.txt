@@ -538,3 +538,19 @@ Explicit --publish delivered five records. Logfire MCP independently verified th
 The offline import has a separate analysis trace. It carries the original run trace ID when available and the shared session/build identity.
 All 85 Swift tests pass. Repository checks and the low-priority native companion build pass. No game baseline, profiler run, Simulator, or Xcode CI enters default checks.
 Next: record a real quiet-host Metal game session and verify its GPU scheduling, presentation, and wait tables before adding those fields.
+
+2026-10-07: Native states within SDK investigation windows
+Kept live profiling and performance comparisons paused while the host remained busy. Used saved exports and synthetic test windows.
+Added main-thread state durations and coverage for up to twenty identified SDK investigation windows per capture.
+The decoder uses all native state intervals. The twenty longest retained intervals cannot substitute for complete interval evidence.
+New SDK renderer files carry session/PID identity. Legacy files remain readable but are excluded from automatic renderer correlation.
+Invalid optional SDK files leave correlation gaps without discarding native evidence. Missing coverage does not mean idle time.
+Explicit imports publish separate window records with original dates. Coarse SDK periods and temporal overlap do not establish exact stalls or causes.
+Added three Logfire tables for capture-wide states, SDK-window states, and syscalls. All twenty-four previous hosted panels remain unchanged.
+Logfire queries reproduce the local state totals and partial coverage for a synthetic SDK delay window against the saved timer probe.
+This proves alignment, queryability, and delivery. It does not prove a game regression or quiet-host performance improvement.
+All 88 Swift tests pass. The new window tests cover data beyond retained top intervals, missing coverage, overlapping windows, identity, optional file errors, limits, and legacy decoding.
+One chained Swift expression exceeded the compiler's type-check limit. Replaced it with typed loops. Quiet build output initially hid the diagnostic; verbose output exposed it.
+Reviewed separate recorder finalization. Rejected concurrent CommandRunner instances because each changes process-wide signal handlers.
+A future recorder lifecycle needs shared cancellation ownership, app/recorder deadlines, and cleanup tests against a valid game trace.
+No default capture, game launch, longer app deadline, Simulator run, or Xcode CI was added. GPU scheduling and presentation decoding remain unverified.

@@ -390,6 +390,14 @@ The importer preserves raw exports with checksums. Later diagnosis verifies and 
 `diagnostic.threadTimelines` retains main-thread state totals and unobserved time for each capture.
 It also retains at most twenty longest non-running intervals and twenty syscall summaries.
 State intervals are clipped to the overlap between the recording and the app lifetime.
+Each capture also correlates at most twenty SDK investigation windows with every decoded main-thread state interval.
+The calculation does not use only the twenty retained longest intervals.
+`diagnostic.threadTimelines[].windows` preserves the requested SDK period, state durations, observed time, and coverage fraction.
+Coverage divides observed native state time by the full requested SDK window duration. Missing coverage is unknown.
+Overlapping SDK windows remain separate. Do not add their state durations together.
+The SDK's windows are coarse observation periods. Temporal overlap does not identify an exact stalled frame or establish causation.
+New renderer report files include session and PID identity. Legacy files remain readable but cannot supply automatic renderer correlation.
+Invalid optional renderer or queue files leave correlation gaps. They do not discard valid native state evidence.
 Syscall summaries include only complete calls inside that interval. Boundary omissions and missing Wait Time fields remain explicit.
 The parser reads columns by their exported schema positions. Sentinels and XML references do not change column positions.
 Apple's combined `ThreadActivity` table nests state evidence under syscall rows. Summing only its state-named rows loses some blocked time.
@@ -402,6 +410,7 @@ Thread timelines remain diagnostic evidence. They do not create a performance ga
 
 Logfire receives `development.thread.timeline` with a queryable `timeline.details` object.
 Separate `development.thread.syscall` records preserve syscall counts, wall time, and measured Wait Time coverage.
+`development.thread.window` records show native states inside identified SDK investigation windows.
 These records retain the native measurement interval, capture ID, session ID, and available build identity.
 The offline import has its own analysis trace. `source.run_trace_id` identifies the original run when available.
 It does not recreate a parent span that the retained report did not save.
@@ -428,6 +437,10 @@ Trace finalization spent substantial time compressing data after the probe exite
 Live captures and comparisons were then paused because the developer reported heavy host CPU use.
 Default Command-R, scenario deadlines, and development checks remain unchanged.
 Validate Metal System Trace's GPU scheduling and presentation tables in a quiet-host game recording before adding a decoder for them.
+Native recording finalization still belongs to the `xctrace record` process. CPU decoding already runs after the app stops.
+A concurrent recorder needs shared cancellation ownership and separate app/recorder deadlines.
+The current command runner changes process-wide signal handlers. Do not run two instances on independent background threads.
+Defer that lifecycle change until a valid game recording can verify completion, cancellation, and process cleanup.
 
 The diagnostic thresholds select investigations. They do not define performance gates.
 The report counts callback intervals above 25 ms and main-queue delays above 100 ms.
@@ -532,8 +545,11 @@ Use `Apple Development Workflow` as the name and `apple-development-workflow` as
 Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
 Management credentials belong to the dashboard client. The application needs only its project write token.
 
-The twenty-three panels query diagnostic `records` and native OTel `metrics`.
+The twenty-seven panels query diagnostic `records` and native OTel `metrics`.
 They cover SDK windows, CPU/queue signals, live Apple measurements, host context, CPU profiles, captures, and builds.
+Three native thread tables show capture-wide states, state coverage within SDK investigation windows, and syscall summaries.
+They preserve missing fields and coverage. They do not sum overlapping windows or infer synchronization owners.
+Offline imports retain their original measurement dates. Select the recording's time range to view these tables.
 Session and Build accept exact IDs. Empty values disable the filter.
 Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
 The build table ignores Session because the build command and application have different session IDs.
