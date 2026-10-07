@@ -23,6 +23,7 @@ Rendering state -> SDK -> Logfire and Apple StateReporting.
 Apple MetricKit -> SDK adapter -> historical diagnostic records when Apple delivers reports.
 Whole-host CPU/memory/filesystem -> optional companion -> live records and selected metrics.
 Apple layer/process measurements -> metalperftrace -> companion -> correlated summaries.
+Shader compiler updates -> retained metalperftrace timeline -> post-run companion analysis -> correlated diagnostic records.
 CPU recording -> Instruments trace -> offline export -> leaf functions and caller paths.
 GPU workload capture -> gpudebug replay -> encoder/shader diagnostics.
 Xcode build -> companion -> build span, task totals, selected host samples, and local xcresult.
@@ -54,6 +55,8 @@ Profiled sessions are diagnostics, not clean baselines. Do not average window pe
 Builds have separate traces. Automated app sessions inherit the runner trace and correlate through build identity.
 MetricKit retains historical dates and versions. It omits current session/build identity. Reports can overlap.
 Raw captures and local reports remain on the Mac. Summaries and capture metadata reach Logfire.
+Shader update fields describe native windows. Shader *_total fields are cumulative snapshots, not capture totals.
+Compiler time differs from pipeline-call wall time. Pipeline reuse can bypass the compiler without a cached compiler event.
 The exporter has no durable offline queue. Failed batches and abrupt stops can leave gaps.
 Real MetricKit delivery, physical iOS, and a clean second-Mac setup remain unverified.
 
@@ -64,6 +67,18 @@ Preserve input limits and banner/trailing-data policies before consolidating the
 Migrate command errors, report dictionaries, and public attribute types in focused compatible changes.
 Investigate waiting/concurrency and startup evidence only when existing observations justify the capture.
 Verify setup on another tester Mac before reusable release packaging and version tags.
+Validate demand with Metal developers who already use Instruments or Tracy. Workflow convenience alone does not prove a market.
+Keep the Swift SDK as the normal app integration. Test engine adapters for the same identity/assertion protocol before claiming broader support.
+
+Product evidence
+One historical Tracy issue documents friction with filenames, capture order, and repeated build comparisons.
+https://github.com/wolfpld/tracy/issues/203
+Tracy already supports build context, comparisons, CLI capture/export, and an optional MCP server in its current development tree.
+https://github.com/wolfpld/tracy/blob/master/manual/tracy.tex
+Apple recommends JSON profiling outputs for regression scripts and agents. Its tooling investment does not prove gaming market growth.
+https://developer.apple.com/videos/play/wwdc2026/388/
+Our hypothesis is a simpler Apple-native investigation flow with shared, correlated history in Logfire.
+Build correlation and agent access alone are not unique. Raw artifact sharing remains an open gap.
 
 Details
 README.md: overview and data table.

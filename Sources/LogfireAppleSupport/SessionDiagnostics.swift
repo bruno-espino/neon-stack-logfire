@@ -236,6 +236,9 @@ enum SessionDiagnostics {
                     } else if values["gpu.measurements"] != nil {
                         artifacts.append(DiagnosticArtifact(kind: "gpu", path: manifest.path))
                         gaps += values["issues"] as? [String] ?? []
+                    } else if values["capture.measurements"] != nil {
+                        let kind = values["capture.shader_timeline_requested"] as? Bool == true ? "shader" : "native"
+                        artifacts.append(DiagnosticArtifact(kind: kind, path: manifest.path))
                     } else if FileManager.default.fileExists(atPath: capture.appendingPathComponent("Instruments.trace").path) {
                         artifacts.append(DiagnosticArtifact(kind: "cpu-recording", path: capture.appendingPathComponent("Instruments.trace").path))
                     }

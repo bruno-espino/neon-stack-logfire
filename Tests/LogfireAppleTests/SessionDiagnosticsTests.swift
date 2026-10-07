@@ -70,6 +70,23 @@ final class SessionDiagnosticsTests: XCTestCase {
         }
     }
 
+    func testShaderManifestAppearsInTheExistingDiagnosticArtifactList() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let capture = folder.appendingPathComponent("profile/session/capture")
+        try FileManager.default.createDirectory(at: capture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var run = report(profile: "shader"); run["binary.sha256"] = "synthetic-hash"
+        let manifest: [String: Any] = ["session_id": run["session_id"]!, "process.pid": 42,
+            "binary.sha256": "synthetic-hash", "capture.shader_timeline_requested": true,
+            "capture.measurements": [["measurement.scope": "shader_compiler_update", "shader_compilations": 2]]]
+        let path = capture.appendingPathComponent("manifest.json")
+        try JSONSerialization.data(withJSONObject: manifest).write(to: path)
+        let diagnostic = SessionDiagnostics.build(report: run, folder: folder, windows: [])
+        let artifact = try XCTUnwrap(diagnostic.artifacts.first { $0.kind == "shader" })
+        XCTAssertEqual(URL(fileURLWithPath: artifact.path).resolvingSymlinksInPath(), path.resolvingSymlinksInPath())
+        XCTAssertFalse(diagnostic.observationGaps.contains { $0.contains("manifests are invalid") })
+    }
+
     func testSavedCPUExportAddsCallerPathsAndRejectsChangedEvidence() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let capture = folder.appendingPathComponent("profile/session/capture")

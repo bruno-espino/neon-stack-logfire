@@ -22,7 +22,7 @@ enum ScenarioError: Error, Equatable, CustomStringConvertible {
         case .invalidStatus(let field): return "Scenario status does not identify this ready application run: \(field)"
         case .missingOptionValue(let flag): return "Missing value for \(flag)"
         case .unknownOption(let flag): return "Unknown run option \(flag)"
-        case .invalidOptionValue(let flag): return "Invalid value for \(flag). Use --seconds between 1 and 300 or --profile cpu|gpu"
+        case .invalidOptionValue(let flag): return "Invalid value for \(flag). Use --seconds between 1 and 300 or --profile cpu|gpu|shader"
         case .missingRequiredOption(let flag): return "Supply \(flag) for the scenario run"
         }
     }
@@ -125,7 +125,7 @@ struct ScenarioRunOptions {
                 guard let number = Double(value), number.isFinite, (1...300).contains(number) else { throw ScenarioError.invalidOptionValue(flag) }
                 seconds = number
             case "--profile":
-                guard ["cpu", "gpu"].contains(value) else { throw ScenarioError.invalidOptionValue(flag) }
+                guard ["cpu", "gpu", "shader"].contains(value) else { throw ScenarioError.invalidOptionValue(flag) }
                 profile = value
             case "--output": output = URL(fileURLWithPath: value)
             default: throw ScenarioError.unknownOption(flag)
@@ -182,8 +182,8 @@ struct ScenarioSignal: Decodable {
 enum ScenarioRun {
     static func run(_ arguments: [String]) throws -> Int32 {
         if arguments.contains("--help") {
-            print("Usage: logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu] [--no-telemetry] [--output DIRECTORY]")
-            print("The app must publish SDK identity, readiness, and completion. Profiling is optional and has a separate bounded duration.")
+            print("Usage: logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu|shader] [--no-telemetry] [--output DIRECTORY]")
+            print("The app must publish session identity, readiness, and completion. Profiling is optional and has a separate bounded duration.")
             return 0
         }
         let options = try ScenarioRunOptions(arguments)
@@ -207,6 +207,10 @@ enum ScenarioRun {
         environment.merge(["LOGFIRE_DEV_DIRECT": client.delivery.enabled ? "1" : "0", "LOGFIRE_SESSION_ID": id,
             "LOGFIRE_SESSION_DIR": sessions.path, "LOGFIRE_SCENARIO_ID": definition.id, "LOGFIRE_SCENARIO_STATUS": status.path]) { _, value in value }
         if options.profile == "gpu" { environment["MTL_CAPTURE_ENABLED"] = "1" }
+        if options.profile == "shader" {
+            environment["MTL_HUD_ENABLED"] = "1"
+            environment["MTL_HUD_LOG_SHADER_ENABLED"] = "1"
+        }
         var session: NativeSession?
         var signal: ScenarioSignal?
         var issues: [String] = []
@@ -275,7 +279,7 @@ enum ScenarioRun {
                                             return false
                                         })
                                     }
-                                } else {
+                                } else if profile == "gpu" {
                                     capturedGPU = try client.withSpan("development.gpu.capture", attributes: Companion.attributes(context)) {
                                         try GPUCapture.capture(GPUCaptureOptions(args + ["--profile"]), seconds: min(30, remaining))
                                     }
@@ -333,6 +337,30 @@ enum ScenarioRun {
                     }
                 }
                 catch { failure = "Final scenario assertion is invalid." }
+            }
+            if options.profile == "shader", let session, !interruptedRun {
+                let analysisStarted = ProcessInfo.processInfo.systemUptime
+                do {
+                    guard session.id == id, session.pid == pid,
+                          try Companion.fileHash(executable) == context["binary.sha256"] as? String else {
+                        throw CompanionError.message("Retained shader capture identity changed")
+                    }
+                    let shaderFolder = folder.appendingPathComponent("profile").appendingPathComponent(session.id).appendingPathComponent(UUID().uuidString)
+                    try FileManager.default.createDirectory(at: shaderFolder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                    let end = beganDate.addingTimeInterval(appDuration)
+                    let measurements = try client.withSpan("development.shader.analysis", attributes: Companion.attributes(context)) {
+                        // The runner already verified and reaped this process. Limit lookback to its owned lifetime.
+                        try Companion.capture(session: session, folder: shaderFolder, seconds: appDuration, client: client,
+                            interval: beganDate...end, validateLiveSession: false, includeShaderTimeline: true)
+                    }
+                    if !measurements.contains(where: { $0["measurement.scope"] as? String == "shader_compiler_update" }) {
+                        issues.append("Apple's capture has no shader compiler measurements.")
+                    }
+                } catch CompanionError.interrupted(let code) {
+                    analysisInterruption = code
+                    issues.append("Shader analysis was interrupted. The recording remains local.")
+                } catch { issues.append("Optional shader analysis failed. Inspect retained profile evidence.") }
+                analysisDuration = ProcessInfo.processInfo.systemUptime - analysisStarted
             }
             if signal?.phase != "passed", failure == nil { failure = result.timedOut ? "Scenario deadline expired." : "No successful scenario completion." }
             if readyElapsed == nil, failure == nil { failure = "No readiness signal was observed." }

@@ -23,6 +23,7 @@ final class ScenarioRunTests: XCTestCase {
             XCTAssertThrowsError(try ScenarioRunOptions(values)) { XCTAssertEqual($0 as? ScenarioError, expected) }
         }
         XCTAssertNil(try ScenarioRunOptions(["--app", "app", "--scenario", "file"]).profile)
+        XCTAssertEqual(try ScenarioRunOptions(["--app", "app", "--scenario", "file", "--profile", "shader"]).profile, "shader")
     }
 
     func testSignalRejectsStaleIdentityAndMissingReadiness() throws {

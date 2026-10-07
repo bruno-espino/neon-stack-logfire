@@ -472,3 +472,33 @@ Validation: all 69 Swift tests pass, including all three MetricKit cases with no
 Repository checks, strict artifact-script lint, game logic/audio checks, and the cached macOS Debug build pass.
 The build exporter acknowledges 31 spans with zero failed spans. Invalid and explicit CLT selections exit 2 before compilation.
 The older-runtime MetricKit skip and an implicit CLT fallback require verification on the coworker's Mac. Neither proves the reported SIGSEGV cause.
+
+
+2026-10-07 Metal shader evidence and product hypothesis
+A historical Tracy issue documents repeated-build comparison friction. It does not establish current market size or demand.
+Tracy already supports build context, capture comparisons, CLI export, and optional MCP analysis in its current development tree.
+Apple explicitly recommends JSON overviews for regression scripts and agents. This supports the technical direction, not a growth forecast.
+Kept the Swift SDK as the normal app integration. Native hardware evidence does not require that SDK; app context and assertions still need instrumentation.
+Added a controlled MetalKit probe with no Swift SDK import. It directly publishes the same private runner identity and completion protocol.
+This is not yet a Unity, Unreal, or arbitrary uninstrumented-game integration.
+Added opt-in run --profile shader. The runner enables HUD shader measurements, reaps its app, and analyzes retained native JSON history.
+Selected shader compiler counts/time and native presentation measurements use original native window dates and layer identity.
+Overview delta fields describe the last update. They are omitted from capture summaries; cumulative totals remain distinct snapshots.
+The first integrated probe passed in 11.2 seconds with 1.9 seconds of analysis. Logfire queries found 27 records, one trace, and one build.
+Ten native update windows contained four compiler events and 0.034764123 compiler seconds. Reusing the pipeline took 0.123 ms with no new compiler events.
+That host call duration differs from backend compiler time. A zero cached-event count does not establish a pipeline-cache miss.
+The HUD creates its own pipelines. Coarse shader windows cannot identify an exact stalled frame or prove causation.
+Saved the twenty-third dashboard panel for shader updates. Validated its SQL against the exported probe and kept existing unrelated panels unchanged.
+Rejected a separate OSLog observer and HUD report UI automation. The existing native JSON timeline already supplies the useful evidence.
+Raw captures, source, and operation timing files remain local. The diagnostic artifact list includes the retained shader manifest.
+All 74 Swift tests, repository checks, game checks, and the cached macOS Debug build pass.
+A new artifact test initially compared temporary path spellings. It now compares resolved paths and verifies the shader artifact kind.
+No Xcode CI, default profiler run, longer app deadline, or Simulator run was added.
+The installed Release companion repeated the probe in 11.1 seconds with 1.7 seconds of analysis. Its unique capture contains ten windows, four compiler events, and 0.029934790 compiler seconds.
+The first Log Roll shader run passed game assertions but returned an observation gap. Apple rejected a redundant state slice with --start 0s.
+Completed-session captures now use the already bounded full-session state aggregate. Live slices omit an invalid zero start option.
+The corrected Log Roll run passes its two-maze/loss assertions in 12.1 seconds. Analysis takes 1.7 seconds.
+It retains SDK frames/responsiveness and eleven native shader windows with zero compiler events, plus process/layer/state summaries.
+Logfire queries verify 43 records in one run trace and one build. The same build ID identifies the separate observed Xcode build trace.
+The bundled MCP connection did not return promptly. The existing authenticated US MCP endpoint verified ingestion and updated the dashboard.
+Next: verify the same protocol in a real engine integration, validate setup with another developer, and decide how teams share raw profiler artifacts.
