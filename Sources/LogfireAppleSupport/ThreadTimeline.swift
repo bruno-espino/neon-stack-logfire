@@ -48,6 +48,7 @@ import Foundation
         let observedMilliseconds: Double
         let coverageFraction: Double
         let statesMilliseconds: [String: Double]
+        var drawableWaitMilliseconds: Double?
     }
 
     /// States partition one thread's observed interval. Syscalls describe overlapping evidence within that interval.
@@ -66,9 +67,10 @@ import Foundation
         var windows: [ThreadTimelineWindow]?
         var omittedWindowRequests: Int?
         var correlationGaps: [String]?
+        var drawableWaits: DrawableWaitSummary?
     }
 
-    private struct TimelineTable {
+    struct TimelineTable {
         let columns: [String]
         let rows: [XMLElement]
         let references: [String: XMLElement]
@@ -151,18 +153,19 @@ import Foundation
     }
 
     enum ThreadTimeline {
-        static let limitations = [
-            "This is an instrumented diagnostic interval. External host load was not controlled. Do not use it as a performance baseline.",
-            "Blocked states include normal sleeps and event-loop waits. They do not identify a lock owner or prove a defect.",
-            "Runnable and preempted intervals differ from blocked intervals. Host contention can delay a runnable thread.",
-            "Syscall wall and Apple Wait Time fields overlap thread states. Do not add them to state durations or infer a blocking resource.",
-            "Syscall summaries omit calls cut by an interval boundary. Missing Wait Time fields are counted, not filled with zero.",
-            "The import matches PID, executable path, session marker and interval. The recording does not independently verify the reported binary hash.",
-            "Absolute interval boundaries inherit the precision of Apple's exported recording start date.",
-            "Window correlation uses all decoded state intervals. SDK windows are coarse observation periods, not exact stall timestamps. Overlap does not establish causation.",
-            "Window coverage uses observed main-thread state time divided by the requested SDK window duration. Overlapping windows must not be added.",
-            "No GPU scheduling, presentation deadline, synchronization owner, or complete frame timeline is inferred from these tables.",
-        ]
+        static let limitations =
+            [
+                "This is an instrumented diagnostic interval. External host load was not controlled. Do not use it as a performance baseline.",
+                "Blocked states include normal sleeps and event-loop waits. They do not identify a lock owner or prove a defect.",
+                "Runnable and preempted intervals differ from blocked intervals. Host contention can delay a runnable thread.",
+                "Syscall wall and Apple Wait Time fields overlap thread states. Do not add them to state durations or infer a blocking resource.",
+                "Syscall summaries omit calls cut by an interval boundary. Missing Wait Time fields are counted, not filled with zero.",
+                "The import matches PID, executable path, session marker and interval. The recording does not independently verify the reported binary hash.",
+                "Absolute interval boundaries inherit the precision of Apple's exported recording start date.",
+                "Window correlation uses all decoded state intervals. SDK windows are coarse observation periods, not exact stall timestamps. Overlap does not establish causation.",
+                "Window coverage uses observed main-thread state time divided by the requested SDK window duration. Overlapping windows must not be added.",
+                "No GPU scheduling, presentation deadline, synchronization owner, or complete frame timeline is inferred from these tables.",
+            ] + DrawableWaits.limitations
 
         static func decode(
             states: Data, syscalls: Data, pid: Int32, recordingStart: Double,

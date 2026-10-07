@@ -53,6 +53,75 @@ import XCTest
                         ]) + rows + "</node></trace-query-result>").utf8)
         }
 
+        private func drawableWait(start: Int, duration: Int, pid: Int = 42, tid: Int = 123) -> String {
+            "<row><start-time>\(start)</start-time><duration>\(duration)</duration>\(thread(pid: pid, tid: tid))</row>"
+        }
+
+        private func drawableWaits(_ rows: String = "") -> Data {
+            Data(
+                ("<trace-query-result><node>"
+                    + schema(
+                        DrawableWaits.schema,
+                        [("start", "start-time"), ("duration", "duration"), ("thread", "thread")])
+                    + rows + "</node></trace-query-result>").utf8)
+        }
+
+        func testDrawableWaitsSelectPIDAndNativeThreadAndClipWindowsIndependentlyOfCallTotals() throws {
+            let requests = [
+                TimelineWindowRequest(
+                    findingID: "slow_callback_intervals", source: "sdk.frame_recorder",
+                    startedAt: 100.1, endedAt: 100.3)
+            ]
+            var evidence = try ThreadTimeline.decode(
+                states: states(state("Blocked", start: 0, duration: 1_000_000_000)),
+                syscalls: calls(), pid: 42, recordingStart: 100, interval: 100.1...100.9,
+                captureID: UUID().uuidString, requests: requests)
+            let rows =
+                drawableWait(start: 0, duration: 200_000_000)
+                + drawableWait(start: 250_000_000, duration: 100_000_000)
+                + drawableWait(start: 800_000_000, duration: 200_000_000)
+                + drawableWait(start: 100_000_000, duration: 600_000_000, pid: 99)
+                + drawableWait(start: 100_000_000, duration: 600_000_000, tid: 999)
+            try DrawableWaits.attach(drawableWaits(rows), pid: 42, recordingStart: 100, evidence: &evidence)
+            let summary = try XCTUnwrap(evidence.drawableWaits)
+            XCTAssertEqual(summary.calls, 1)
+            XCTAssertEqual(summary.wallMilliseconds, 100, accuracy: 0.001)
+            XCTAssertEqual(summary.longestMilliseconds, 100, accuracy: 0.001)
+            XCTAssertEqual(summary.boundaryCallsOmitted, 2)
+            XCTAssertEqual(try XCTUnwrap(evidence.windows?.first?.drawableWaitMilliseconds), 150, accuracy: 0.001)
+            XCTAssertEqual(evidence.statesMilliseconds["Blocked"] ?? 0, 800, accuracy: 0.001)
+        }
+
+        func testAbsentDrawableEvidenceDiffersFromAnEmptyValidatedTableAndLegacyDecode() throws {
+            var evidence = try decode(states(state("Running", start: 0, duration: 1_000_000_000)))
+            XCTAssertNil(evidence.drawableWaits)
+            XCTAssertNil(
+                try JSONDecoder().decode(ThreadTimelineEvidence.self, from: JSONEncoder().encode(evidence))
+                    .drawableWaits)
+            try DrawableWaits.attach(drawableWaits(), pid: 42, recordingStart: 100, evidence: &evidence)
+            XCTAssertEqual(evidence.drawableWaits?.calls, 0)
+            XCTAssertEqual(evidence.drawableWaits?.wallMilliseconds, 0)
+        }
+
+        func testInvalidOrOverlappingDrawableWaitsCannotProduceAPartialSummary() throws {
+            for (rows, expected) in [
+                (drawableWait(start: 0, duration: -1), ThreadTimelineError.field("duration")),
+                (
+                    drawableWait(start: 0, duration: 200_000_000)
+                        + drawableWait(start: 100_000_000, duration: 200_000_000),
+                    .field("overlapping drawable waits")
+                ),
+            ] {
+                var evidence = try decode(states(state("Blocked", start: 0, duration: 1_000_000_000)))
+                XCTAssertThrowsError(
+                    try DrawableWaits.attach(drawableWaits(rows), pid: 42, recordingStart: 100, evidence: &evidence)
+                ) {
+                    XCTAssertEqual($0 as? ThreadTimelineError, expected)
+                }
+                XCTAssertNil(evidence.drawableWaits)
+            }
+        }
+
         private func decode(_ data: Data, syscall: Data? = nil, interval: ClosedRange<Double> = 100...101) throws
             -> ThreadTimelineEvidence
         {
@@ -235,7 +304,10 @@ import XCTest
             let partial = try TimelineImport.decode(
                 folder: capture, runFolder: folder, report: report, captureID: UUID().uuidString)
             XCTAssertEqual(partial.statesMilliseconds["Blocked"] ?? 0, 1000, accuracy: 0.001)
-            XCTAssertEqual(partial.correlationGaps?.count, 2)
+            XCTAssertTrue(partial.correlationGaps?.contains { $0.contains("renderer windows") } == true)
+            XCTAssertTrue(
+                partial.correlationGaps?.contains { $0.contains("Responsiveness windows are invalid") } == true)
+            XCTAssertTrue(partial.correlationGaps?.contains(DrawableWaits.unavailable) == true)
             var legacyJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(partial)) as! [String: Any]
             for key in ["windows", "omittedWindowRequests", "correlationGaps"] { legacyJSON.removeValue(forKey: key) }
             XCTAssertNil(
@@ -308,6 +380,39 @@ import XCTest
             let invalid = SessionDiagnostics.build(report: report, folder: folder, windows: [])
             XCTAssertNil(invalid.threadTimelines)
             XCTAssertTrue(invalid.observationGaps.contains { $0.contains("manifests are invalid") })
+        }
+
+        func testOptionalDrawableChecksumsAndSchemasPreserveValidThreadEvidenceOnFailure() throws {
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let (report, capture) = try fixture(folder)
+            let toc = capture.appendingPathComponent("toc.xml")
+            let text = try String(contentsOf: toc, encoding: .utf8)
+                .replacingOccurrences(of: "</data>", with: "<table schema=\"\(DrawableWaits.schema)\"/></data>")
+            try Data(text.utf8).write(to: toc)
+            let file = capture.appendingPathComponent(DrawableWaits.filename)
+            try drawableWaits(drawableWait(start: 200_000_000, duration: 100_000_000)).write(to: file)
+            var manifest: [String: Any] = [
+                "measurement.source": "apple.xctrace.thread-state", "capture.id": capture.lastPathComponent,
+            ]
+            func hashes() throws {
+                manifest["artifacts"] = try Dictionary(
+                    uniqueKeysWithValues: (TimelineImport.files + [DrawableWaits.filename])
+                        .map { ($0, try Companion.fileHash(capture.appendingPathComponent($0))) })
+            }
+            try hashes()
+            let valid = try TimelineImport.read(manifest, folder: capture, runFolder: folder, report: report)
+            XCTAssertEqual(valid.drawableWaits?.calls, 1)
+            XCTAssertEqual(valid.drawableWaits?.wallMilliseconds ?? -1, 100, accuracy: 0.001)
+            try drawableWaits(drawableWait(start: 200_000_000, duration: 200_000_000)).write(to: file)
+            let corrupted = try TimelineImport.read(manifest, folder: capture, runFolder: folder, report: report)
+            XCTAssertNil(corrupted.drawableWaits)
+            XCTAssertEqual(corrupted.statesMilliseconds["Blocked"] ?? 0, 800, accuracy: 0.001)
+            XCTAssertTrue(corrupted.correlationGaps?.contains { $0.contains("failed validation") } == true)
+            try Data("<invalid/>".utf8).write(to: file)
+            try hashes()
+            XCTAssertNil(
+                try TimelineImport.read(manifest, folder: capture, runFolder: folder, report: report).drawableWaits)
         }
 
         func testImportRejectsDifferentProcessPathSessionAndNonOverlappingLifetime() throws {

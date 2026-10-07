@@ -821,7 +821,7 @@
         "spec": {
           "display": {
             "name": "Main-thread states in SDK investigation windows",
-            "description": "SDK windows are coarse observation periods, not exact stalled frames. Coverage is observed state time divided by the requested window duration. Missing coverage is unknown. Temporal overlap does not establish causation. Windows and captures can overlap."
+            "description": "SDK windows are coarse observation periods, not exact stalled frames. Coverage is observed state time divided by the requested window duration. Missing coverage is unknown. Temporal overlap does not establish causation. Windows and captures can overlap. Next-drawable time clips observed waits to the window. It overlaps blocked states and is null without validated wait evidence."
           },
           "plugin": {
             "kind": "Table",
@@ -834,7 +834,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, attributes->>'diagnostic.finding_id' AS finding, attributes->>'window.source' AS window_source, CAST(attributes->>'window.coverage_fraction' AS DOUBLE) AS coverage_fraction, CAST(attributes->>'window.requested_ms' AS DOUBLE) AS requested_ms, CAST(attributes->>'thread.state.Running.ms' AS DOUBLE) AS running_ms, CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE) AS blocked_ms, CAST(attributes->>'thread.state.Runnable.ms' AS DOUBLE) AS runnable_ms, CAST(attributes->>'thread.state.Preempted.ms' AS DOUBLE) AS preempted_ms FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.thread.window' ORDER BY measured_end DESC, capture LIMIT 100"
+                    "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, attributes->>'diagnostic.finding_id' AS finding, attributes->>'window.source' AS window_source, CAST(attributes->>'window.coverage_fraction' AS DOUBLE) AS coverage_fraction, CAST(attributes->>'window.requested_ms' AS DOUBLE) AS requested_ms, CAST(attributes->>'window.drawable_wait_ms' AS DOUBLE) AS next_drawable_wait_ms, CAST(attributes->>'thread.state.Running.ms' AS DOUBLE) AS running_ms, CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE) AS blocked_ms, CAST(attributes->>'thread.state.Runnable.ms' AS DOUBLE) AS runnable_ms, CAST(attributes->>'thread.state.Preempted.ms' AS DOUBLE) AS preempted_ms FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.thread.window' ORDER BY measured_end DESC, capture LIMIT 100"
                   }
                 }
               }
@@ -861,6 +861,32 @@
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
                     "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, attributes->>'syscall.name' AS syscall, CAST(attributes->>'syscall.calls' AS DOUBLE) AS calls, CAST(attributes->>'syscall.wall_ms' AS DOUBLE) AS wall_ms, CAST(attributes->>'syscall.wait_ms' AS DOUBLE) AS measured_wait_ms, CAST(attributes->>'syscall.measured_wait_calls' AS DOUBLE) AS measured_wait_calls, CAST(attributes->>'syscall.longest_ms' AS DOUBLE) AS longest_ms FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.thread.syscall' ORDER BY measured_end DESC, capture, wall_ms DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "NativeDrawableWaits": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Native next-drawable waits",
+            "description": "Complete calls on the identified main thread. These waits overlap thread states and syscalls. They do not prove GPU saturation or a missed presentation deadline. Missing records are unknown. Captures can overlap."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'thread.id' AS thread, attributes->>'measurement.source' AS source, CAST(attributes->>'drawable.wait.calls' AS DOUBLE) AS calls, CAST(attributes->>'drawable.wait.wall_ms' AS DOUBLE) AS complete_call_wall_ms, CAST(attributes->>'drawable.wait.longest_ms' AS DOUBLE) AS longest_ms, CAST(attributes->>'drawable.wait.boundary_calls_omitted' AS DOUBLE) AS boundary_calls_omitted FROM records WHERE kind = 'log' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'development.metal.drawable_wait' ORDER BY measured_end DESC, capture LIMIT 100"
                   }
                 }
               }
@@ -1218,6 +1244,15 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/NativeSyscalls"
+              }
+            },
+            {
+              "x": 0,
+              "y": 21,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/NativeDrawableWaits"
               }
             }
           ]
