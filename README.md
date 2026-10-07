@@ -163,8 +163,9 @@ logfire-apple run --app tmp/DerivedData-macos/Build/Products/Debug/NeonStack.app
 
 The app supplies readiness and completion through the SDK. The runner stops after the expected loss and retains one report.
 Add `--profile cpu` or `--profile gpu` for a targeted investigation. Profiling adds time and is absent from default checks.
-The run report includes diagnostic findings, missing evidence, caller paths, and suggested native investigations.
+The run report includes diagnostic findings, missing evidence, CPU callers and paths, selected GPU replay nodes, and suggested native investigations.
 Use `logfire-apple diagnose --report REPORT` to reanalyze saved evidence without another gameplay run or telemetry upload.
+See [the blind GPU investigation](docs/gpu-investigation.md) for an SDK-only diagnosis compared with native shader evidence.
 See [the scenario workflow](docs/native-workflow.md#run-an-app-owned-scenario) for the reusable definition and SDK protocol.
 
 Manual sessions gain native and host telemetry when you run `logfire-apple attach`.

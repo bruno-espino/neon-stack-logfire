@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "scope": "single_case_evidence_sufficiency_not_benchmark",
+  "reader_packet_sha256": {
+    "sdk": "5cb824f90513b4de0d304d12398adeb66fd144839a5b0717c5ee3253171acb17",
+    "native": "60df78c52e4b0fb151ea231b37a08bd3a9148df708cd9741d4c919ff5c6bbf32"
+  },
+  "trials": [
+    {
+      "trial": "A",
+      "runs": 1,
+      "identity": {
+        "session_id": "C54895CD-FDDB-465F-9458-4C606BD44CBE",
+        "build.id": "5854c292-58a3-4256-b875-9762fc000209",
+        "build.source_digest": "d590444c2ca9b18e496ac069158d655662c043be8ecd3b40a9361cf11b49cfd7",
+        "binary.sha256": "cf19bd9484b7ad994a70ca765a8a58a9aa4771bc2f00ad3223b427133932b622",
+        "build.configuration": "Release"
+      },
+      "assertions": {
+        "status": "passed",
+        "exit_code": 0,
+        "scenario.phase": "passed",
+        "scenario.details": {
+          "failure": "",
+          "game_over": "true",
+          "hud_policy": "bounded",
+          "hud_publications": "4",
+          "map_publications": "271",
+          "mazes_cleared": "2",
+          "moves": "60",
+          "simulation_seconds": "11.741666666666667",
+          "turns": "4"
+        },
+        "issues": []
+      },
+      "frame_windows": [
+        {
+          "drawable_height": 1055,
+          "drawable_width": 1688,
+          "frame_interval_p95_ms": 17.37074999982724,
+          "frames": 301,
+          "frames_over_25_ms": 0,
+          "gpu_command_p95_ms": 22.75141666541458,
+          "particles": 65536,
+          "recorded_at": "2026-10-07T19:28:30.584Z",
+          "render_callback_fps": 60.00828852025196,
+          "window_seconds": 5.003800416667218,
+          "cpu_frame.scope": "frame_preparation_wall_time",
+          "frame_encode_wall_p95_ms": 0.37383333256002516,
+          "gpu_time.scope": "sum_of_command_buffers",
+          "measurement.source": "sdk.frame_recorder",
+          "gpu_fire_p95_ms": 0.18879166600527242,
+          "gpu_scene_p95_ms": 10.323416667233687,
+          "gpu_glow_p95_ms": 11.952875000133645
+        }
+      ],
+      "responsiveness_windows": [
+        {
+          "main_queue.delay_max_ms": 122.93604166552541,
+          "main_queue.delay_p95_ms": 15.805916664248798,
+          "main_thread.cpu.utilization": 0.08539624900573986,
+          "process.memory.footprint_bytes": 235553824,
+          "recorded_at": 1791401308.5493941,
+          "window_seconds": 5.0185693749990605
+        },
+        {
+          "main_queue.delay_max_ms": 2.145958333130693,
+          "main_queue.delay_p95_ms": 0.05883333142264746,
+          "main_thread.cpu.utilization": 0.09030093836691665,
+          "process.memory.footprint_bytes": 223642656,
+          "recorded_at": 1791401313.632465,
+          "window_seconds": 5.082793249999668
+        }
+      ]
+    },
+    {
+      "trial": "B",
+      "runs": 1,
+      "identity": {
+        "session_id": "1CABDF0F-18D8-498E-9A30-8805A4D0609F",
+        "build.id": "5854c292-58a3-4256-b875-9762fc000209",
+        "build.source_digest": "d590444c2ca9b18e496ac069158d655662c043be8ecd3b40a9361cf11b49cfd7",
+        "binary.sha256": "cf19bd9484b7ad994a70ca765a8a58a9aa4771bc2f00ad3223b427133932b622",
+        "build.configuration": "Release"
+      },
+      "assertions": {
+        "status": "passed",
+        "exit_code": 0,
+        "scenario.phase": "passed",
+        "scenario.details": {
+          "failure": "",
+          "game_over": "true",
+          "hud_policy": "bounded",
+          "hud_publications": "4",
+          "map_publications": "259",
+          "mazes_cleared": "2",
+          "moves": "60",
+          "simulation_seconds": "11.741666666666667",
+          "turns": "4"
+        },
+        "issues": []
+      },
+      "frame_windows": [
+        {
+          "drawable_height": 1055,
+          "drawable_width": 1688,
+          "frame_interval_p95_ms": 34.64933333452791,
+          "frames": 259,
+          "frames_over_25_ms": 52,
+          "gpu_command_p95_ms": 71.99116666379268,
+          "particles": 1048576,
+          "recorded_at": "2026-10-07T19:27:22.560Z",
+          "render_callback_fps": 50.95473566885442,
+          "window_seconds": 5.01048341666683,
+          "cpu_frame.scope": "frame_preparation_wall_time",
+          "frame_encode_wall_p95_ms": 0.3571249981177971,
+          "gpu_time.scope": "sum_of_command_buffers",
+          "measurement.source": "sdk.frame_recorder",
+          "gpu_fire_p95_ms": 12.122958334657596,
+          "gpu_scene_p95_ms": 35.88474999924074,
+          "gpu_glow_p95_ms": 32.894625001063105
+        }
+      ],
+      "responsiveness_windows": [
+        {
+          "main_queue.delay_max_ms": 270.21925000008196,
+          "main_queue.delay_p95_ms": 40.790208335238276,
+          "main_thread.cpu.utilization": 0.09681022658646483,
+          "process.memory.footprint_bytes": 535954464,
+          "recorded_at": 1791401240.405826,
+          "window_seconds": 5.0077250833310245
+        },
+        {
+          "main_queue.delay_max_ms": 31.862416664807824,
+          "main_queue.delay_p95_ms": 24.25220833174535,
+          "main_thread.cpu.utilization": 0.07815270392438385,
+          "process.memory.footprint_bytes": 533840928,
+          "recorded_at": 1791401245.5157351,
+          "window_seconds": 5.110047125002893
+        }
+      ]
+    }
+  ],
+  "native_capture": {
+    "session_id": "99735B45-1E19-4271-B7AF-1532B14EE3FB",
+    "build.id": "5854c292-58a3-4256-b875-9762fc000209",
+    "binary.sha256": "cf19bd9484b7ad994a70ca765a8a58a9aa4771bc2f00ad3223b427133932b622",
+    "capture.id": "49469569-17FE-435D-A877-A2EFB3831BA3",
+    "capture.kind": "gpu-workload",
+    "capture.tool": "apple.gpucapture",
+    "gpu.device": "Apple M4",
+    "gpu.replay.exec": "overlapping",
+    "gpu.replay.state_requested": "default",
+    "gpu.selection": "apple-cost-ranked-v1",
+    "gpu.selection_limit_per_scope": 3,
+    "profile.instrumented": true,
+    "measurement.source": "apple.gpudebug",
+    "capture.started_at": "2026-10-07T19:29:03.004Z",
+    "capture.ended_at": "2026-10-07T19:29:04.876Z",
+    "measurements": [
+      {
+        "gpu.instructions": 785247635,
+        "gpu.node.id": "re1",
+        "gpu.node.label": "\"MazeFloorWallsLogFire\"",
+        "gpu.replay.cost_fraction": 0.8956999999999999,
+        "gpu.replay.duration_ms": 26.0059,
+        "measurement.scope": "gpu_replay_encoder"
+      },
+      {
+        "gpu.instructions": 23258266,
+        "gpu.node.id": "ce0",
+        "gpu.node.label": "\"FireParticles (2)\"",
+        "gpu.replay.cost_fraction": 0.0552,
+        "gpu.replay.duration_ms": 0.7176,
+        "measurement.scope": "gpu_replay_encoder"
+      },
+      {
+        "gpu.instructions": 37953768,
+        "gpu.node.id": "re8",
+        "gpu.node.label": "\"ToneMapAndHeatHaze\"",
+        "gpu.replay.cost_fraction": 0.0265,
+        "gpu.replay.duration_ms": 0.2831,
+        "measurement.scope": "gpu_replay_encoder"
+      },
+      {
+        "gpu.instructions": 28,
+        "gpu.node.id": "frag0",
+        "gpu.node.label": "rollParticleFragment",
+        "gpu.replay.cost_fraction": 0.5457,
+        "gpu.shader.spilled_bytes": 0,
+        "gpu.shader.stage": "fragment",
+        "gpu.shader.temp_registers": 8,
+        "gpu.shader.uniform_registers": 4,
+        "gpu.shader.wait_instructions": 3,
+        "measurement.scope": "gpu_replay_shader"
+      },
+      {
+        "gpu.instructions": 177,
+        "gpu.node.id": "vert0",
+        "gpu.node.label": "rollParticleVertex",
+        "gpu.replay.cost_fraction": 0.26030000000000003,
+        "gpu.shader.spilled_bytes": 0,
+        "gpu.shader.stage": "vertex",
+        "gpu.shader.temp_registers": 15,
+        "gpu.shader.uniform_registers": 76,
+        "gpu.shader.wait_instructions": 0,
+        "measurement.scope": "gpu_replay_shader"
+      },
+      {
+        "gpu.instructions": 713,
+        "gpu.node.id": "frag1",
+        "gpu.node.label": "rollWall",
+        "gpu.replay.cost_fraction": 0.058499999999999996,
+        "gpu.shader.spilled_bytes": 0,
+        "gpu.shader.stage": "fragment",
+        "gpu.shader.temp_registers": 33,
+        "gpu.shader.uniform_registers": 80,
+        "gpu.shader.wait_instructions": 2,
+        "measurement.scope": "gpu_replay_shader"
+      }
+    ],
+    "issues": []
+  },
+  "reader_results": {
+    "sdk": {
+      "classification": "GPU-first investigation; scheduling delays unresolved",
+      "shader_attribution": null,
+      "next_capture": "synchronized Metal System Trace"
+    },
+    "native": {
+      "classification": "GPU-first investigation; live causation unresolved",
+      "shader_attribution": [
+        "rollParticleFragment",
+        "rollParticleVertex"
+      ],
+      "encoder_attribution": "MazeFloorWallsLogFire",
+      "next_capture": "synchronized Metal System Trace"
+    },
+    "scope": "Independent file-only readers with the same prompt and model family; one case; no supplied fault label"
+  }
+}

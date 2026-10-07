@@ -44,9 +44,10 @@ struct SessionDiagnostic: Codable {
     let artifacts: [DiagnosticArtifact]
     let cpuCallPaths: [CPUCallPath]
     let cpuCallers: [CPUCaller]?
+    let gpuReplays: [GPUReplayEvidence]?
 }
 
-/// The hosted overview omits caller paths because each path has its own bounded record.
+/// The hosted overview omits CPU and GPU details because they have separate bounded records.
 private struct DiagnosticDetails: Encodable {
     let schemaVersion: Int
     let summary: String
@@ -108,7 +109,8 @@ enum SessionDiagnostics {
     }
 
     static func make(report: [String: Any], folder: URL, windows: [[String: Any]], responsiveness: [[String: Any]],
-                     cpu: CPUProfileSummary?, artifacts: [DiagnosticArtifact], gaps: [String]) -> SessionDiagnostic {
+                     cpu: CPUProfileSummary?, artifacts: [DiagnosticArtifact], gaps: [String],
+                     gpuReplays: [GPUReplayEvidence]? = nil) -> SessionDiagnostic {
         var observations: [String: Double] = ["frame.windows": Double(windows.count), "responsiveness.windows": Double(responsiveness.count)]
         var findings: [DiagnosticFinding] = []
         var missing = (report["issues"] as? [String] ?? []) + gaps
@@ -156,7 +158,7 @@ enum SessionDiagnostics {
             }
             if cpu.callPaths.isEmpty { missing.append("The CPU summary contains no caller paths.") }
         } else { missing.append("No decoded CPU recording. SDK CPU ratios cannot identify expensive functions.") }
-        if !artifacts.contains(where: { $0.kind == "gpu" }) {
+        if gpuReplays?.contains(where: { !$0.measurements.isEmpty }) != true {
             missing.append("No GPU replay evidence. GPU command sums do not measure utilization or presentation latency.")
         }
         let requested = report["profile.requested"] as? String ?? "none"
@@ -167,12 +169,15 @@ enum SessionDiagnostics {
             "Sampled call paths describe running work. Their weights are not wall time, blocked time, or a chronological flame graph.",
             "CPU path fractions use all running weight in their main or background thread scope. Partial and unresolved samples remain in that denominator.",
             "Inclusive caller weights count recursive functions once per sample. Callers can overlap, so their weights must not be added.",
+            "GPU replay costs describe selected nodes in captured workloads. Encoder and shader scopes overlap. They do not measure live utilization, presentation latency, or CPU waits.",
+            "Shader wait-instruction counts are debugger properties. They are not measured wait durations.",
             "Apple captures remain on this Mac. A retained artifact does not imply successful delivery to Logfire."
         ]
         return SessionDiagnostic(summary: findings.isEmpty ? "No investigation threshold was crossed in the available windows. Missing evidence still limits this result." :
             "Available evidence suggests \(findings.count) investigation(s). Confirm each cause in the affected interval.",
             observations: observations, findings: findings, observationGaps: Array(Set(missing)).sorted(),
-            limitations: limitations, artifacts: artifacts, cpuCallPaths: cpu?.callPaths ?? [], cpuCallers: cpu?.callers)
+            limitations: limitations, artifacts: artifacts, cpuCallPaths: cpu?.callPaths ?? [], cpuCallers: cpu?.callers,
+            gpuReplays: gpuReplays)
     }
 
     static func build(report: [String: Any], folder: URL, windows: [[String: Any]]) -> SessionDiagnostic {
@@ -180,6 +185,7 @@ enum SessionDiagnostics {
         var artifacts: [DiagnosticArtifact] = []
         var response: [[String: Any]] = []
         var cpu: CPUProfileSummary?
+        var gpuReplays: [GPUReplayEvidence] = []
         let responseFile = folder.appendingPathComponent("responsiveness.jsonl")
         if FileManager.default.fileExists(atPath: responseFile.path) {
             do {
@@ -237,6 +243,8 @@ enum SessionDiagnostics {
                         if cpu == nil { cpu = try JSONDecoder().decode(CPUProfileSummary.self, from: JSONSerialization.data(withJSONObject: summary)) }
                         artifacts.append(DiagnosticArtifact(kind: "cpu", path: manifest.path))
                     } else if values["gpu.measurements"] != nil {
+                        let replay = try GPUReplayEvidence.read(values, report: report)
+                        gpuReplays.append(replay)
                         artifacts.append(DiagnosticArtifact(kind: "gpu", path: manifest.path))
                         gaps += values["issues"] as? [String] ?? []
                     } else if values["capture.measurements"] != nil {
@@ -252,7 +260,8 @@ enum SessionDiagnostics {
             let file = folder.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: file.path) { artifacts.append(DiagnosticArtifact(kind: kind, path: file.path)) }
         }
-        return make(report: report, folder: folder, windows: windows, responsiveness: response, cpu: cpu, artifacts: artifacts, gaps: gaps)
+        return make(report: report, folder: folder, windows: windows, responsiveness: response, cpu: cpu, artifacts: artifacts, gaps: gaps,
+            gpuReplays: gpuReplays.isEmpty ? nil : gpuReplays)
     }
 
     static func object(_ diagnostic: SessionDiagnostic) throws -> [String: Any] {

@@ -87,6 +87,80 @@ final class SessionDiagnosticsTests: XCTestCase {
         XCTAssertFalse(diagnostic.observationGaps.contains { $0.contains("manifests are invalid") })
     }
 
+    func testDiagnoseIncludesSelectedGPUCostsAndKeepsTheirScopeWithoutRelaunching() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let capture = folder.appendingPathComponent("profile/session/capture")
+        try FileManager.default.createDirectory(at: capture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var run = report(profile: "gpu"); run["binary.sha256"] = "synthetic-hash"
+        let manifest = gpuManifest(run)
+        try JSONSerialization.data(withJSONObject: manifest).write(to: capture.appendingPathComponent("manifest.json"))
+        let path = folder.appendingPathComponent("report.json")
+        try JSONSerialization.data(withJSONObject: run).write(to: path)
+        XCTAssertEqual(try SessionDiagnostics.run(["--report", path.path]), 0)
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any])
+        let diagnostic = try JSONDecoder().decode(SessionDiagnostic.self,
+            from: JSONSerialization.data(withJSONObject: saved["diagnostic"]!))
+        let replay = try XCTUnwrap(diagnostic.gpuReplays?.first)
+        XCTAssertEqual(replay.captureID, manifest["capture.id"] as? String)
+        XCTAssertEqual(replay.execution, "overlapping")
+        XCTAssertEqual(replay.measurements.map(\.scope), [.encoder, .shader])
+        XCTAssertEqual(replay.measurements.map(\.label), ["Scene", "particleFragment"])
+        XCTAssertEqual(replay.measurements.map(\.costFraction), [0.9, 0.55])
+        XCTAssertEqual(replay.measurements.first?.durationMilliseconds, 26)
+        XCTAssertNil(replay.measurements.last?.durationMilliseconds)
+        XCTAssertTrue(diagnostic.limitations.contains { $0.contains("Encoder and shader scopes overlap") })
+        XCTAssertFalse(diagnostic.observationGaps.contains { $0.contains("No GPU replay") })
+        XCTAssertTrue(diagnostic.findings.isEmpty)
+        var legacy = try SessionDiagnostics.object(diagnostic)
+        legacy.removeValue(forKey: "gpuReplays")
+        XCTAssertNil(try JSONDecoder().decode(SessionDiagnostic.self,
+            from: JSONSerialization.data(withJSONObject: legacy)).gpuReplays)
+    }
+
+    func testInvalidGPUReplayDoesNotSuppressTheMissingEvidenceGap() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let capture = folder.appendingPathComponent("profile/session/capture")
+        try FileManager.default.createDirectory(at: capture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var run = report(profile: "gpu"); run["binary.sha256"] = "synthetic-hash"
+        let valid = gpuManifest(run)
+        let nodes = valid["gpu.measurements"] as! [[String: Any]]
+        var negative = nodes[0]; negative["gpu.replay.duration_ms"] = -1.0
+        var unknown = nodes[1]; unknown["measurement.scope"] = "gpu_utilization"
+        var missingCost = nodes[1]; missingCost.removeValue(forKey: "gpu.replay.cost_fraction")
+        for (key, value) in [("session_id", UUID().uuidString as Any), ("process.pid", 99),
+                             ("binary.sha256", "different"), ("capture.ended_at", "1970-01-01T00:02:00Z"),
+                             ("gpu.measurements", [negative]), ("gpu.measurements", [unknown]),
+                             ("gpu.measurements", [missingCost]), ("gpu.measurements", Array(repeating: nodes[0], count: 4))] {
+            var manifest = valid; manifest[key] = value
+            try JSONSerialization.data(withJSONObject: manifest).write(to: capture.appendingPathComponent("manifest.json"))
+            let diagnostic = SessionDiagnostics.build(report: run, folder: folder, windows: [])
+            XCTAssertNil(diagnostic.gpuReplays, key)
+            XCTAssertTrue(diagnostic.observationGaps.contains { $0.contains("manifests are invalid") }, key)
+            XCTAssertTrue(diagnostic.observationGaps.contains { $0.contains("No GPU replay") }, key)
+        }
+        var empty = valid; empty["gpu.measurements"] = [[String: Any]]()
+        try JSONSerialization.data(withJSONObject: empty).write(to: capture.appendingPathComponent("manifest.json"))
+        let diagnostic = SessionDiagnostics.build(report: run, folder: folder, windows: [])
+        XCTAssertEqual(diagnostic.gpuReplays?.first?.measurements.count, 0)
+        XCTAssertTrue(diagnostic.observationGaps.contains { $0.contains("No GPU replay") })
+    }
+
+    private func gpuManifest(_ run: [String: Any]) -> [String: Any] {
+        ["session_id": run["session_id"]!, "process.pid": 42, "binary.sha256": run["binary.sha256"]!,
+         "capture.id": UUID().uuidString, "capture.started_at": "1970-01-01T00:01:42Z",
+         "capture.ended_at": "1970-01-01T00:01:44Z", "gpu.device": "Synthetic GPU",
+         "measurement.source": "apple.gpudebug", "gpu.replay.exec": "overlapping",
+         "gpu.replay.state_requested": "default", "gpu.selection": "apple-cost-ranked-v1",
+         "gpu.selection_limit_per_scope": 3, "profile.instrumented": true,
+         "gpu.measurements": [
+            ["measurement.scope": "gpu_replay_encoder", "gpu.node.id": "re1", "gpu.node.label": "Scene",
+             "gpu.replay.cost_fraction": 0.9, "gpu.replay.duration_ms": 26.0],
+            ["measurement.scope": "gpu_replay_shader", "gpu.node.id": "frag0", "gpu.node.label": "particleFragment",
+             "gpu.replay.cost_fraction": 0.55, "gpu.shader.stage": "fragment"]]]
+    }
+
     func testSavedCPUExportAddsCallerPathsAndRejectsChangedEvidence() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let capture = folder.appendingPathComponent("profile/session/capture")
