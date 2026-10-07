@@ -75,6 +75,69 @@ final class CompanionTests: XCTestCase {
         XCTAssertEqual(updates[1]["PID"] as? Int, 43)
     }
 
+    func testShaderMeasurementsKeepWindowCountsSeparateFromLifetimeTotals() throws {
+        let process: [String: Any] = ["PID": 42, "Layers": [["Performance Stats": [
+            "Start Date": "2026-10-07T16:54:37.349Z", "End Date": "2026-10-07T16:54:38.349Z",
+            "Presented Frame Stats": ["Shader Compiler": ["Pipeline States": 1, "Shader Compilations": 2,
+                "Cached Shader Compilations": 0, "Shader Compilation Time": 0.014857708,
+                "Total Pipeline States": 5, "Total Shader Compilations": 4, "Total Cached Shader Compilations": 0,
+                "Total Shader Compilation Time": 0.033267708]]]]]]
+        let value = try XCTUnwrap(NativeMeasurements.summaries(process, pid: 42).first)
+        XCTAssertEqual(value["shader_compilations"] as? Int, 2)
+        XCTAssertEqual(value["shader_compilations_total"] as? Int, 4)
+        XCTAssertEqual(value["shader_compilation_seconds"] as? Double, 0.014857708)
+        XCTAssertEqual(value["shader_compilation_seconds_total"] as? Double, 0.033267708)
+        XCTAssertEqual(value["cached_shader_compilations"] as? Int, 0)
+        XCTAssertEqual(value["measurement.started_at"] as? String, "2026-10-07T16:54:37.349Z")
+        XCTAssertTrue(NativeMeasurements.summaries(process, pid: 43).isEmpty)
+    }
+
+    func testUnavailableAndMalformedShaderMeasurementsDoNotBecomeZero() throws {
+        let absent = try XCTUnwrap(NativeMeasurements.summaries(["PID": 42, "Layers": [[:]]], pid: 42).first)
+        XCTAssertNil(absent["shader_compilations"])
+        let malformed: [String: Any] = ["PID": 42, "Layers": [["Performance Stats": ["Presented Frame Stats": [
+            "Shader Compiler": ["Shader Compilations": true, "Cached Shader Compilations": -1,
+                "Pipeline States": 1.5, "Shader Compilation Time": Double.nan,
+                "Total Shader Compilations": "4", "Total Shader Compilation Time": Double.infinity]]]]]]
+        let value = try XCTUnwrap(NativeMeasurements.summaries(malformed, pid: 42).first)
+        XCTAssertFalse(value.keys.contains { $0.hasPrefix("shader_") || $0.hasPrefix("cached_shader_") || $0.hasPrefix("pipeline_states") })
+    }
+
+    func testOverviewDoesNotTreatItsLastQuietShaderUpdateAsACaptureTotal() throws {
+        let process: [String: Any] = ["PID": 42, "Layers": [["Total Session Stats": ["Presented Frame Stats": [
+            "Shader Compiler": ["Shader Compilations": 0, "Shader Compilation Time": 0,
+                "Total Shader Compilations": 4, "Total Shader Compilation Time": 0.033267708]]]]]]
+        let value = try XCTUnwrap(NativeMeasurements.summaries(process, pid: 42).first)
+        XCTAssertNil(value["shader_compilations"])
+        XCTAssertNil(value["shader_compilation_seconds"])
+        XCTAssertEqual(value["shader_compilations_total"] as? Int, 4)
+        XCTAssertEqual(value["shader_compilation_seconds_total"] as? Double, 0.033267708)
+    }
+
+    func testRetainedShaderTimelinePreservesQuietWindowsDatesAndLayerIdentity() throws {
+        func update(_ count: Int, seconds: Double) -> [String: Any] {
+            ["Start Date": "2026-10-07T16:54:37.349Z", "End Date": "2026-10-07T16:54:38.349Z",
+             "Presented Frame Stats": ["Shader Compiler": ["Shader Compilations": count, "Shader Compilation Time": seconds]],
+             "Frame-On-Glass Interval Stats": ["Count": 60, "Average (ms)": 16.8, "Max (ms)": 34.1]]
+        }
+        var invalid = update(2, seconds: 0.01)
+        invalid["End Date"] = "2026-10-07T16:54:36.349Z"
+        let process: [String: Any] = ["PID": 42, "Layers": [
+            ["Layer ID": 99, "Stats Timeline": [["Start Date": "missing"]]],
+            ["Layer ID": 101, "Stats Timeline": [update(2, seconds: 0.014857708), update(0, seconds: 0), invalid]]]]
+        let values = NativeMeasurements.shaderTimelineSummaries(process, pid: 42)
+        XCTAssertEqual(values.count, 2)
+        XCTAssertEqual(values[0]["measurement.scope"] as? String, "shader_compiler_update")
+        XCTAssertEqual(values[0]["shader_compilations"] as? Int, 2)
+        XCTAssertEqual(values[0]["shader_compilation_seconds"] as? Double, 0.014857708)
+        XCTAssertEqual(values[0]["frame_on_glass_max_ms"] as? Double, 34.1)
+        XCTAssertEqual(values[0]["measurement.started_at"] as? String, "2026-10-07T16:54:37.349Z")
+        XCTAssertEqual(values[0]["layer_index"] as? Int, 1)
+        XCTAssertEqual(values[0]["layer_id"] as? Int, 101)
+        XCTAssertEqual(values[1]["shader_compilations"] as? Int, 0)
+        XCTAssertTrue(NativeMeasurements.shaderTimelineSummaries(process, pid: 43).isEmpty)
+    }
+
     func testSessionRejectsReusedPidOrWrongExecutable() throws {
         let marker: [String: Any] = ["session_id": UUID().uuidString, "pid": ProcessInfo.processInfo.processIdentifier,
             "executable": "/unrelated-app", "started_at": Date().timeIntervalSince1970]

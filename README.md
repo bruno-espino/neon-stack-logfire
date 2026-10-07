@@ -57,7 +57,7 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes twenty-two panels for SDK windows, Apple presentation timings, process memory, host context, CPU caller paths, GPU replay costs, diagnoses, captures, and builds.
+It includes twenty-three panels for SDK windows, Apple presentation timings, shader compilation, process memory, host context, CPU caller paths, GPU replay costs, diagnoses, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
@@ -84,6 +84,8 @@ Attach streams selected native measurements and whole-host load during its bound
 Profile records a short Time Profiler interval and exports selected CPU samples and the top 20 leaf functions.
 It also exports up to 20 caller paths for each main/background thread scope. Unresolved frames remain explicit.
 For automated scenarios, `run --profile cpu` records during the app run, then exports and decodes the recording after the runner stops the app.
+Use `run --profile shader` to analyze Apple's retained shader compiler updates after the app stops.
+See [the SDK-free Metal probe](examples/metal-shader-probe/README.md) for a short controlled experiment.
 Use a Release build for optimization. The full `.trace` and symbols remain local.
 All three commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.
@@ -98,6 +100,7 @@ This captures one boundary by default and profiles its replay. It is separate fr
 | SDK responsiveness monitor | Main-queue delay, pending probe age, main-thread/process CPU ratios, macOS process footprint | Opt-in independent probes and five-second reports |
 | SDK operation calls | Named operations and instrumented failures | Direct OTLP spans |
 | Apple native tools | Presented FPS, frame-on-glass intervals, drawable waits, selected process resources | Companion attach or capture |
+| Apple shader compiler measurements | Compiler events, cached events, pipeline states, backend compilation time, native update windows | Optional `run --profile shader`. The companion analyzes retained history after the app exits. |
 | Apple GPU debugger | Captured render/compute workload, selected replay encoder/shader costs, register and spill properties | Optional `gpu-capture --profile`. Raw resources and shader sources stay local. |
 | Instruments Time Profiler | Running CPU samples, leaf-function weights, and caller paths | Optional `profile` recording. Summaries export after the recording. |
 | MetricKit adapter inside the SDK | Selected CPU/GPU time, disk writes, launch/resume/hang distributions, hitches, daily Metal reports, diagnostic summaries | Delayed reports with historical context. Coverage varies by platform. |

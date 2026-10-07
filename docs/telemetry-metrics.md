@@ -46,8 +46,8 @@ They use `metric_*` functions on `value`. They do not decode histogram buckets d
 
 ## Dashboard and investigation
 
-The reusable [dashboard](../dashboards/apple-development.json) has twenty panels.
-Its six new panels show frame distributions, slow-frame share, CPU activity, queue delays, GPU stages, and build task totals.
+The reusable [dashboard](../dashboards/apple-development.json) has twenty-three panels.
+It includes frame distributions, slow-frame share, CPU activity, queue delays, GPU stages, build task totals, caller paths, diagnoses, and shader compiler updates.
 Select a Session to inspect one run. Select its Build to inspect the associated build.
 New metric queries select `logfire.metric_schema.version=1` to exclude incompatible early experiments.
 Capture summaries and live measurements remain separate.
@@ -60,6 +60,14 @@ For GPU investigations, compare the recorded stage summaries and captured encode
 Replay costs rank a captured workload. They do not measure live GPU utilization or frame-on-glass latency.
 Use native presentation captures to investigate drawable waits and actual presentation timing.
 Build task totals can overlap. They do not measure critical-path latency.
+
+Shader compiler evidence uses diagnostic records, not new OTel instruments.
+`shader_compiler_update` rows contain native update counts and `shader_compilation_seconds`.
+The dashboard converts compiler seconds to milliseconds beside the native window's maximum frame-on-glass interval.
+These coarse windows show co-occurrence. They do not establish which exact frame stalled or prove causation.
+`*_total` fields are cumulative snapshots. Do not sum them across windows, layers, or captures.
+Overview delta fields describe the final update and are omitted from capture summaries.
+Missing compiler fields remain absent. Pipeline reuse can avoid compiler events without reporting a cached compiler event.
 
 ## Verified experiments
 

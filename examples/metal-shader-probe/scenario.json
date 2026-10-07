@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "id": "metal-shader-cold-warm-v1",
+  "arguments": [],
+  "environment": {},
+  "require_frame_windows": false
+}

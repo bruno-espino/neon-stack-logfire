@@ -217,48 +217,59 @@ public enum Companion {
 
     @discardableResult
     static func capture(session: NativeSession, folder: URL, seconds: Double, client: Logfire,
-                        interval: ClosedRange<Date>? = nil) throws -> [[String: Any]] {
+                        interval: ClosedRange<Date>? = nil, validateLiveSession: Bool = true,
+                        includeShaderTimeline: Bool = false) throws -> [[String: Any]] {
+        guard validateLiveSession || interval != nil else { throw CompanionError.message("A completed session needs its owned process interval") }
+        let binaryHash = try fileHash(session.executable)
         let ended = interval?.upperBound.timeIntervalSince1970 ?? Date().timeIntervalSince1970
         let requestedStart = max(session.started, interval?.lowerBound.timeIntervalSince1970 ?? ended - seconds)
         let started = interval == nil ? requestedStart : session.started
-        let collectedEnd = interval == nil ? ended : Date().timeIntervalSince1970
+        let collectedEnd = interval == nil || !validateLiveSession ? ended : Date().timeIntervalSince1970
         guard ended > requestedStart, ended <= collectedEnd else { throw CompanionError.message("Invalid capture interval") }
         let code = try HostCommand.run("/usr/bin/metalperftrace", ["collect", "--start", "@\(started)", "--end", "@\(collectedEnd)",
             "--json", folder.path], output: folder.appendingPathComponent("collect.json"), errors: folder.appendingPathComponent("collect.stderr"), seconds: 60)
         let traces = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).filter { $0.pathExtension == "atrc" }
-        guard code == 0, !traces.isEmpty else { throw CompanionError.message("Apple capture failed. Inspect \(folder.path)") }
+        try HostCommand.requireSuccess(code, message: "Apple capture failed. Inspect \(folder.path)")
+        guard !traces.isEmpty else { throw CompanionError.message("Apple capture contains no traces. Inspect \(folder.path)") }
         var measurements: [[String: Any]] = []
         for trace in traces {
             let overview = trace.deletingPathExtension().appendingPathExtension("overview.json")
-            let status = try HostCommand.run("/usr/bin/metalperftrace", ["overview", "--json", "--include-state-transitions", "--predicate",
-                "pid == \(session.pid)", trace.path], output: overview, errors: trace.deletingPathExtension().appendingPathExtension("overview.stderr"), seconds: 30)
-            guard status == 0 else { throw CompanionError.message("Apple overview failed. Inspect \(folder.path)") }
+            var command = ["overview", "--json", "--include-state-transitions", "--predicate", "pid == \(session.pid)"]
+            if includeShaderTimeline { command.append("--json-include-timeline") }
+            let status = try HostCommand.run("/usr/bin/metalperftrace", command + [trace.path], output: overview,
+                errors: trace.deletingPathExtension().appendingPathExtension("overview.stderr"), seconds: 30)
+            try HostCommand.requireSuccess(status, message: "Apple overview failed. Inspect \(folder.path)")
             let processes = try JSONSerialization.jsonObject(with: Data(contentsOf: overview)) as? [[String: Any]] ?? []
             measurements += processes.flatMap { NativeMeasurements.summaries($0, pid: session.pid, stateDomains: session.stateDomains) }
+            if includeShaderTimeline {
+                measurements += processes.flatMap { NativeMeasurements.shaderTimelineSummaries($0, pid: session.pid) }
+            }
             for (index, domain) in session.stateDomains.sorted().enumerated() {
                 let stateFile = trace.deletingPathExtension().appendingPathExtension("state-\(index).json")
                 var command = ["overview", "--json", "--aggregate", "--domain", domain,
                     "--predicate", "pid == \(session.pid)"]
-                let rawState = interval == nil ? stateFile : trace.deletingPathExtension().appendingPathExtension("state-context-\(index).json")
+                let rawState = interval == nil || !validateLiveSession ? stateFile : trace.deletingPathExtension().appendingPathExtension("state-context-\(index).json")
                 let stateCode = try HostCommand.run("/usr/bin/metalperftrace", command + [trace.path], output: rawState,
                     errors: trace.deletingPathExtension().appendingPathExtension("state-\(index).stderr"), seconds: 30)
-                guard stateCode == 0 else { throw CompanionError.message("State aggregation failed. Inspect \(folder.path)") }
+                try HostCommand.requireSuccess(stateCode, message: "State aggregation failed. Inspect \(folder.path)")
                 var states = try JSONSerialization.jsonObject(with: Data(contentsOf: rawState)) as? [[String: Any]] ?? []
-                if let interval {
+                if let interval, validateLiveSession {
                     guard let own = states.first(where: { ($0["PID"] as? NSNumber)?.int32Value == session.pid }),
                           let window = own["Aggregation Window"] as? [String: Any], let start = window["Start"] as? String,
                           let origin = NativeMeasurements.date(start) else { throw CompanionError.message("Native state context is missing") }
                     let offsets = try NativeMeasurements.aggregationOffsets(interval, origin: origin)
-                    command += ["--start", "\(offsets.lowerBound)s", "--end", "\(offsets.upperBound)s", trace.path]
+                    if offsets.lowerBound > 0 { command += ["--start", "\(offsets.lowerBound)s"] }
+                    command += ["--end", "\(offsets.upperBound)s", trace.path]
                     let sliced = try HostCommand.run("/usr/bin/metalperftrace", command, output: stateFile,
                         errors: trace.deletingPathExtension().appendingPathExtension("state-slice-\(index).stderr"), seconds: 30)
-                    guard sliced == 0 else { throw CompanionError.message("State measurement slice failed") }
+                    try HostCommand.requireSuccess(sliced, message: "State measurement slice failed")
                     states = try JSONSerialization.jsonObject(with: Data(contentsOf: stateFile)) as? [[String: Any]] ?? []
                 }
                 measurements += states.flatMap { NativeMeasurements.stateSummaries($0, pid: session.pid) }
             }
         }
-        try session.validate()
+        if validateLiveSession { try session.validate() }
+        guard try fileHash(session.executable) == binaryHash else { throw CompanionError.message("The app binary changed during native analysis") }
         let app = session.executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let symbols = URL(fileURLWithPath: app.path + ".dSYM")
         if FileManager.default.fileExists(atPath: symbols.path) { try FileManager.default.copyItem(at: symbols, to: folder.appendingPathComponent(symbols.lastPathComponent)) }
@@ -270,7 +281,7 @@ public enum Companion {
         let details: [String: Any] = ["capture.id": folder.lastPathComponent, "capture.started_at": started, "capture.ended_at": collectedEnd,
             "measurement.requested_start": requestedStart, "measurement.requested_end": ended,
             "capture.path": folder.path, "capture.tool": "apple.metalperftrace", "capture.storage": "local",
-            "capture.kind": "native-lookback", "binary.sha256": try fileHash(session.executable)]
+            "capture.kind": "native-lookback", "capture.shader_timeline_requested": includeShaderTimeline, "binary.sha256": binaryHash]
         var manifest = session.metadata.merging(details) { _, capture in capture }
         manifest["artifacts"] = checksums; manifest["capture.measurements"] = measurements
         try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted]).write(to: folder.appendingPathComponent("manifest.json"), options: .atomic)

@@ -228,6 +228,13 @@ Add `--profile cpu` to request one five-second Time Profiler recording after rea
 The recording phase includes tool setup and artifact finalization. Its wall duration exceeds the requested sample interval.
 The runner continues one-second host sampling while the recording command runs.
 Add `--profile gpu` for one capture during play. The runner enables Metal capture for that diagnostic launch.
+Add `--profile shader` to enable Metal HUD shader measurements for this launch.
+After the app exits, the companion collects retained `metalperftrace` history and decodes its JSON timeline.
+It exports shader compiler counts and time beside presentation measurements for each native update window.
+This path adds no live log collector. It retains the original process interval and rejects binary changes during analysis.
+The trace contains a `development.shader.analysis` child under the existing run.
+Missing compiler timeline fields produce an observation gap. Missing fields do not become zero.
+The [SDK-free Metal probe](../examples/metal-shader-probe/README.md) demonstrates the same runner handshake without the Swift SDK.
 The runner stops and reaps the app before either profiler analyzes the saved artifact.
 CPU analysis exports Instruments XML, validates the original process and actual interval, ranks leaf functions, and sends summaries to Logfire.
 `app.duration_seconds` excludes that analysis. `profile.analysis.duration_seconds` reports its separate cost.
@@ -436,15 +443,16 @@ Apple describes JSON overviews for regression testing and automated triage in
 Use `profile` for targeted Time Profiler CPU samples. Use Game Performance Overview in Instruments for broader CPU and Metal investigations.
 Use System Trace or Swift Concurrency in Instruments for scheduling, blocking, and actor contention.
 Retained Metal history does not supply a complete CPU stack profile.
-Apple can collect historical data after an app exits. Our companion currently requires a live verified session for attribution.
+Apple can collect historical data after an app exits. Manual capture still requires a live verified session for attribution.
+The shader scenario path analyzes the runner's own verified and reaped process within its retained lifetime.
 `test-game` already automates the run, collection, JSON extraction, and summary export before stopping its app.
 Full captures and symbols stay local. Only selected measurements and capture metadata reach Logfire.
 No scheduled or CI game-test pipeline is configured. The command is an on-demand pipeline.
 MetricKit reports remain delayed evidence inside the SDK.
 They cannot replace immediate automated-test measurements.
 
-Next, add finished-session artifact import and select the next instrument from a real optimization question.
-Evaluate shader-compilation recording options before changing the renderer.
+Next, add general finished-session artifact import and select the next instrument from a real optimization question.
+Shader compiler evidence is available through the existing native timeline decoder.
 GPU counter sampling remains deferred. It requires supported counters and can perturb the workload.
 See Apple's [GPU counter sampling guidance](https://developer.apple.com/documentation/metal/sampling-gpu-data-into-counter-sample-buffers).
 A second tester Mac, physical iOS delivery, and performance-budget calibration remain later validation.
@@ -459,7 +467,7 @@ Use `Apple Development Workflow` as the name and `apple-development-workflow` as
 Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
 Management credentials belong to the dashboard client. The application needs only its project write token.
 
-The twenty-two panels query diagnostic `records` and native OTel `metrics`.
+The twenty-three panels query diagnostic `records` and native OTel `metrics`.
 They cover SDK windows, CPU/queue signals, live Apple measurements, host context, CPU profiles, captures, and builds.
 Session and Build accept exact IDs. Empty values disable the filter.
 Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
@@ -471,6 +479,12 @@ The SDK timing chart shows the worst window p95 per bucket. It is not a session 
 Apple timing points average reported interval means. They are not per-frame session means.
 The live FPS chart divides presented frames by measured duration within each session and layer.
 Capture tables retain process, layer, and state-layer scopes separately. Overlapping captures are not summed.
+The shader table uses `shader_compiler_update` rows and preserves their native dates, layer identity, and trace links.
+It includes quiet windows. It excludes cumulative process totals and overview delta fields.
+Overview delta fields describe the last update. They do not describe the whole capture.
+Shader compiler time uses seconds in exported attributes. The table converts it to milliseconds.
+That time measures backend compilation, not the app's complete library or pipeline call.
+Pipeline reuse can bypass the compiler without increasing cached compiler events. HUD also creates its own pipelines.
 CPU tables retain each capture separately. They show sampled running work, top leaf functions, and selected caller paths.
 They do not reconstruct the complete inclusive call tree or a chronological timeline.
 CPU rows include the actual recording dates and retain unresolved-sample counts.

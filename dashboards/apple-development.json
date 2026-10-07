@@ -350,7 +350,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp AS exported, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'state.label' AS state, attributes->>'layer_index' AS layer, CAST(attributes->>'presented_fps' AS DOUBLE) AS presented_fps, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'measurement.requested_start' AS requested_start, attributes->>'measurement.requested_end' AS requested_end, attributes->>'capture.path' AS local_artifact FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.capture_summary' ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT start_timestamp AS exported, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'state.label' AS state, attributes->>'layer_index' AS layer, CAST(attributes->>'presented_fps' AS DOUBLE) AS presented_fps, attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'measurement.requested_start' AS requested_start, attributes->>'measurement.requested_end' AS requested_end, attributes->>'capture.path' AS local_artifact FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.capture_summary' AND attributes->>'measurement.scope' <> 'shader_compiler_update' ORDER BY start_timestamp DESC LIMIT 100"
                   }
                 }
               }
@@ -737,6 +737,32 @@
             }
           ]
         }
+      },
+      "ShaderCompilation": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Apple shader compiler updates",
+            "description": "Native update windows from run --profile shader. Compiler time is backend time, not the app pipeline call duration. Quiet windows remain visible. Cumulative process totals are excluded. Captures can overlap; do not sum overlapping captures or assume multiple layers are independent. HUD adds its own pipelines. These windows are diagnostic evidence, not clean baselines."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'measurement.started_at' AS measured_start, attributes->>'measurement.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'build.id' AS build, attributes->>'capture.id' AS capture, attributes->>'layer_id' AS layer, CAST(attributes->>'shader_compilations' AS DOUBLE) AS compiler_events, CAST(attributes->>'cached_shader_compilations' AS DOUBLE) AS cached_events, CAST(attributes->>'pipeline_states' AS DOUBLE) AS pipeline_states, 1000 * CAST(attributes->>'shader_compilation_seconds' AS DOUBLE) AS compiler_ms, CAST(attributes->>'frame_on_glass_max_ms' AS DOUBLE) AS max_frame_on_glass_ms, CAST(attributes->>'presented_fps' AS DOUBLE) AS presented_fps, trace_id, span_id FROM records WHERE kind IN ('span', 'log') AND span_name = 'game.native.capture_summary' AND attributes->>'measurement.scope' = 'shader_compiler_update' AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY measured_start DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -1013,6 +1039,25 @@
               "height": 5,
               "content": {
                 "$ref": "#/spec/panels/SlowFrameShare"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Shader compilation evidence"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/ShaderCompilation"
               }
             }
           ]
