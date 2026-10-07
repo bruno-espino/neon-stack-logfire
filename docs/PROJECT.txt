@@ -1,162 +1,73 @@
 NEON STACK + LOGFIRE
 
 Purpose
-Connect Apple performance evidence to its app build and game session.
-Keep Xcode build, run, debug, and profile workflows familiar.
-Status: experimental integration for trusted developer and manual tester builds.
-Toolchain: Xcode 27 with its Metal toolchain. Native lookback requires macOS 27.
+Connect Apple performance evidence to a build and app session.
+Status: experimental SDK and native companion for trusted developer and tester builds.
+The game is a reference consumer. Other apps can use the Swift package.
 
-Setup
-Open examples/neon-stack/NeonStack.xcodeproj.
-Install the companion with tools/install-companion.sh. Add ~/.local/bin to PATH if needed.
-Configure a write token once with logfire-apple configure --region us.
-Existing private prototype credentials remain compatible.
-Select NeonStack and My Mac. Press Cmd-R. LLDB remains enabled.
-The SDK and ordinary build identity step require no Python or relay.
-Run logfire-apple doctor --send to verify ingestion with one record and inspect setup without displaying credentials.
-Configure a project write token separately on each tester Mac.
+Setup and verification
+Use Xcode 27 with its Metal toolchain. Deep native Metal tools require macOS 27.
+Use tools/install-companion.sh, then logfire-apple configure --region us.
+Prototype users must configure again. The old credential location is retired.
+The private runtime file is ~/.config/logfire-swift/credentials.env. It is not embedded in the app.
+Enable LOGFIRE_DEV_DIRECT=1 in a development scheme. Press Command-R for normal iteration.
+Use logfire-apple doctor --send to verify one acknowledged export.
+Use tools/check-dev.sh for repository, game, Swift, and cached macOS Debug checks.
+Add --smoke for a 12-second offscreen SDK session. No default profiler or Simulator run.
+The scripts select one full Xcode and honor DEVELOPER_DIR without changing the global selection.
 
-Data flow
-Game operation -> Swift SDK -> OTLP HTTPS -> Logfire.
-Renderer frame samples -> SDK FrameRecorder -> five-second windows -> Logfire.
-Rendering context -> SDK state API -> Logfire and Apple StateReporting.
-Apple MetricKit reports -> adapter inside the SDK -> historical Logfire spans.
-Apple display/resource measurements -> optional Swift companion -> Logfire.
-Mac CPU/memory/filesystem samples -> attach or test companion -> live game.host.sample records.
-Native capture -> local recording, symbols, checksums, and Logfire metadata.
-Optional Instruments recording -> selected running CPU samples and top leaf functions -> Logfire.
-CPU caller paths -> separate main/background rankings -> structured Logfire records and local report.
-Scenario evidence -> diagnostic findings, missing evidence, and suggested native investigations.
-Optional GPU workload capture -> replay profiling -> selected encoder/shader measurements -> Logfire.
-Host Swift build step -> embedded build identity -> app startup identity record.
-Swift companion build action -> complete build trace, task totals, selected host samples, and .xcresult.
-Swift test-game action -> fixed inputs, SDK windows, Apple capture/state aggregates, and one session report.
-
-Native evidence
-Keep the game running. From the repository root, run:
-logfire-apple capture --last 10s
-For live measurements, run:
-logfire-apple attach --seconds 30
-For a short live CPU recording on a Release app, run:
-logfire-apple profile --seconds 5
-After a scenario run, rebuild its retained diagnosis without launching the app:
-logfire-apple diagnose --report PATH/TO/report.json
-For GPU inspection, enable MTL_CAPTURE_ENABLED=1 in a diagnostic launch and run:
-logfire-apple gpu-capture --profile
-Use --service neon-stack when multiple instrumented apps run.
-Add --no-telemetry to keep evidence local.
-The companion verifies the process, executable, process start time, and embedded build ID.
-It selects the latest live SDK session automatically.
-Open the retained .atrc or Instruments.trace recording in Instruments.
-CPU profiling leaves the app running. Raw recordings can contain private environment and source data.
-The manifest identifies the session, build, measurement interval, binary, symbols, and artifact checksums.
-The recording can contain other processes. Exported summaries select our PID.
-
-Native build and test investigation
-Use Command-R for ordinary edits. Use tools/check-dev.sh for Swift tests and a cached macOS Debug build.
-Add --smoke for a 12-second SDK-only run. iOS Simulator checks and longer runs are deferred.
-Use logfire-apple build with options and xcodebuild arguments after --.
-Use logfire-apple test-game --app APP --seconds 20 for the reference game.
-Onscreen tests retain launch context, then select matching native state layers with whole-second bounds around complete SDK window dates.
-Offscreen tests retain SDK and Metal command timing only.
-Use logfire-apple analyze --report REPORT --baseline BASELINE for matched runs.
-The gate requires Release builds, at least three windows, and matching test/device cohorts.
-Exit 0 means passed. Exit 1 means regressed. Exit 2 means insufficient or incompatible evidence.
-The companion uses no Python and needs no source checkout after installation.
-Legacy Python experiments and dashboards remain separately available.
-See docs/native-workflow.md for commands and report limitations.
+Data map
+App operations, frame windows, responsiveness -> Swift SDK -> OTLP HTTPS -> Logfire.
+SDK metrics -> fifteen fixed OTel instruments; only observed instruments appear in Logfire.
+Rendering state -> SDK -> Logfire and Apple StateReporting.
+Apple MetricKit -> SDK adapter -> historical diagnostic records when Apple delivers reports.
+Whole-host CPU/memory/filesystem -> optional companion -> live records and selected metrics.
+Apple layer/process measurements -> metalperftrace -> companion -> correlated summaries.
+CPU recording -> Instruments trace -> offline export -> leaf functions and caller paths.
+GPU workload capture -> gpudebug replay -> encoder/shader diagnostics.
+Xcode build -> companion -> build span, task totals, selected host samples, and local xcresult.
+Embedded build identity -> native build script -> SDK resource attributes and session marker.
+App assertions -> DevelopmentScenario handshake -> runner lifetime control and report.
+Retained report -> diagnose -> new local diagnosis without another app run.
 
 Terminology
-SDK: native Swift application integration, distributed as a Swift package.
-FrameRecorder: reusable sampler and window exporter inside the SDK.
-Context: mode, resolution, workload, detail, thermal state, and build/session identity.
-Span: a timed operation or an explicitly timestamped measurement window.
-OTLP: the OpenTelemetry export protocol.
-Signpost: native event or interval on an Instruments timeline.
-StateReporting: Apple state context for profiling tools and MetricKit.
-MetricKit: Apple metric and diagnostic report delivery to the application.
-Adapter: code inside the SDK that selects Apple report fields and exports them.
-Companion: optional native executable for captures, observed builds, reference-game tests, and analysis.
-Relay: optional host forwarder for transport comparisons. Direct SDK export needs no relay.
-metalperftrace: Apple's macOS CLI for live and historical Metal measurements.
-xctrace: Apple's CLI for active Instruments recordings and selected XML exports.
-Leaf function: innermost sampled frame. Its self weight excludes caller time.
-gpucapture: Apple tool for capturing Metal workload boundaries from a capture-enabled process.
-gpudebug: Apple tool for inspecting and replay-profiling captured GPU workloads.
-Capture: Apple recording artifact, distinct from an OpenTelemetry trace.
-Build ID: identifies the app build and joins its runtime records and captures.
-Session ID: identifies one app run and joins independent operation and measurement records.
-Source digest: fingerprints source, package inputs, and project settings.
-Dashboard: reusable JSON panels for SDK windows, Apple measurements, host context, captures, and builds.
-Regression gate: compares matched reports and rejects missing or incompatible evidence.
-dSYM: retained debug symbols for native analysis.
+SDK: Swift package for app-owned telemetry, state, frame windows, and optional Apple monitoring.
+Companion: optional logfire-apple CLI for builds, host context, scenarios, and native captures.
+OTLP: the OpenTelemetry wire format. The SDK exports directly over HTTPS. There is no relay or observer daemon.
+Session: one app launch. A private marker links its PID, executable, start time, and build identity.
+Build identity: ID, source fingerprint, commit, configuration, SDK, and Xcode version embedded at build time.
+Source fingerprint: selected Swift, Metal, project, and package inputs. It is not a complete Xcode input manifest.
+Signpost: native operation timing for Instruments. The SDK also emits a correlated Logfire span.
+StateReporting: named app workload state for Apple's measurements. It does not collect CPU stacks.
+MetricKit: Apple-delivered historical metrics and diagnostics. It is not a live per-frame feed.
+Capture manifest: original session/build identity, interval, binary, available symbols, and artifact checksums.
+Structured details: JSON plus logfire.json_schema. Logfire stores a queryable object or array in record attributes.
+Scenario outcome: distinguishes assertions, evidence gaps, timeout, interruption, and process failure.
+Regression gate: compares compatible Release runs and rejects missing or incompatible evidence.
 
-Measurement limits
+Interpretation limits
 Callback FPS differs from presented FPS. Preparation wall time differs from CPU utilization.
-GPU command duration is not hardware utilization.
-Native CPU times are not CPU utilization percentages.
-Frame preparation excludes other main-thread and SwiftUI work. The report marks main_thread.measured=false.
-GPU replay timings are not live frame latency. Shader Wait counts instructions, not CPU waiting time.
-Profile weights describe sampled running CPU work. They are not wall time or frame latency.
-Profiled intervals have instrumentation overhead. Keep them separate from baseline comparisons.
-Compare matched Release devices, modes, sizes, seeds, and workloads.
-Do not average window percentiles into a session percentile.
-SDK frame distributions, responsiveness, host context, and build outcomes use native OTel metrics.
-CPU functions, GPU replay, state, and Apple historical reports remain diagnostic records.
-MetricKit preserves historical dates and reported versions. It omits current-session build and session IDs.
-Full-day and state reports can overlap. The adapter does not deduplicate reports.
-Diagnostic summaries omit raw exception messages and backtraces.
-Neither transport has a durable queue. Failed batches and abrupt stops can leave gaps.
-Delivery counters describe attempted batches. They cannot count every lost record.
-Capture currently requires a live verified SDK session. Finished-session capture remains future work.
-Physical iOS runtime, real MetricKit delivery, and a second tester Mac remain unverified.
+Main-queue delay and main-thread CPU independently observe responsiveness and activity.
+GPU command duration is not hardware utilization. GPU replay is not live frame latency.
+CPU sample weights describe running work. They do not establish waiting time or a root cause.
+Profiled sessions are diagnostics, not clean baselines. Do not average window percentiles into a session percentile.
+Builds have separate traces. Automated app sessions inherit the runner trace and correlate through build identity.
+MetricKit retains historical dates and versions. It omits current session/build identity. Reports can overlap.
+Raw captures and local reports remain on the Mac. Summaries and capture metadata reach Logfire.
+The exporter has no durable offline queue. Failed batches and abrupt stops can leave gaps.
+Real MetricKit delivery, physical iOS, and a clean second-Mac setup remain unverified.
 
-Next steps
-Import dashboards/apple-development.json. Filter investigations by session and build IDs.
-Select CPU busy-work, blocking, shader-compilation, or GPU investigation from an observed problem.
-Use System Trace or Swift Concurrency for waiting and scheduling. CPU profiles do not measure these.
-Package the SDK, optional companion, and dashboard separately. Keep the game as the reference example.
-Select a license, publish version tags, and add short package CI before a reusable release.
-Measure build-script overhead before a generic compiled build-identity helper replaces it.
-Defer the tester report button until the native consolidation workflow is validated.
-Verify setup and direct export on another tester Mac.
-Test physical iOS delivery with development credentials.
-Await a real MetricKit report and verify its historical version and state context.
-Investigate background-task protection and abrupt-stop delivery behavior.
-Extend finished-session native capture without weakening process/build attribution.
-Use diagnose to reanalyze retained scenario reports without another gameplay run.
-CPU reanalysis can recover caller paths from existing checksummed exports. It cannot recover unrecorded CPU stacks.
-Check current Apple guidance and installed tool schemas before each native integration change.
-Check Logfire structured attributes, SQL drilldown, and MCP capabilities before adding custom analysis infrastructure.
+Current priorities
+Corroborate the coworker's MetricKit crash with its runtime version and crash stack.
+Keep the short native development loop. Xcode CI remains deferred by request.
+Preserve input limits and banner/trailing-data policies before consolidating the two JSON scanners.
+Migrate command errors, report dictionaries, and public attribute types in focused compatible changes.
+Investigate waiting/concurrency and startup evidence only when existing observations justify the capture.
+Verify setup on another tester Mac before reusable release packaging and version tags.
 
-Scenario runner
-logfire-apple run --app APP --scenario FILE
-App-owned assertions -> SDK readiness/completion -> runner report and correlated Logfire records.
-Optional --profile cpu or gpu. Default deadline 20 seconds. No default profiler or Simulator.
-Log Roll scenario clears two mazes, reaches a fire grate, and loses through ordinary game rules.
-DevelopmentScenario: SDK helper for a private atomic handshake and completion flush.
-Scenario success and telemetry/profile availability remain separate outcomes.
-
-Telemetry consolidation
-The configuration derives /v1/metrics from /v1/traces and uses the same write token.
-The fixed catalogue has 15 instruments. Only observed instruments appear in Logfire.
-Raw frame histograms preserve individual samples from complete five-second windows.
-Metric labels exclude function names, shader names, capture IDs, scores, and player data.
-Build and session identity remain resource attributes. Dashboards preserve source-series identity.
-AppleMonitoring(responsiveness: true) enables independent main-queue and CPU observations.
-The reference game enables this option. Other SDK clients opt in.
-One pending main-queue probe bounds queued work during stalls.
-Main-thread CPU and queue delay distinguish activity from poor responsiveness.
-Events and measurement summaries use Logfire log records. Operations retain timed spans.
-Automated runs propagate W3C trace context into the app. Builds remain separate traces.
-Run summaries remain children of their run. Native result files remain local.
-The dashboard has 20 panels, including raw distributions, queue stalls, CPU, GPU stages, and task totals.
-The short development check still excludes the Simulator and optional profiler captures.
-
-CPU profiling stages
-run --profile cpu records targeted Time Profiler samples after readiness.
-Host sampling continues through the existing command poll callback during recording.
-The runner stops/reaps the app, then exports and decodes the saved trace and sends selected CPU records.
-CPU record/analysis spans expose separate wall costs. The original session/build identity and symbols remain attached.
-Requested sampling duration differs from recording setup/finalization wall time and the actual recorded interval.
-Standalone profile keeps its single-command interface and leaves the manually launched app running.
+Details
+README.md: overview and data table.
+docs/swift-sdk.md: SDK integration and configuration.
+docs/native-workflow.md: native commands, artifacts, scenarios, dashboard, and checks.
+docs/telemetry-metrics.md: metric catalogue and measurement limits.
+docs/WORKLOG.txt: completed experiments, rejected approaches, and verification history.

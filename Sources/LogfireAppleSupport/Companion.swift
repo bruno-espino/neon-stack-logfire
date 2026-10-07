@@ -5,13 +5,15 @@ import LogfireSwift
 #if os(macOS)
 import Darwin
 
-enum CompanionError: Error, CustomStringConvertible {
+enum CompanionError: Error, Equatable, CustomStringConvertible {
     case message(String)
     case interrupted(Int32)
+    case unknownCommand(String)
     var description: String {
         switch self {
         case .message(let value): return value
         case .interrupted(let code): return "Apple command interrupted (exit \(code))"
+        case .unknownCommand(let name): return "Unknown command: \(name). Use logfire-apple --help"
         }
     }
 }
@@ -79,11 +81,18 @@ enum HostCommand {
 }
 
 public enum Companion {
+    enum Command: String {
+        case configure, doctor, build, run, analyze, diagnose, profile, capture, attach
+        case testGame = "test-game"
+        case gpuCapture = "gpu-capture"
+    }
     public static func run(arguments: [String]) throws -> Int32 {
-        guard let action = arguments.first, action != "--help" else { print(usage); return 0 }
+        guard let name = arguments.first, name != "--help" else { print(usage); return 0 }
+        guard let action = Command(rawValue: name) else { throw CompanionError.unknownCommand(name) }
         let values = Array(arguments.dropFirst())
-        if action == "configure" { return try configure(values) }
-        if action == "doctor" {
+        switch action {
+        case .configure: return try configure(values)
+        case .doctor:
             guard values.isEmpty || values == ["--send"] || values == ["--help"] else { throw CompanionError.message("Use doctor [--send]") }
             if values == ["--help"] { print("Usage: logfire-apple doctor [--send]. --send verifies ingestion with one telemetry record."); return 0 }
             print("Swift SDK and native companion require no Python runtime.")
@@ -107,15 +116,15 @@ public enum Companion {
                 return client.delivery.enabled && client.delivery.exportedSpans == 1 && client.delivery.failedSpans == 0 ? 0 : 2
             }
             return configured ? 0 : 2
+        case .build: return try NativeBuild.run(values)
+        case .testGame: return try GameTest.run(values)
+        case .run: return try ScenarioRun.run(values)
+        case .analyze: return try SessionAnalysis.run(values)
+        case .diagnose: return try SessionDiagnostics.run(values)
+        case .profile: return try InstrumentsProfile.run(values)
+        case .gpuCapture: return try GPUCapture.run(values)
+        case .capture, .attach: break
         }
-        if action == "build" { return try NativeBuild.run(values) }
-        if action == "test-game" { return try GameTest.run(values) }
-        if action == "run" { return try ScenarioRun.run(values) }
-        if action == "analyze" { return try SessionAnalysis.run(values) }
-        if action == "diagnose" { return try SessionDiagnostics.run(values) }
-        if action == "profile" { return try InstrumentsProfile.run(values) }
-        if action == "gpu-capture" { return try GPUCapture.run(values) }
-        guard ["capture", "attach"].contains(action) else { throw CompanionError.message(usage) }
         if values.contains("--help") { print(usage); return 0 }
         guard #available(macOS 27.0, *) else { throw CompanionError.message("Native Metal monitoring requires macOS 27") }
         let options = try parse(values)
@@ -125,7 +134,7 @@ public enum Companion {
         let client: Logfire
         do { client = Logfire(serviceName: session.metadata["service.name"] as? String ?? "apple-native", configuration: options.local ? nil : try configuration()) }
         catch { print("Telemetry unavailable. Artifacts remain local."); client = Logfire(serviceName: "apple-native", configuration: nil) }
-        if action == "capture" { try capture(session: session, folder: folder, seconds: options.seconds, client: client) }
+        if action == .capture { try capture(session: session, folder: folder, seconds: options.seconds, client: client) }
         else { try attach(session: session, folder: folder, seconds: options.seconds, client: client) }
         return 0
     }
@@ -299,11 +308,6 @@ public enum Companion {
         client.flush()
         print("Retained \(count) live native summaries: \(output.path)")
         printDelivery(client)
-    }
-
-    static func decodeUpdates(_ text: String) throws -> [[String: Any]] {
-        var updates = JSONUpdates()
-        return try updates.feed(Data(text.utf8))
     }
 
     static func attributes(_ values: [String: Any]) -> [String: LogfireAttribute] {

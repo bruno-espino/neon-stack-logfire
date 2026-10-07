@@ -20,12 +20,18 @@ public enum DevelopmentMetric: String, CaseIterable {
     case buildDuration = "apple.build.duration"
     case builds = "apple.build.count"
 
-    var histogram: Bool { [.frameInterval, .preparation, .gpuCommands, .mainQueueDelay, .buildDuration].contains(self) }
-    var counter: Bool { [.frames, .slowFrames, .builds].contains(self) }
+    enum InstrumentKind { case histogram, counter, gauge }
+    var instrumentKind: InstrumentKind {
+        switch self {
+        case .frameInterval, .preparation, .gpuCommands, .mainQueueDelay, .buildDuration: return .histogram
+        case .frames, .slowFrames, .builds: return .counter
+        case .callbackFPS, .mainQueuePending, .mainThreadCPU, .processCPU, .processMemory, .hostCPU, .hostMemory: return .gauge
+        }
+    }
     var unit: String {
-        if histogram { return self == .buildDuration ? "s" : "ms" }
+        if instrumentKind == .histogram { return self == .buildDuration ? "s" : "ms" }
         if [.processMemory, .hostMemory].contains(self) { return "By" }
-        if counter { return "{count}" }
+        if instrumentKind == .counter { return "{count}" }
         return self == .mainQueuePending ? "ms" : self == .callbackFPS ? "{frame}/s" : "1"
     }
 }
@@ -57,14 +63,17 @@ public final class DevelopmentMetrics {
         var gauges: [DevelopmentMetric: DoubleGaugeSdk] = [:]
         var counters: [DevelopmentMetric: LongCounterSdk] = [:]
         for metric in DevelopmentMetric.allCases {
-            if metric.histogram {
+            switch metric.instrumentKind {
+            case .histogram:
                 let bounds: [Double] = metric == .buildDuration ? [0.1, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300, 600] :
                     [0.01, 0.05, 0.1, 0.25, 0.5, 0.6, 0.75, 1, 2, 4, 8, 8.25, 8.333, 8.5, 10, 12, 15, 16, 16.25, 16.5, 16.667, 16.75, 17, 17.5, 18, 19, 20, 22, 24, 25, 27.5, 30, 33.333, 40, 50, 100, 250, 500, 1000, 1500, 2500, 5000, 10000]
                 histograms[metric] = meter.histogramBuilder(name: metric.rawValue).setUnit(metric.unit)
                     .setExplicitBucketBoundariesAdvice(bounds).build()
-            } else if metric.counter {
+            case .counter:
                 counters[metric] = meter.counterBuilder(name: metric.rawValue).setUnit(metric.unit).build()
-            } else { gauges[metric] = meter.gaugeBuilder(name: metric.rawValue).setUnit(metric.unit).build() }
+            case .gauge:
+                gauges[metric] = meter.gaugeBuilder(name: metric.rawValue).setUnit(metric.unit).build()
+            }
         }
         self.histograms = histograms; self.gauges = gauges; self.counters = counters
     }

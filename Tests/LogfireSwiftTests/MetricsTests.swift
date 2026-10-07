@@ -14,6 +14,25 @@ final class CaptureMetricExporter: MetricExporter, @unchecked Sendable {
 }
 
 final class MetricsTests: XCTestCase {
+    func testCounterAccumulatesWhileGaugeRetainsTheLatestObservation() throws {
+        let exporter = CaptureMetricExporter()
+        let client = Logfire(serviceName: "test", exporter: CaptureExporter(), metricExporter: exporter)
+        client.metrics?.record(.frames, value: 3)
+        client.metrics?.record(.frames, value: 2)
+        client.metrics?.record(.processMemory, value: 4096)
+        client.metrics?.record(.processMemory, value: 8192)
+        client.flush()
+        let count = try XCTUnwrap(exporter.metrics.first { $0.name == "game.frame.count" })
+        XCTAssertEqual(count.type, .LongSum)
+        XCTAssertEqual(count.unit, "{count}")
+        XCTAssertTrue(count.isMonotonic)
+        XCTAssertEqual((count.data.points.first as? LongPointData)?.value, 5)
+        let memory = try XCTUnwrap(exporter.metrics.first { $0.name == "app.process.memory.footprint" })
+        XCTAssertEqual(memory.type, .DoubleGauge)
+        XCTAssertEqual(memory.unit, "By")
+        XCTAssertEqual((memory.data.points.first as? DoublePointData)?.value, 8192)
+    }
+
     func testRawFrameHistogramPreservesCountsAndDoesNotReplayOnFlush() throws {
         let exporter = CaptureMetricExporter()
         let spans = CaptureExporter()

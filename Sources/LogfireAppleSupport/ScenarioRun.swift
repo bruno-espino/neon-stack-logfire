@@ -4,6 +4,63 @@ import OpenTelemetryApi
 #if os(macOS)
 import Darwin
 
+enum ScenarioError: Error, Equatable, CustomStringConvertible {
+    case payloadTooLarge(String)
+    case invalidDefinition(String)
+    case reservedEnvironmentKey(String)
+    case invalidStatus(String)
+    case missingOptionValue(String)
+    case unknownOption(String)
+    case invalidOptionValue(String)
+    case missingRequiredOption(String)
+
+    var description: String {
+        switch self {
+        case .payloadTooLarge(let kind): return "Scenario \(kind) exceeds 64 KiB"
+        case .invalidDefinition(let field): return "Invalid scenario definition field: \(field)"
+        case .reservedEnvironmentKey(let key): return "Scenario environment cannot override reserved key: \(key)"
+        case .invalidStatus(let field): return "Scenario status does not identify this ready application run: \(field)"
+        case .missingOptionValue(let flag): return "Missing value for \(flag)"
+        case .unknownOption(let flag): return "Unknown run option \(flag)"
+        case .invalidOptionValue(let flag): return "Invalid value for \(flag). Use --seconds between 1 and 300 or --profile cpu|gpu"
+        case .missingRequiredOption(let flag): return "Supply \(flag) for the scenario run"
+        }
+    }
+}
+
+enum ScenarioOutcome: Equatable {
+    case passed, incomplete, assertionFailed, timedOut
+    case processFailed(Int32), interrupted(Int32)
+
+    var exitCode: Int32 {
+        switch self {
+        case .passed: return 0
+        case .incomplete: return 2
+        case .assertionFailed: return 1
+        case .timedOut: return 124
+        case .processFailed(let code), .interrupted(let code): return code
+        }
+    }
+    var status: String {
+        switch self {
+        case .passed: return "passed"
+        case .incomplete: return "incomplete"
+        default: return "failed"
+        }
+    }
+    static func evaluate(result: CommandResult, phase: String?, windows: Int, required: Bool, issues: [String],
+                         failure: Bool = false, completedLate: Bool = false, analysisInterruption: Int32? = nil) -> Self {
+        if let analysisInterruption { return .interrupted(analysisInterruption) }
+        if result.timedOut || completedLate { return .timedOut }
+        let code = result.requestedStop && [0, 143].contains(result.exitCode) ? 0 : result.exitCode
+        if [130, 143].contains(code) { return .interrupted(code) }
+        if code != 0 { return .processFailed(code) }
+        if failure { return .assertionFailed }
+        guard phase == "passed", !required || windows > 0 else { return .assertionFailed }
+        return issues.isEmpty ? .passed : .incomplete
+    }
+}
+
 struct ScenarioDefinition: Codable {
     let schemaVersion: Int
     let id: String
@@ -16,21 +73,32 @@ struct ScenarioDefinition: Codable {
     }
     static func load(_ url: URL) throws -> ScenarioDefinition {
         let data = try Data(contentsOf: url)
-        guard data.count <= 65536 else { throw CompanionError.message("Scenario definition exceeds 64 KiB") }
+        guard data.count <= 65536 else { throw ScenarioError.payloadTooLarge("definition") }
         let definition = try JSONDecoder().decode(Self.self, from: data)
         try definition.validate()
         return definition
     }
     func validate() throws {
-        guard schemaVersion == 1, id.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$", options: .regularExpression) != nil,
-              arguments.count <= 32, arguments.allSatisfy({ $0.utf8.count <= 2048 && !$0.contains("\0") }),
-              environment.count <= 32 else { throw CompanionError.message("Invalid scenario definition") }
+        guard schemaVersion == 1 else { throw ScenarioError.invalidDefinition("schema_version") }
+        guard id.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$", options: .regularExpression) != nil else {
+            throw ScenarioError.invalidDefinition("id")
+        }
+        guard arguments.count <= 32 else { throw ScenarioError.invalidDefinition("arguments.count") }
+        for (index, argument) in arguments.enumerated() {
+            guard argument.utf8.count <= 2048, !argument.contains("\0") else {
+                throw ScenarioError.invalidDefinition("arguments[\(index)]")
+            }
+        }
+        guard environment.count <= 32 else { throw ScenarioError.invalidDefinition("environment.count") }
         for (key, value) in environment {
-            guard key.range(of: "^[A-Za-z_][A-Za-z0-9_]{0,127}$", options: .regularExpression) != nil,
-                  !["LOGFIRE_", "OTEL_", "MTL_", "METAL_"].contains(where: key.hasPrefix),
-                  key != "NEON_PERF_REPORT",
-                  value.utf8.count <= 2048, !value.contains("\0") else {
-                throw CompanionError.message("Scenario environment cannot override telemetry or process identity")
+            guard key.range(of: "^[A-Za-z_][A-Za-z0-9_]{0,127}$", options: .regularExpression) != nil else {
+                throw ScenarioError.invalidDefinition("environment.key")
+            }
+            guard !["LOGFIRE_", "OTEL_", "MTL_", "METAL_"].contains(where: key.hasPrefix), key != "NEON_PERF_REPORT" else {
+                throw ScenarioError.reservedEnvironmentKey(key)
+            }
+            guard value.utf8.count <= 2048, !value.contains("\0") else {
+                throw ScenarioError.invalidDefinition("environment[\(key)]")
             }
         }
     }
@@ -48,23 +116,24 @@ struct ScenarioRunOptions {
         while i < arguments.count {
             let flag = arguments[i]
             if flag == "--no-telemetry" { local = true; i += 1; continue }
-            guard i + 1 < arguments.count else { throw CompanionError.message("Missing value for \(flag)") }
+            guard i + 1 < arguments.count else { throw ScenarioError.missingOptionValue(flag) }
             let value = arguments[i + 1]
             switch flag {
             case "--app": app = URL(fileURLWithPath: value)
             case "--scenario": scenario = URL(fileURLWithPath: value)
             case "--seconds":
-                guard let number = Double(value), number.isFinite, (1...300).contains(number) else { throw CompanionError.message("Use --seconds between 1 and 300") }
+                guard let number = Double(value), number.isFinite, (1...300).contains(number) else { throw ScenarioError.invalidOptionValue(flag) }
                 seconds = number
             case "--profile":
-                guard ["cpu", "gpu"].contains(value) else { throw CompanionError.message("Use --profile cpu or gpu") }
+                guard ["cpu", "gpu"].contains(value) else { throw ScenarioError.invalidOptionValue(flag) }
                 profile = value
             case "--output": output = URL(fileURLWithPath: value)
-            default: throw CompanionError.message("Unknown run option \(flag)")
+            default: throw ScenarioError.unknownOption(flag)
             }
             i += 2
         }
-        guard app != nil, scenario != nil else { throw CompanionError.message("Supply --app APP and --scenario FILE") }
+        guard app != nil else { throw ScenarioError.missingRequiredOption("--app") }
+        guard scenario != nil else { throw ScenarioError.missingRequiredOption("--scenario") }
     }
 }
 
@@ -97,21 +166,15 @@ struct ScenarioSignal: Decodable {
     }
     static func read(_ url: URL, id: String, session: NativeSession) throws -> ScenarioSignal {
         let data = try Data(contentsOf: url)
-        guard data.count <= 65536 else { throw CompanionError.message("Scenario status exceeds 64 KiB") }
+        guard data.count <= 65536 else { throw ScenarioError.payloadTooLarge("status") }
         let signal = try JSONDecoder().decode(Self.self, from: data)
-        guard signal.schemaVersion == 1, signal.scenarioID == id, signal.sessionID == session.id, signal.pid == session.pid,
-              signal.ready, ["ready", "passed", "failed"].contains(signal.phase),
-              signal.recordedAt.isFinite, signal.recordedAt >= session.started, signal.recordedAt <= Date().timeIntervalSince1970 + 1 else {
-            throw CompanionError.message("Scenario status does not identify this ready application run")
+        for (field, valid) in [("schema_version", signal.schemaVersion == 1), ("scenario_id", signal.scenarioID == id),
+            ("session_id", signal.sessionID == session.id), ("pid", signal.pid == session.pid), ("ready", signal.ready),
+            ("phase", ["ready", "passed", "failed"].contains(signal.phase)),
+            ("recorded_at", signal.recordedAt.isFinite && signal.recordedAt >= session.started && signal.recordedAt <= Date().timeIntervalSince1970 + 1)] {
+            guard valid else { throw ScenarioError.invalidStatus(field) }
         }
         return signal
-    }
-    static func exitCode(result: CommandResult, signal: ScenarioSignal?, windows: Int, required: Bool, issues: [String]) -> Int32 {
-        if result.timedOut { return 124 }
-        let code = result.requestedStop && [0, 143].contains(result.exitCode) ? 0 : result.exitCode
-        if code != 0 { return code }
-        guard signal?.phase == "passed", !required || windows > 0 else { return 1 }
-        return issues.isEmpty ? 0 : 2
     }
 }
 
@@ -161,7 +224,7 @@ enum ScenarioRun {
         var analysisDuration: Double = 0
         var analysisInterruption: Int32?
         var retained: [String: Any] = [:]
-        var finalCode: Int32 = 127
+        var finalOutcome = ScenarioOutcome.processFailed(127)
         let began = ProcessInfo.processInfo.systemUptime
         let beganDate = Date()
         func readSession(verify: Bool) throws -> NativeSession {
@@ -223,7 +286,10 @@ enum ScenarioRun {
                         }
                         return signal?.phase == "passed" || signal?.phase == "failed"
                     })
-            } catch { failure = "Run identity or scenario protocol failed. Inspect retained SDK marker, status, and console output." }
+            } catch {
+                result = CommandResult(exitCode: 1, timedOut: false, requestedStop: false)
+                failure = "Run identity or scenario protocol failed. Inspect retained SDK marker, status, and console output."
+            }
             appDuration = ProcessInfo.processInfo.systemUptime - began
             // The runner reaps the app before either profiler analyzes its recording.
             let interruptedRun = !result.requestedStop && [130, 143].contains(result.exitCode)
@@ -284,14 +350,12 @@ enum ScenarioRun {
             if definition.requireFrameWindows, windows.isEmpty { failure = "Scenario requires a complete renderer window." }
             if let failure { issues.insert(failure, at: 0) }
             try host.write(to: folder.appendingPathComponent("host-samples.json"))
-            let processCode = result.requestedStop && [0, 143].contains(result.exitCode) ? 0 : result.exitCode
-            let code: Int32
-            if let analysisInterruption { code = analysisInterruption }
-            else if result.timedOut || completedLate { code = 124 }
-            else if failure != nil { code = [130, 143].contains(processCode) ? processCode : 1 }
-            else { code = ScenarioSignal.exitCode(result: result, signal: signal, windows: windows.count, required: definition.requireFrameWindows, issues: issues) }
+            let outcome = ScenarioOutcome.evaluate(result: result, phase: signal?.phase, windows: windows.count,
+                required: definition.requireFrameWindows, issues: issues, failure: failure != nil,
+                completedLate: completedLate, analysisInterruption: analysisInterruption)
+            let code = outcome.exitCode
             var report: [String: Any] = context.merging([
-                "schema_version": 1, "status": code == 0 ? "passed" : code == 2 ? "incomplete" : "failed",
+                "schema_version": 1, "status": outcome.status,
                 "exit_code": code, "app.exit_code": result.exitCode, "app.pid": pid, "app.requested_stop": result.requestedStop,
                 "run.started_at": beganDate.timeIntervalSince1970, "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
                 "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
@@ -314,7 +378,7 @@ enum ScenarioRun {
             runSpan?.setAttribute(key: "scenario.phase", value: signal?.phase ?? "missing")
             if code != 0 {
                 runSpan?.status = .error(description: analysisInterruption != nil ? "Profiler analysis interrupted" :
-                    code == 2 ? "Requested observation is incomplete" : "Development scenario failed")
+                    outcome == .incomplete ? "Requested observation is incomplete" : "Development scenario failed")
             }
             client.event("development.run.summary", attributes: Companion.attributes(context.merging([
                 "run.exit_code": code, "scenario.phase": signal?.phase ?? "missing", "frame.windows": windows.count,
@@ -326,20 +390,22 @@ enum ScenarioRun {
                 "app.delivery.failed_spans": signal?.delivery?.failedSpans as Any? ?? NSNull(),
             ]) { _, value in value }))
             retained = report
-            finalCode = code
+            finalOutcome = outcome
         }
         client.flush(); Companion.printDelivery(client)
         if client.delivery.enabled, client.delivery.failedSpans > 0 || client.delivery.exportedSpans < host.records.count + 2 {
             retained["issues"] = issues + ["Runner telemetry was not fully acknowledged."]
-            if finalCode == 0 { finalCode = 2; retained["status"] = "incomplete"; retained["exit_code"] = finalCode }
+            if finalOutcome == .passed { finalOutcome = .incomplete }
         }
         if let delivery = client.metrics?.delivery {
             retained["runner.metric_delivery"] = ["enabled": delivery.enabled, "exported_metrics": delivery.exportedMetrics, "failed_metrics": delivery.failedMetrics]
             if delivery.failedMetrics > 0 {
                 retained["issues"] = (retained["issues"] as? [String] ?? []) + ["Runner metrics delivery failed."]
-                if finalCode == 0 { finalCode = 2; retained["status"] = "incomplete"; retained["exit_code"] = finalCode }
+                if finalOutcome == .passed { finalOutcome = .incomplete }
             }
         }
+        retained["status"] = finalOutcome.status
+        retained["exit_code"] = finalOutcome.exitCode
         retained["app.metric_delivery"] = signal?.metricDelivery.map { ["enabled": $0.enabled, "exported_metrics": $0.exportedMetrics, "failed_metrics": $0.failedMetrics] as [String: Any] } as Any? ?? NSNull()
         retained["runner.delivery"] = ["enabled": client.delivery.enabled, "exported_spans": client.delivery.exportedSpans, "failed_spans": client.delivery.failedSpans]
         if var diagnostic = retained["diagnostic"] as? [String: Any] {
@@ -349,7 +415,7 @@ enum ScenarioRun {
         }
         try JSONSerialization.data(withJSONObject: retained, options: [.prettyPrinted, .sortedKeys]).write(to: folder.appendingPathComponent("report.json"), options: .atomic)
         print("Scenario report: \(folder.appendingPathComponent("report.json").path)")
-        return finalCode
+        return finalOutcome.exitCode
     }
 }
 #endif

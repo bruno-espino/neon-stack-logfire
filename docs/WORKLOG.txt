@@ -449,4 +449,26 @@ Retired Python and relay paths. Migrated this Mac's private credentials before r
 Added repeatable local repository and game checks. The source fingerprint now supports renamed apps.
 Kept the reference replay adapter because generic scenarios do not yet cover seeded offscreen comparisons.
 Kept distinct renderer synchronization mechanisms and explicit configuration errors.
-Xcode CI remains deferred at the user's request. See NATIVE-CLEANUP.txt and FEEDBACK-REVIEW.txt.
+Xcode CI remains deferred at the user's request. Current setup and validation belong in native-workflow.md.
+
+
+2026-10-06 Coworker feedback and local check hardening
+The coworker reports a Swift 6.3.3/SDK 27 mismatch and a MetricKit SIGSEGV on merged main.
+This Mac currently selects Xcode 27, Swift 6.4, and macOS 27.0.1. The three MetricKit tests and full suite pass before these changes.
+The available earlier xctest crash is SIGTRAP in CommandCancellation. It is not evidence for this MetricKit report.
+Requested the failing command and crash frames. The reported SIGSEGV remains uncorroborated here.
+Added explicit runtime skips for the OS 27 MetricKit test bodies. Class availability alone did not guard test execution.
+The local scripts now select one full Xcode for Swift, formatting, and builds. They respect DEVELOPER_DIR without changing global xcode-select.
+Replaced metric-kind booleans with an exhaustive enum. Removed unused decodeUpdates.
+Added scenario outcome types and field-specific validation errors. Process failures and incomplete evidence can share exit 2 but retain different report statuses.
+Command dispatch now uses an exhaustive enum. Unknown commands and scenario options have typed errors. Native process exit codes remain intact.
+Tests now identify reserved environment keys and invalid status fields. Counter and gauge tests check exported observations.
+Consolidated both feedback notes into existing guides and this history. PROJECT.txt now contains the current compact data map and terminology.
+Retained explicit configuration errors, seeded offscreen replay, and the renderer's separate synchronization mechanisms.
+Deferred the public attribute redesign, remaining command-specific error migrations, and dictionary migrations to focused compatibility changes.
+The JSON scanners have different policies. Live updates tolerate tool banners and bound each object; GPU files reject trailing/incomplete input and bound the whole file.
+Do not merge those scanners without preserving both policies. No Xcode CI or additional default profiler/Simulator run was added.
+Validation: all 69 Swift tests pass, including all three MetricKit cases with no skips on macOS 27.0.1.
+Repository checks, strict artifact-script lint, game logic/audio checks, and the cached macOS Debug build pass.
+The build exporter acknowledges 31 spans with zero failed spans. Invalid and explicit CLT selections exit 2 before compilation.
+The older-runtime MetricKit skip and an implicit CLT fallback require verification on the coworker's Mac. Neither proves the reported SIGSEGV cause.

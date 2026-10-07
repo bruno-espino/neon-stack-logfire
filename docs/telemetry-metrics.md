@@ -2,8 +2,8 @@
 
 The configured SDK publishes native OTLP metrics every five seconds and on flush.
 The companion uses the same exporter for builds and host samples.
-No Python collector or relay is required. The optional legacy relay forwards both OTLP paths.
-Historical Python metrics remain available under their original names.
+The Swift exporter sends both OTLP paths directly over HTTPS. Python and relay tooling are retired.
+Previously ingested prototype measurements can remain in Logfire under their original names.
 
 ## Instrument catalog
 

@@ -9,10 +9,18 @@ final class ScenarioRunTests: XCTestCase {
         let good = ScenarioDefinition(schemaVersion: 1, id: "sample-v1", arguments: [], environment: ["QUALITY": "low"], requireFrameWindows: false)
         try good.validate()
         for key in ["LOGFIRE_TOKEN", "LOGFIRE_SESSION_ID", "OTEL_EXPORTER_OTLP_HEADERS", "MTL_CAPTURE_ENABLED"] {
-            XCTAssertThrowsError(try ScenarioDefinition(schemaVersion: 1, id: "sample", arguments: [], environment: [key: "override"], requireFrameWindows: false).validate())
+            XCTAssertThrowsError(try ScenarioDefinition(schemaVersion: 1, id: "sample", arguments: [], environment: [key: "override"], requireFrameWindows: false).validate()) {
+                XCTAssertEqual($0 as? ScenarioError, .reservedEnvironmentKey(key))
+            }
         }
-        for values in [["--app", "app"], ["--app", "app", "--scenario", "file", "--seconds", "nan"], ["--app", "app", "--scenario", "file", "--profile", "all"]] {
-            XCTAssertThrowsError(try ScenarioRunOptions(values))
+        for (values, expected) in [
+            (["--app", "app"], ScenarioError.missingRequiredOption("--scenario")),
+            (["--app", "app", "--scenario", "file", "--seconds", "nan"], .invalidOptionValue("--seconds")),
+            (["--app", "app", "--scenario", "file", "--profile", "all"], .invalidOptionValue("--profile")),
+            (["--app"], .missingOptionValue("--app")),
+            (["--unknown", "value"], .unknownOption("--unknown")),
+        ] {
+            XCTAssertThrowsError(try ScenarioRunOptions(values)) { XCTAssertEqual($0 as? ScenarioError, expected) }
         }
         XCTAssertNil(try ScenarioRunOptions(["--app", "app", "--scenario", "file"]).profile)
     }
@@ -27,20 +35,55 @@ final class ScenarioRunTests: XCTestCase {
         func write() throws { try JSONSerialization.data(withJSONObject: value).write(to: url) }
         try write()
         let signal = try ScenarioSignal.read(url, id: "sample", session: session)
-        XCTAssertEqual(ScenarioSignal.exitCode(result: .init(exitCode: 143, timedOut: false, requestedStop: true), signal: signal, windows: 1, required: true, issues: []), 0)
-        XCTAssertEqual(ScenarioSignal.exitCode(result: .init(exitCode: 0, timedOut: false, requestedStop: false), signal: nil, windows: 0, required: false, issues: []), 1)
-        XCTAssertEqual(ScenarioSignal.exitCode(result: .init(exitCode: 0, timedOut: false, requestedStop: false), signal: signal, windows: 0, required: true, issues: []), 1)
-        XCTAssertEqual(ScenarioSignal.exitCode(result: .init(exitCode: 0, timedOut: false, requestedStop: false), signal: signal, windows: 0, required: false, issues: []), 0)
-        XCTAssertEqual(ScenarioSignal.exitCode(result: .init(exitCode: 137, timedOut: false, requestedStop: true), signal: signal, windows: 1, required: true, issues: []), 137)
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: .init(exitCode: 143, timedOut: false, requestedStop: true), phase: signal.phase, windows: 1, required: true, issues: []).exitCode, 0)
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: .init(exitCode: 0, timedOut: false, requestedStop: false), phase: nil, windows: 0, required: false, issues: []).exitCode, 1)
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: .init(exitCode: 0, timedOut: false, requestedStop: false), phase: signal.phase, windows: 0, required: true, issues: []).exitCode, 1)
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: .init(exitCode: 0, timedOut: false, requestedStop: false), phase: signal.phase, windows: 0, required: false, issues: []).exitCode, 0)
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: .init(exitCode: 137, timedOut: false, requestedStop: true), phase: signal.phase, windows: 1, required: true, issues: []).exitCode, 137)
         for (key, bad) in [("session_id", UUID().uuidString as Any), ("pid", 43), ("ready", false), ("recorded_at", started - 1), ("phase", "unknown")] {
             let original = value[key]; value[key] = bad; try write()
-            XCTAssertThrowsError(try ScenarioSignal.read(url, id: "sample", session: session))
+            XCTAssertThrowsError(try ScenarioSignal.read(url, id: "sample", session: session)) {
+                XCTAssertEqual($0 as? ScenarioError, .invalidStatus(key))
+            }
             value[key] = original
+        }
+    }
+
+    func testOutcomesPreserveFailureCausesWithOverlappingExitCodes() {
+        let result = CommandResult(exitCode: 2, timedOut: false, requestedStop: false)
+        let failed = ScenarioOutcome.evaluate(result: result, phase: "passed", windows: 1, required: true, issues: [])
+        let incomplete = ScenarioOutcome.evaluate(result: .init(exitCode: 0, timedOut: false, requestedStop: false),
+            phase: "passed", windows: 1, required: true, issues: ["Missing profile"])
+        XCTAssertEqual(failed.exitCode, 2)
+        XCTAssertEqual(failed.status, "failed")
+        XCTAssertEqual(incomplete.exitCode, 2)
+        XCTAssertEqual(incomplete.status, "incomplete")
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: result, phase: "passed", windows: 1, required: true,
+            issues: [], analysisInterruption: 130).exitCode, 130)
+        XCTAssertEqual(ScenarioOutcome.evaluate(result: .init(exitCode: 143, timedOut: true, requestedStop: true),
+            phase: "passed", windows: 1, required: true, issues: []).exitCode, 124)
+    }
+
+    func testDefinitionValidationNamesTheInvalidFieldWithoutItsValue() {
+        for (definition, field) in [
+            (ScenarioDefinition(schemaVersion: 2, id: "good", arguments: [], environment: [:], requireFrameWindows: false), "schema_version"),
+            (ScenarioDefinition(schemaVersion: 1, id: "bad id", arguments: [], environment: [:], requireFrameWindows: false), "id"),
+            (ScenarioDefinition(schemaVersion: 1, id: "good", arguments: ["private\0value"], environment: [:], requireFrameWindows: false), "arguments[0]"),
+            (ScenarioDefinition(schemaVersion: 1, id: "good", arguments: [], environment: ["QUALITY": "private\0value"], requireFrameWindows: false), "environment[QUALITY]"),
+        ] {
+            XCTAssertThrowsError(try definition.validate()) {
+                XCTAssertEqual($0 as? ScenarioError, .invalidDefinition(field))
+                XCTAssertFalse(String(describing: $0).contains("private"))
+            }
         }
     }
 
     func testSuccessfulProcessExitDoesNotCountAsScenarioCompletion() throws {
         try assertFixture(executable: "/usr/bin/true", arguments: [], seconds: "2", expected: 1)
+    }
+
+    func testProcessFailurePreservesExitTwoAsAFailedReport() throws {
+        try assertFixture(executable: "/bin/sh", arguments: ["-c", "exit 2"], seconds: "2", expected: 2)
     }
 
     func testProtocolCompletionProducesPassedAndIncompleteReportsAndReapsBothApps() throws {

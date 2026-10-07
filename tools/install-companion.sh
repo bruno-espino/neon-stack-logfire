@@ -1,9 +1,10 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/tools/xcode-env.sh"
 cd "$root"
-swift build -c release --product logfire-apple
-binary_dir=$(swift build -c release --show-bin-path)
+/usr/bin/xcrun swift build -c release --product logfire-apple
+binary_dir=$(/usr/bin/xcrun swift build -c release --show-bin-path)
 install_dir=${LOGFIRE_APPLE_INSTALL_DIR:-"$HOME/.local/bin"}
 mkdir -p "$install_dir"
 install -m 755 "$binary_dir/logfire-apple" "$install_dir/logfire-apple"

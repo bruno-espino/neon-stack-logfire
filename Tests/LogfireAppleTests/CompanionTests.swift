@@ -4,6 +4,15 @@ import XCTest
 
 #if os(macOS)
 final class CompanionTests: XCTestCase {
+    func testCommandDispatchRejectsUnknownCommandsAndRoutesHelp() throws {
+        XCTAssertThrowsError(try Companion.run(arguments: ["unknown"])) {
+            XCTAssertEqual($0 as? CompanionError, .unknownCommand("unknown"))
+        }
+        for command in ["configure", "doctor", "build", "test-game", "run", "analyze", "diagnose", "profile", "gpu-capture", "capture", "attach"] {
+            XCTAssertEqual(try Companion.run(arguments: [command, "--help"]), 0, command)
+        }
+    }
+
     func testStructuredAttributesKeepBooleansDistinctFromZeroAndOneCounts() throws {
         let values = Companion.attributes(["partial": true, "samples": 1, "gaps": 0])
         XCTAssertEqual(values["partial"], .bool(true))
