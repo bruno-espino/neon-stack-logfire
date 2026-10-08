@@ -573,11 +573,13 @@ They cover SDK windows, CPU/queue signals, live Apple measurements, host context
 Four native tables show capture-wide states, SDK-window coverage, syscall summaries, and next-drawable waits.
 They preserve missing fields and coverage. They do not sum overlapping windows or infer synchronization owners.
 Offline imports retain their original measurement dates. Select the recording's time range to view these tables.
-Session and Build accept exact IDs. Empty values disable the filter.
+The Session selector discovers recorded sessions in the selected range, including native-only imports. All disables its filter.
+Build accepts an exact ID. An empty Build value disables its filter.
 Build filtering joins the investigation by identity without a SQL join or matching unrelated trace IDs.
 The build table ignores Session because the build command and application have different session IDs.
 
 SDK charts use the recorded window end. Apple layer charts use the native measurement end.
+Timestamp casts retain UTC. Charts use five-second buckets with visible observation points.
 Host charts use the host sample date. Process-memory charts use export time because native process dates are absent.
 The SDK timing chart shows the worst window p95 per bucket. It is not a session percentile.
 Apple timing points average reported interval means. They are not per-frame session means.
@@ -593,7 +595,8 @@ CPU tables retain each capture separately. They show sampled running work, top l
 They do not reconstruct the complete inclusive call tree or a chronological timeline.
 CPU rows include the actual recording dates and retain unresolved-sample counts.
 Missing attach data means no observation occurred. It does not mean zero load or zero FPS.
-The tables show at most 100 rows. Charts show at most 10,000 buckets. Narrow the time range for detailed investigation.
+Native tables show at most 100 rows. Charts show at most 10,000 recent rows across all series.
+Narrow the time range for detailed investigation.
 
 The dashboard is an editable copy. Reimport an updated template under a new slug or update the existing definition through MCP.
 It does not receive automatic standard-dashboard updates.

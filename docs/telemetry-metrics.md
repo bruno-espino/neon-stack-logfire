@@ -46,12 +46,22 @@ They use `metric_*` functions on `value`. They do not decode histogram buckets d
 
 ## Dashboard and investigation
 
-The reusable [dashboard](../dashboards/apple-development.json) has twenty-four panels.
+The reusable [dashboard](../dashboards/apple-development.json) has 28 panels.
 It includes frame distributions, slow-frame share, CPU activity, queue delays, GPU stages, build task totals, caller paths, diagnoses, and shader compiler updates.
 The inclusive CPU caller table aggregates functions across different sampled paths. Its overlapping weights are not additional metrics or wall time.
 Select a Session to inspect one run. Select its Build to inspect the associated build.
 New metric queries select `logfire.metric_schema.version=1` to exclude incompatible early experiments.
 Capture summaries and live measurements remain separate.
+
+The [15-panel overview](../dashboards/apple-metal-overview.json) restores build timing, task totals, host load, queue delay, and gameplay events beside the SDK charts.
+Its session window table links directly to runtime records and the associated build trace.
+Both templates retain five-second buckets and UTC measurement timestamps.
+SDK log charts use the measured window end. OTel metric charts use collection timestamps.
+A flush can put two exports in one bucket. Window logs retain the original measurement interval.
+Dots keep isolated observations visible. Distinct app sessions remain separate series.
+Use a short time range for detail. Each chart returns at most 10,000 recent rows across its series.
+The overview refreshes every five seconds when its Live control is enabled.
+A stopped app produces no new observations. Refreshing its dashboard does not extend that session.
 
 Start with callback interval and slow-frame share.
 If queue delay rises, compare main-thread CPU with process CPU.

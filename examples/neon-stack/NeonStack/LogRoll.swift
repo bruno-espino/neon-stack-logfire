@@ -95,8 +95,8 @@ final class LogRollState: ObservableObject {
         }
         if engine.gameOver && !wasOver {
             best = max(best, engine.score)
-            signposter.emitEvent("Crash"); play(.gameOver)
-            GameTelemetry.client.event("game.crash", attributes: [
+            signposter.emitEvent("Collision"); play(.gameOver)
+            GameTelemetry.client.event("game.collision", attributes: [
                 "game": .string("log-roll"), "score": .int(engine.score), "moves": .int(engine.moves),
                 "maze_size": .int(engine.maze.size), "seconds": .double(engine.seconds), "particles": .int(detail.rawValue),
                 "turns": .int(engine.turns), "water": .bool(engine.water), "heat": .double(engine.heat),
