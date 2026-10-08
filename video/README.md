@@ -1,8 +1,12 @@
 # Apple Metal + Logfire showcase
 
-A 67-second React video built with [Remotion](https://www.remotion.dev).
-It presents SDK setup, trace correlation, a flashy FPS scenario, native CPU/GPU capabilities, and a real Logfire dashboard.
+A 77-second React video built with [Remotion](https://www.remotion.dev).
+It presents SDK setup, game input spans, trace correlation, a flashy FPS scenario, native CPU/GPU capabilities, and a real Logfire dashboard.
 The shared ember theme and animation components preserve the original reel's visual style.
+
+![Input operations beside gameplay feedback](public/input-trace-preview.jpg)
+
+The dashboard scene uses [this real Logfire view](public/apple-metal-overview.jpg).
 
 ## Render
 
@@ -48,6 +52,9 @@ Its SDK investigation window has 43.7% native coverage and 174.2 ms of overlappi
 The optional `NativeEvidence` composition preserves those scopes. It makes no controlled performance claim from that busy-host capture.
 
 The trace diagram uses the current names and kinds. Operation spans and structured logs are distinct.
+The input scene animates rotate, hold, and drop keys beside their existing operation spans and nested gameplay feedback logs.
+Its sequence and bar lengths are illustrative. They are not a telemetry recording of the adjacent fixed-clock footage.
+The `InputTrace` composition supports separate review of that scene.
 The screenshot comes from the real **Apple Metal Overview** dashboard with one ingested Log Roll session.
 The current overview also exposes build timing, host load, queue delays, gameplay events, and runtime/build trace links.
 It contains no token or local path. Its historical records predate the `game.crash` → `game.collision` naming correction.

@@ -13,8 +13,8 @@ It is not an official released Logfire SDK.
 
 ![Apple Metal Overview with real ingested game sessions](video/public/apple-metal-overview.jpg)
 
-The [React showcase](video/README.md) presents the capabilities in 67 seconds.
-It labels its simulated 45 → 120 FPS scenario. The separate [measured CPU case](docs/cpu-investigation.md) verifies CPU savings with callback rate near 60 Hz.
+The [React showcase](video/README.md) presents dashboards, game input spans, build correlation, and native investigations in 77 seconds.
+Its animated FPS improvement uses labelled illustrative figures. The separate measured CPU case remains available below.
 
 ## Start with the game
 
@@ -77,7 +77,8 @@ Manual Command-R records share session/build identity; they do not automatically
 
 Callback cadence differs from presented FPS. GPU command sums differ from utilization.
 Native wait intervals overlap CPU states. Replay shader costs describe the captured replay.
-See [the telemetry catalog](docs/telemetry-metrics.md) and [presentation and trace review](docs/presentation.md) for the exact scopes.
+See [the telemetry catalog](docs/telemetry-metrics.md) and [dashboard and trace review](docs/session-review.md) for the exact scopes.
+The [measured CPU case](docs/cpu-investigation.md) verifies CPU savings with callback rate near 60 Hz.
 
 ## Investigate and verify
 

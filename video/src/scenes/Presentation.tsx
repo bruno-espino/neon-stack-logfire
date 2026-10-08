@@ -86,7 +86,7 @@ export const Performance: React.FC<SceneProps> = ({footage}) => {
     <AbsoluteFill style={{opacity: 0.65}}><Game footage={footage} /></AbsoluteFill>
     <AbsoluteFill style={{background: 'linear-gradient(90deg, #0a0706f5 5%, #0a070680 80%)'}} />
     <div style={{position: 'absolute', left: 120, top: 100}}>
-      <Kicker index="03" label="PERFORMANCE WORKFLOW" />
+      <Kicker index="04" label="PERFORMANCE WORKFLOW" />
       <Headline text="Find the bottleneck. Chase smoother frames." size={96} delay={5} highlight={['smoother']} style={{maxWidth: 1050, marginTop: 35}} />
       <Note>Frame timing → native CPU callers → shader replay → verify</Note>
     </div>
@@ -137,7 +137,7 @@ export const NativeTools: React.FC<SceneProps> = () => {
     {title: 'Shader replay', source: 'Metal · GPU capture', color: '#e04dff', rows: ['Render + compute encoders', 'Selected shader costs', 'Register + spill evidence'], command: 'run --profile gpu'},
     {title: 'Native waits', source: 'Metal System Trace', color: C.amber, rows: ['Running / blocked / runnable', 'Next-drawable intervals', 'Coverage within SDK windows'], command: 'diagnose --trace CAPTURE'},
   ];
-  return <Frame index="04" label="APPLE NATIVE TOOLS" title="Go from a slow frame to deeper evidence.">
+  return <Frame index="05" label="APPLE NATIVE TOOLS" title="Go from a slow frame to deeper evidence.">
     <div style={{display: 'flex', gap: 30, marginTop: 60}}>
       {cards.map((card, i) => <Panel key={card.title} style={{flex: 1, padding: 34, height: 470, opacity: progress(frame, 12 + i * 18, 20)}} glow={`${card.color}22`}>
         <Pill color={card.color}>{card.source}</Pill>
@@ -172,7 +172,7 @@ export const NativeWait: React.FC<SceneProps> = () => {
 
 export const Dashboard: React.FC<SceneProps> = () => {
   const frame = useCurrentFrame();
-  return <Frame index="05" label="REAL LOGFIRE DASHBOARD" title="Start with a readable session overview.">
+  return <Frame index="06" label="REAL LOGFIRE DASHBOARD" title="Start with a readable session overview.">
     <div style={{marginTop: 35, display: 'flex', gap: 35, alignItems: 'center'}}>
       <Panel style={{width: 1050, overflow: 'hidden', opacity: progress(frame, 10, 20)}}>
         <Img src={staticFile('apple-metal-overview.jpg')} style={{width: '100%', display: 'block'}} />

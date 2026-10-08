@@ -52,7 +52,6 @@ Scenario outcome: distinguishes assertions, evidence gaps, timeout, interruption
 Regression gate: compares compatible Release runs and rejects missing or incompatible evidence.
 Overview dashboard: fifteen panels for SDK sessions, live app signals, gameplay, builds, host context, and native evidence.
 Chart buckets: five seconds with UTC timestamps. Dots show short observations; separate launches remain separate series.
-Capability showcase: React reel with illustrative FPS figures and separate measured CPU evidence.
 
 Interpretation limits
 Callback FPS differs from presented FPS. Preparation wall time differs from CPU utilization.
@@ -91,8 +90,7 @@ Build correlation and agent access alone are not unique. Raw artifact sharing re
 
 Details
 README.md: overview and data table.
-docs/presentation.md: showcase claims, dashboard walkthrough, and current trace review.
-video/README.md: reproducible React video and optional game footage.
+docs/session-review.md: dashboard walkthrough and current trace review.
 docs/swift-sdk.md: SDK integration and configuration.
 docs/native-workflow.md: native commands, artifacts, scenarios, dashboard, and checks.
 docs/telemetry-metrics.md: metric catalogue and measurement limits.

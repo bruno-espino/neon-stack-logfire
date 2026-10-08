@@ -624,3 +624,10 @@ Browser checks verify real runtime/build drilldown, aligned short-session charts
 Repository checks and TypeScript compilation pass. The refreshed dashboard scene passes visual inspection before the moving-footage render.
 The moving-footage reel renders successfully. Its final dashboard frame passes inspection; media metadata confirms 67 seconds, H.264, 1920x1080, and 30 FPS.
 Next: verify a clean second-Mac setup and reproduce metric completeness across graceful and runner-requested shutdowns before release packaging.
+
+2026-10-08: Separate workflow delivery from video review
+The developer authorized merging workflow improvements while a collaborator reviews the video in an open PR.
+Separated the dashboard templates, collision terminology, repository checks, integration README, and session walkthrough from the reel.
+The workflow branch contains no video changes. The video branch retains its scenes, posters, screenshot, footage recorder, and showcase documentation.
+The requested next video pass includes a clear dashboard view and animated game inputs beside their trace events.
+The separated workflow passes all 92 Swift tests, game checks, repository checks, formatting, and the macOS Debug build.
