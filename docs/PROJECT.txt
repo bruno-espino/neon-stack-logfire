@@ -1,9 +1,11 @@
-NEON STACK + LOGFIRE
+APPLE METAL + LOGFIRE
 
 Purpose
 Connect Apple performance evidence to a build and app session.
 Status: experimental SDK and native companion for trusted developer and tester builds.
-The game is a reference consumer. Other apps can use the Swift package.
+Log Roll, Flappy Log, and Neon Stack are reference consumers. Other apps can use the Swift package.
+The reusable offering is the Swift SDK, native companion, and dashboard templates.
+This community prototype is not an official released Logfire SDK.
 
 Setup and verification
 Use Xcode 27 with its Metal toolchain. Deep native Metal tools require macOS 27.
@@ -48,6 +50,8 @@ Structured details: JSON plus logfire.json_schema. Logfire stores a queryable ob
 Thread states: native running, blocked, runnable, and scheduling intervals. Normal waits are not automatically defects.
 Scenario outcome: distinguishes assertions, evidence gaps, timeout, interruption, and process failure.
 Regression gate: compares compatible Release runs and rejects missing or incompatible evidence.
+Overview dashboard: fifteen panels for SDK sessions, live app signals, gameplay, builds, host context, and native evidence.
+Chart buckets: five seconds with UTC timestamps. Dots show short observations; separate launches remain separate series.
 
 Interpretation limits
 Callback FPS differs from presented FPS. Preparation wall time differs from CPU utilization.
@@ -64,6 +68,7 @@ The exporter has no durable offline queue. Failed batches and abrupt stops can l
 Real MetricKit delivery, physical iOS, and a clean second-Mac setup remain unverified.
 
 Current priorities
+Verify complete metric delivery across graceful and runner-requested stops. Exporter acknowledgement alone does not prove complete observation coverage.
 Corroborate the coworker's MetricKit crash with its runtime version and crash stack.
 Keep the short native development loop. Xcode CI remains deferred by request.
 Preserve input limits and banner/trailing-data policies before consolidating the two JSON scanners.
@@ -85,6 +90,7 @@ Build correlation and agent access alone are not unique. Raw artifact sharing re
 
 Details
 README.md: overview and data table.
+docs/session-review.md: dashboard walkthrough and current trace review.
 docs/swift-sdk.md: SDK integration and configuration.
 docs/native-workflow.md: native commands, artifacts, scenarios, dashboard, and checks.
 docs/telemetry-metrics.md: metric catalogue and measurement limits.

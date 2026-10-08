@@ -55,8 +55,8 @@ final class FlappyState: ObservableObject {
         if passed > 0 { play(engine.score % 10 == 0 ? .four : .hold) }
         if engine.gameOver && !wasOver {
             best = max(best, engine.score)
-            signposter.emitEvent("Crash"); play(.gameOver)
-            GameTelemetry.client.event("game.crash", attributes: [
+            signposter.emitEvent("Collision"); play(.gameOver)
+            GameTelemetry.client.event("game.collision", attributes: [
                 "game": .string("flappy-log"), "score": .int(engine.score), "flaps": .int(engine.flaps),
                 "flight_seconds": .double(engine.time), "particles": .int(detail.rawValue),
             ])

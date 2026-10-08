@@ -54,8 +54,6 @@ for name in names {
     }
 }
 
-let dashboard = try JSONSerialization.jsonObject(
-    with: Data(contentsOf: root.appendingPathComponent("dashboards/apple-development.json")))
 var queries: [String] = []
 func collectQueries(_ object: Any) {
     if let dictionary = object as? [String: Any] {
@@ -65,7 +63,15 @@ func collectQueries(_ object: Any) {
         array.forEach(collectQueries)
     }
 }
-collectQueries(dashboard)
+let dashboardDirectory = root.appendingPathComponent("dashboards")
+for file in try manager.contentsOfDirectory(at: dashboardDirectory, includingPropertiesForKeys: nil)
+    .filter({ $0.pathExtension == "json" }).sorted(by: { $0.path < $1.path })
+{
+    let dashboard = try JSONSerialization.jsonObject(with: Data(contentsOf: file))
+    let previousCount = queries.count
+    collectQueries(dashboard)
+    if queries.count == previousCount { failures.append("A dashboard contains no queries: \(file.lastPathComponent)") }
+}
 if queries.isEmpty { failures.append("The dashboard contains no queries") }
 for query in queries
 where query.range(of: #"\bFROM\s+metrics\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
