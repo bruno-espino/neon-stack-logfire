@@ -11,12 +11,11 @@ The toolkit has three parts:
 Log Roll, Flappy Log, and Neon Stack are the reference workloads. This is a community prototype for trusted developer and manual tester machines.
 It is not an official released Logfire SDK.
 
-## Start with the game
+## Configure this Mac
 
-Use Xcode 27 and its Metal toolchain. Open the project, select **NeonStack / My Mac**, and press **Command-R**.
+Use Xcode 27 and its Metal toolchain. Configure a project write token once.
 
 ```sh
-open examples/neon-stack/NeonStack.xcodeproj
 tools/install-companion.sh
 ~/.local/bin/logfire-apple configure --region us
 ~/.local/bin/logfire-apple doctor --send
@@ -24,6 +23,14 @@ tools/install-companion.sh
 
 The configuration command hides token input and saves a private runtime file outside the application and Git.
 Ordinary runs export directly. They need no Python, relay, or observer daemon.
+
+## Run the reference game
+
+```sh
+open examples/neon-stack/NeonStack.xcodeproj
+```
+
+Select **NeonStack / My Mac** and press **Command-R**.
 The game still runs if telemetry is unavailable. The [game guide](examples/neon-stack/README.md) covers controls and workloads.
 
 ## Add the SDK to your own app
@@ -45,6 +52,8 @@ Add `FrameRecorder` and the independent responsiveness monitor for performance m
 The [SDK guide](docs/swift-sdk.md) explains direct configuration, Metal callbacks, signposts, and delayed MetricKit reports.
 The SDK supports macOS 14 and iOS 17. The deeper native companion workflows require macOS 27 and Xcode 27.
 Physical iOS runtime and real daily MetricKit delivery remain unverified.
+The independent [Swift 6 consumer](examples/sdk-consumer/README.md) pins a reviewed public revision and links only the SDK product.
+Use it on a tester Mac to verify setup, async parentage, and live delivery before a wider pilot.
 
 ## Inspect a session
 
@@ -92,10 +101,12 @@ See [the native workflow](docs/native-workflow.md) for builds, live attach, impo
 ```sh
 tools/check-dev.sh          # Local checks and cached macOS Debug build
 tools/check-dev.sh --smoke  # Also run a short SDK session
+tools/check-presentation.sh # Opt-in normal versus half-rate onscreen verification
 ```
 
 Default checks add no profiler, Simulator, or Xcode CI. The normal scenario app deadline remains 20 seconds.
-Native launch and recorder finalization still need consolidation before a fully unattended timeline workflow.
+The [presentation verification](examples/presentation-probe/README.md) checks a controlled submission policy through real scenario reports and diagnosis.
+Native app launch and shared profiler cancellation still need consolidation before a fully unattended timeline workflow.
 The exporter has bounded batches and no persistent offline queue. Abrupt debugger stops can lose the final batch.
 
 [PROJECT.txt](docs/PROJECT.txt) gives the compact terminology. [WORKLOG.txt](docs/WORKLOG.txt) records experiments, decisions, and remaining gaps.

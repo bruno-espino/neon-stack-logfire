@@ -231,9 +231,11 @@ enum ScenarioRun {
         var finalOutcome = ScenarioOutcome.processFailed(127)
         let began = ProcessInfo.processInfo.systemUptime
         let beganDate = Date()
-        func readSession(verify: Bool) throws -> NativeSession {
+        // This runner owns the unreaped child. Its PID cannot be reused during status polling.
+        // Verify the marker against the retained launch identity even if the app has just exited.
+        func readSession() throws -> NativeSession {
             let marker = sessions.appendingPathComponent("\(pid).json")
-            let candidate = try NativeSession(marker: JSONSerialization.jsonObject(with: Data(contentsOf: marker)) as? [String: Any] ?? [:], verify: verify)
+            let candidate = try NativeSession(marker: JSONSerialization.jsonObject(with: Data(contentsOf: marker)) as? [String: Any] ?? [:], verify: false)
             guard let processStarted, candidate.started >= processStarted, candidate.started - processStarted < 60,
                   candidate.id == id, candidate.pid == pid, candidate.executable.resolvingSymlinksInPath() == executable.resolvingSymlinksInPath(),
                   build["build.id"] == candidate.metadata["build.id"] as? String else {
@@ -259,11 +261,10 @@ enum ScenarioRun {
                     }, onTick: {
                         let marker = sessions.appendingPathComponent("\(pid).json")
                         if session == nil, FileManager.default.fileExists(atPath: marker.path) {
-                            session = try readSession(verify: true)
+                            session = try readSession()
                         }
                         host.tick(client: client, context: context.merging(["process.pid": pid]) { _, value in value })
                         guard let session, FileManager.default.fileExists(atPath: status.path) else { return false }
-                        try session.validate()
                         signal = try ScenarioSignal.read(status, id: definition.id, session: session)
                         if readyElapsed == nil { readyElapsed = ProcessInfo.processInfo.systemUptime - began }
                         if !profiled, let profile = options.profile {
@@ -326,10 +327,18 @@ enum ScenarioRun {
                 } catch { issues.append("Optional GPU analysis failed. Inspect retained profile evidence.") }
                 analysisDuration = ProcessInfo.processInfo.systemUptime - analysisStarted
             }
+            if failure == nil {
+                do {
+                    guard try Companion.fileHash(executable) == context["binary.sha256"] as? String,
+                          Logfire.buildMetadata(bundle: bundle) == build else {
+                        throw CompanionError.message("The app on disk changed during the scenario")
+                    }
+                } catch { failure = "The app identity changed or became unavailable during the scenario." }
+            }
             // The process can exit between polls. Its final atomic assertion still needs validation.
             if failure == nil, FileManager.default.fileExists(atPath: status.path) {
                 do {
-                    let retainedSession = try session ?? readSession(verify: false)
+                    let retainedSession = try readSession()
                     signal = try ScenarioSignal.read(status, id: definition.id, session: retainedSession)
                     if readyElapsed == nil {
                         readyElapsed = signal!.recordedAt - beganDate.timeIntervalSince1970

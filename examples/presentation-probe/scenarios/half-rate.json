@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "id": "presentation-half-rate-v1",
+  "arguments": [],
+  "environment": { "PROBE_PRESENT_EVERY": "2" },
+  "require_frame_windows": true
+}
