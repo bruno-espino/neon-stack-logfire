@@ -364,6 +364,10 @@ logfire-apple diagnose --report PATH/TO/report.json
 ```
 
 This command rebuilds the local diagnosis. It does not launch the application, record another profile, or export telemetry.
+The local `diagnostic.gpuReplays` array includes each accepted GPU capture's identity, replay mode, and selected encoder and shader measurements.
+Each capture has at most three encoders and three shaders. Empty or invalid evidence leaves an observation gap.
+Replay costs describe captured workloads. They do not measure live utilization, presentation latency, or CPU waits.
+Logfire keeps these measurements in separate `game.gpu.replay` records. The hosted diagnostic overview does not duplicate them.
 It can recover caller paths from older CPU XML exports after verifying their checksums, process identity, and recording interval.
 It preserves the original run status and delivery counters. Reanalysis does not retroactively repair a failed observation or upload.
 It cannot recover CPU stacks that no tool recorded.

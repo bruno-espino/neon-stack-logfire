@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "log-roll-two-mazes-then-loss-v1",
+  "arguments": [],
+  "environment": {
+    "NEON_GAME": "log-roll",
+    "NEON_BENCHMARK": "1",
+    "NEON_SEED": "777",
+    "LOG_ROLL_PARTICLES": "1048576"
+  },
+  "require_frame_windows": true
+}
