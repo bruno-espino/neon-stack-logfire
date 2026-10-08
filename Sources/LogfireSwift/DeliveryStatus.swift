@@ -1,7 +1,7 @@
 import Foundation
 import OpenTelemetrySdk
 
-public struct DeliveryStatus {
+public struct DeliveryStatus: Sendable {
     public let enabled: Bool
     public let exportedSpans: Int
     public let failedSpans: Int

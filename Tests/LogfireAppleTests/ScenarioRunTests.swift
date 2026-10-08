@@ -146,6 +146,9 @@ final class ScenarioRunTests: XCTestCase {
             "frames_over_25_ms": 1, "thermal_state": 0, "workload": "onscreen", "render_mode": "log-roll"]
         try JSONSerialization.data(withJSONObject: window).write(to: url)
         XCTAssertEqual(try SessionAnalysis.windows(at: url).first?["render_mode"] as? String, "log-roll")
+        let partial: [String: Any] = ["window.partial": true, "frames": 0, "display_presented_frames": 1]
+        try (JSONSerialization.data(withJSONObject: window) + Data([10]) + JSONSerialization.data(withJSONObject: partial) + Data([10])).write(to: url)
+        XCTAssertEqual(try SessionAnalysis.windows(at: url).count, 1)
     }
 
     func testMissingProtocolTimesOutAndReapsTheApp() throws {

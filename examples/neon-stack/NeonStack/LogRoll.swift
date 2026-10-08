@@ -1,4 +1,5 @@
 import MetalKit
+import LogfireSwift
 import SwiftUI
 import simd
 import os
@@ -353,6 +354,8 @@ final class LogRollViewRenderer: NSObject, MTKViewDelegate {
         guard let renderer, let drawable = view.currentDrawable else { return }
         let size = view.drawableSize
         let detail = game.detail.rawValue, score = game.engine.score
+        performance.observe(drawable, context: RenderContext(mode: "log-roll", width: Int(size.width), height: Int(size.height),
+            metadata: ["game": .string("log-roll"), "particles": .int(detail)], gpuTimeScope: .commandBufferSum))
         renderer.render(engine: game.engine, particles: detail, seconds: game.paused ? 0 : delta,
                         target: drawable.texture, present: drawable) { [weak self] cpu, stages in
             guard let self else { return }

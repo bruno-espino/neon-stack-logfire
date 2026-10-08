@@ -631,3 +631,34 @@ Separated the dashboard templates, collision terminology, repository checks, int
 The workflow branch contains no video changes. The video branch retains its scenes, posters, screenshot, footage recorder, and showcase documentation.
 The requested next video pass includes a clear dashboard view and animated game inputs beside their trace events.
 The separated workflow passes all 92 Swift tests, game checks, repository checks, formatting, and the macOS Debug build.
+
+2026-10-08: Native SDK runtime and complete graceful frame reporting
+The developer authorized experiments after reviewing native SDK feedback.
+Adopted drawable presented handlers without replacing the app's render loop. All three example renderers observe onscreen drawables.
+Callback cadence and confirmed presentation cadence remain separate. Invalid timestamps remain absent; no dropped-frame count is inferred.
+Graceful flush and context changes retain partial windows. A presentation-only tail can have zero renderer samples.
+The client drains registered frame recorders before exporter collection. Companion comparisons retain full windows only.
+Report callbacks may request a flush without waiting on another report writer. Complete draining requires a call outside those callbacks.
+Added async spans with SDK-owned TaskLocal context. Actor hops and concurrent structured children preserve parentage.
+Rejected replacing the global OTel context provider. Third-party async instrumentation still needs compatible context setup.
+The SDK target now compiles in Swift 6 mode. Public configuration and frame values are Sendable; synchronized OTel bridges remain explicit.
+Kept existing locks where their ownership is clear. Swift Mutex would raise the current macOS 14 and iOS 17 minimum targets.
+Adopted gzip for trace and metric OTLP requests. Tests inspect headers and compressed protobuf bodies.
+Added native event/window/flush markers with operation trace and span IDs. Frequent telemetry uses a separate Instruments category.
+iOS acquires a finite background-task lease before a queued flush. Completion and expiration end the lease once.
+A generic iOS SDK build passes. Real-device background delivery and tester credential provisioning remain unverified.
+An onscreen Metal probe sent two full windows and a final partial window through gzip to Logfire.
+Queries reproduce all 612 renderer samples, 612 confirmed presentations, and 611 presentation intervals.
+The probe proves transport and callback coverage. It does not establish a performance baseline on this busy Mac.
+Dashboard templates compare callback and presented cadence. Weighted buckets prevent a small final window from dominating a mean.
+The optional Metal counter probe resolves eight stage-boundary timestamps for two passes inside one command buffer on an Apple M4.
+Kept counters outside the game and default checks. Sampling overhead and fallback behavior need verification before replacing its buffer split.
+Deferred persistent export. Upstream defaults allow a large queue and treat local persistence as success; retention and acknowledgement need a bounded policy.
+Deferred an attribute builder and physical-device provisioning to focused changes. SDK callbacks and credential storage keep their existing explicit contracts.
+The video remains a separate review. No Simulator, profiler, longer app deadline, or Xcode CI enters default checks.
+The full development check passes 100 Swift tests, game logic checks, repository checks, formatting, and the macOS Debug build.
+All three MetricKit report tests pass on this Mac. The coworker's earlier crash still needs its original environment and stack.
+The hosted overview and detailed dashboards match both updated panels. Readback verifies their other panels, variables, and layouts are preserved.
+All four changed panel queries return real session data. Browser inspection shows callback and presented cadence as separate chart series.
+A Swift 6 consumer compiles actor-owned state and concurrent tasks with warnings treated as errors.
+A real async probe sends one parent, eight children, and eight resumed events. Logfire queries confirm all seventeen records and exact parent IDs in one trace.

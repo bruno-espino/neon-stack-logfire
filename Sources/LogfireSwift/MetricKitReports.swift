@@ -8,13 +8,15 @@ import OpenTelemetryProtocolExporterHttp
 
 /// Export selected daily Metal measurements without attributing them to the current run.
 @available(macOS 27.0, iOS 27.0, *)
-public final class MetricKitReports {
+/// The task lock protects stream startup. Export methods read immutable configuration and use OTel synchronization.
+public final class MetricKitReports: @unchecked Sendable {
     private let provider: TracerProviderSdk?
     private let tracer: Tracer
     private let domains: Set<String>
     private let metadataKeys: Set<String>
     private var task: Task<Void, Never>?
     private var diagnosticsTask: Task<Void, Never>?
+    private let taskLock = NSLock()
 
     public convenience init(serviceName: String, configuration: LogfireConfiguration?,
                             stateDomains: Set<String>, metadataKeys: Set<String> = []) {
@@ -24,6 +26,8 @@ public final class MetricKitReports {
     }
 
     func startReports(enabled: Bool, stateDomains: Set<String>) {
+        taskLock.lock(); defer { taskLock.unlock() }
+        guard task == nil else { return }
         if enabled {
             let manager = MetricManager(enabledStateReportingDomains: Set(stateDomains.map { StateReportingDomain(rawValue: $0) }))
             task = Task { [weak self, manager] in

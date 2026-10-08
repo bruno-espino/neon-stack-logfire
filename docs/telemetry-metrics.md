@@ -9,12 +9,16 @@ Previously ingested prototype measurements can remain in Logfire under their ori
 
 | Instrument | Type and unit | Meaning |
 | --- | --- | --- |
-| `game.frame.interval` | Delta histogram, ms | Raw renderer callback intervals in complete windows |
+| `game.frame.interval` | Delta histogram, ms | Raw renderer callback intervals in full and partial windows |
 | `game.renderer.preparation` | Delta histogram, ms | Timed rendering preparation; does not cover all main-thread work |
 | `game.gpu.commands.duration` | Delta histogram, ms | Raw Metal command durations; `gpu_time.scope` distinguishes a buffer from a sum |
 | `game.frame.count` | Delta counter | Number of retained frame observations |
 | `game.frame.over_25ms.count` | Delta counter | Retained intervals above 25 ms |
-| `game.render.callback_fps` | Gauge, frames/s | Callback cadence from a complete window |
+| `game.render.callback_fps` | Gauge, frames/s | Callback cadence from retained renderer samples |
+| `game.display.present.interval` | Delta histogram, ms | Intervals between valid Metal drawable presentation timestamps |
+| `game.display.present.count` | Delta counter | Confirmed drawable presentation timestamps |
+| `game.display.presented_fps` | Gauge, frames/s | Cadence from positive presentation intervals |
+| `game.display.present.lateness` | Delta histogram, ms | Nonnegative lateness when the caller supplies a target presentation time |
 | `app.main_queue.delay` | Delta histogram, ms | Completed probe delays, including waits and CPU work |
 | `app.main_queue.pending_age.max` | Gauge, ms | Maximum unfinished-probe age in a five-second window |
 | `app.main_thread.cpu.utilization` | Gauge, ratio | Main-thread CPU seconds divided by wall seconds |
@@ -33,7 +37,7 @@ Metric delivery counts describe exported instruments, not individual frame obser
 The development exporter has no durable offline queue.
 
 Frame metrics use raw observations, not averages of window percentiles.
-Warm-up and incomplete windows are excluded. Each window retains at most 10,000 observations.
+Warm-up is excluded. Graceful flushes and context changes retain partial windows. Each window retains at most 10,000 observations.
 Histogram quantiles are estimates within configured buckets.
 Window logs retain exact window percentiles and the sample-limit flag.
 Frame histogram exemplars carry the corresponding report's trace context.
@@ -69,7 +73,7 @@ High main-thread CPU suggests a Time Profiler investigation.
 Low CPU with high delay suggests waits or scheduling. Time Profiler cannot identify those waits by itself.
 For GPU investigations, compare the recorded stage summaries and captured encoder/shader costs.
 Replay costs rank a captured workload. They do not measure live GPU utilization or frame-on-glass latency.
-Use native presentation captures to investigate drawable waits and actual presentation timing.
+Use SDK presentation observations for live onscreen cadence. Native captures still explain drawable waits and frame timelines.
 Build task totals can overlap. They do not measure critical-path latency.
 
 Shader compiler evidence uses diagnostic records, not new OTel instruments.
@@ -126,3 +130,17 @@ The scenario and CPU profile tables expose app lifetime, recording-command cost,
 The scenario deadline remains twenty seconds. Incomplete requested evidence returns an observation gap rather than a fabricated successful profile.
 Standalone `profile` still leaves the manually launched app running.
 Profiling and decoding remain optional. Ordinary development checks do not invoke either phase.
+
+Drawable presentation requires `FrameRecorder.observe` before presentation, plus normal renderer recording.
+Offscreen workloads omit presented FPS. Missing callbacks do not prove dropped frames.
+Callback and presentation handlers can cross a window boundary. Compare whole-session counts for coverage.
+Partial windows reach Logfire and local reports. Regression inputs retain full windows only.
+
+The native presentation probe verified gzip export against Logfire on 2026-10-08.
+Its two full windows and final partial window contain 612 callback samples and 612 confirmed presentations.
+Logfire queries return 612 frame histogram samples, 612 presentation counter observations, and 611 presentation interval samples.
+The first presentation starts the interval series. Thus, 612 timestamps yield 611 intervals.
+These counts verify observation coverage and transport. The busy-host run is not a performance baseline.
+
+The optional [Metal counter probe](../examples/metal-counter-probe) returned eight stage-boundary timestamps from two passes in one command buffer.
+Counter overhead and device fallback remain unverified for the game. The experiment does not change its renderer.

@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import OpenTelemetryApi
 import OpenTelemetrySdk
 @testable import LogfireSwift
 
@@ -15,6 +16,82 @@ final class CaptureExporter: SpanExporter, @unchecked Sendable {
 }
 
 final class LogfireTests: XCTestCase {
+    func testAsyncOperationsRetainParentsAcrossActorHopsAndConcurrentChildren() async throws {
+        actor Probe {
+            func record(_ client: Logfire, index: Int) -> String? {
+                client.event("actor.\(index)")
+                return client.activeTraceParent
+            }
+        }
+        let exporter = CaptureExporter(), probe = Probe()
+        let client = Logfire(serviceName: "async-test", exporter: exporter)
+        await client.withSpan("outer") {
+            await withTaskGroup(of: Void.self) { group in
+                for index in 0..<8 {
+                    group.addTask {
+                        await client.withSpan("child.\(index)") {
+                            await Task.yield()
+                            let parent = await probe.record(client, index: index)
+                            XCTAssertEqual(parent, client.activeTraceParent)
+                            client.withSpan("sync.\(index)") { client.event("sync.event.\(index)") }
+                        }
+                    }
+                }
+            }
+        }
+        XCTAssertNil(client.activeTraceParent)
+        client.flush()
+        let spans = exporter.spans
+        let outer = try XCTUnwrap(spans.first { $0.name == "outer" })
+        XCTAssertEqual(spans.count, 33)
+        XCTAssertEqual(Set(spans.map(\.traceId)), [outer.traceId])
+        for index in 0..<8 {
+            let child = try XCTUnwrap(spans.first { $0.name == "child.\(index)" })
+            let actor = try XCTUnwrap(spans.first { $0.name == "actor.\(index)" })
+            let sync = try XCTUnwrap(spans.first { $0.name == "sync.\(index)" })
+            let event = try XCTUnwrap(spans.first { $0.name == "sync.event.\(index)" })
+            XCTAssertEqual(child.parentSpanId, outer.spanId)
+            XCTAssertEqual(actor.parentSpanId, child.spanId)
+            XCTAssertEqual(sync.parentSpanId, child.spanId)
+            XCTAssertEqual(event.parentSpanId, sync.spanId)
+        }
+    }
+
+    func testAsyncFailuresAndCancellationEndSpansAndRestoreContext() async throws {
+        enum Failure: Error { case intentional }
+        let exporter = CaptureExporter()
+        let client = Logfire(serviceName: "async-test", exporter: exporter)
+        do {
+            try await client.withSpan("failure") { await Task.yield(); throw Failure.intentional }
+            XCTFail("Expected the original error")
+        } catch { XCTAssertTrue(error is Failure) }
+        let cancelled = Task {
+            try await client.withSpan("cancelled") { try await Task.sleep(nanoseconds: 1_000_000_000) }
+        }
+        cancelled.cancel()
+        do { try await cancelled.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertNil(client.activeTraceParent)
+        client.flush()
+        XCTAssertEqual(exporter.spans.first { $0.name == "failure" }?.status, .error(description: "Operation failed"))
+        XCTAssertEqual(exporter.spans.first { $0.name == "cancelled" }?.status, .error(description: "Operation cancelled"))
+    }
+
+    func testAsyncSpanKeepsTheExistingGlobalContextProvider() async {
+        let exporter = CaptureExporter()
+        let client = Logfire(serviceName: "async-test", exporter: exporter)
+        let foreign = TracerProviderBuilder().build().get(instrumentationName: "foreign").spanBuilder(spanName: "foreign").startSpan()
+        OpenTelemetry.instance.contextProvider.withActiveSpan(foreign) {
+            client.withSpan("before") { XCTAssertNotNil(OpenTelemetry.instance.contextProvider.activeSpan) }
+        }
+        await client.withSpan("async") { await Task.yield() }
+        OpenTelemetry.instance.contextProvider.withActiveSpan(foreign) {
+            client.withSpan("after") { XCTAssertNotNil(OpenTelemetry.instance.contextProvider.activeSpan) }
+        }
+        foreign.end(); client.flush()
+        XCTAssertEqual(exporter.spans.first { $0.name == "before" }?.parentSpanId, foreign.context.spanId)
+        XCTAssertEqual(exporter.spans.first { $0.name == "after" }?.parentSpanId, foreign.context.spanId)
+    }
     func testBorrowedSessionIdentityMatchesChildSpansAndResourceAndRejectsInvalidOverrides() throws {
         let session = UUID().uuidString, environmentSession = UUID().uuidString
         for (value, expected) in [(session.lowercased(), session), ("invalid-session", environmentSession)] {

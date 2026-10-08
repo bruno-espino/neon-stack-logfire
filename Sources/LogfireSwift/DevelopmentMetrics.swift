@@ -3,13 +3,17 @@ import OpenTelemetryApi
 import OpenTelemetrySdk
 
 /// Fixed instruments keep diagnostic functions and capture IDs out of metric dimensions.
-public enum DevelopmentMetric: String, CaseIterable {
+public enum DevelopmentMetric: String, CaseIterable, Sendable {
     case frameInterval = "game.frame.interval"
     case preparation = "game.renderer.preparation"
     case gpuCommands = "game.gpu.commands.duration"
     case frames = "game.frame.count"
     case slowFrames = "game.frame.over_25ms.count"
     case callbackFPS = "game.render.callback_fps"
+    case presentedInterval = "game.display.present.interval"
+    case presentedFrames = "game.display.present.count"
+    case presentedFPS = "game.display.presented_fps"
+    case presentationLateness = "game.display.present.lateness"
     case mainQueueDelay = "app.main_queue.delay"
     case mainQueuePending = "app.main_queue.pending_age.max"
     case mainThreadCPU = "app.main_thread.cpu.utilization"
@@ -23,26 +27,27 @@ public enum DevelopmentMetric: String, CaseIterable {
     enum InstrumentKind { case histogram, counter, gauge }
     var instrumentKind: InstrumentKind {
         switch self {
-        case .frameInterval, .preparation, .gpuCommands, .mainQueueDelay, .buildDuration: return .histogram
-        case .frames, .slowFrames, .builds: return .counter
-        case .callbackFPS, .mainQueuePending, .mainThreadCPU, .processCPU, .processMemory, .hostCPU, .hostMemory: return .gauge
+        case .frameInterval, .preparation, .gpuCommands, .presentedInterval, .presentationLateness, .mainQueueDelay, .buildDuration: return .histogram
+        case .frames, .slowFrames, .presentedFrames, .builds: return .counter
+        case .callbackFPS, .presentedFPS, .mainQueuePending, .mainThreadCPU, .processCPU, .processMemory, .hostCPU, .hostMemory: return .gauge
         }
     }
     var unit: String {
         if instrumentKind == .histogram { return self == .buildDuration ? "s" : "ms" }
         if [.processMemory, .hostMemory].contains(self) { return "By" }
         if instrumentKind == .counter { return "{count}" }
-        return self == .mainQueuePending ? "ms" : self == .callbackFPS ? "{frame}/s" : "1"
+        return self == .mainQueuePending ? "ms" : [.callbackFPS, .presentedFPS].contains(self) ? "{frame}/s" : "1"
     }
 }
 
-public struct MetricDeliveryStatus {
+public struct MetricDeliveryStatus: Sendable {
     public let enabled: Bool
     public let exportedMetrics: Int
     public let failedMetrics: Int
 }
 
-public final class DevelopmentMetrics {
+/// Immutable instrument references use OTel's synchronized storage. Delivery counters have their own lock.
+public final class DevelopmentMetrics: @unchecked Sendable {
     private let provider: MeterProviderSdk
     private let exporter: ObservedMetricExporter
     private let histograms: [DevelopmentMetric: DoubleHistogramMeterSdk]

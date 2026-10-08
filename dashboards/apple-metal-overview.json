@@ -191,7 +191,7 @@
         "spec": {
           "display": {
             "name": "SDK raw-frame distribution p95",
-            "description": "Delta histograms contain individual samples from complete five-second windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+            "description": "Delta histograms contain individual samples from full and partial SDK windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -223,7 +223,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration','game.display.present.interval','game.display.present.lateness') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -291,8 +291,8 @@
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "SDK callback rate",
-            "description": "Renderer callback cadence. This does not measure display presentation. Values average complete SDK windows within each chart bucket. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+            "name": "SDK callback and presented FPS",
+            "description": "Callbacks measure renderer cadence. Presented FPS uses Metal drawable presentation timestamps when the app observes drawables. Partial windows retain final samples. Missing presentation data remains absent. Separate sessions stay separate; zoom to a session for detail."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -302,7 +302,7 @@
               },
               "yAxis": {
                 "show": true,
-                "label": "Hz",
+                "label": "frames/s",
                 "min": 0
               },
               "visual": {
@@ -321,10 +321,11 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'recorded_at' AS TIMESTAMPTZ)) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time DESC LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'recorded_at' AS TIMESTAMPTZ)) AS time, attributes->>'session_id' AS session, SUM(CAST(attributes->>'frames' AS DOUBLE)) / NULLIF(SUM(CAST(attributes->>'frames' AS DOUBLE) / NULLIF(CAST(attributes->>'render_callback_fps' AS DOUBLE), 0)), 0) AS callback_hz, SUM(CAST(attributes->>'display_presentation_intervals' AS DOUBLE)) / NULLIF(SUM(CAST(attributes->>'display_presentation_intervals' AS DOUBLE) / NULLIF(CAST(attributes->>'display_presented_fps' AS DOUBLE), 0)), 0) AS presented_fps FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time DESC LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
-                      "callback_hz"
+                      "callback_hz",
+                      "presented_fps"
                     ]
                   }
                 }

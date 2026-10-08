@@ -34,10 +34,11 @@ enum SessionAnalysis {
 
     static func windows(at file: URL) throws -> [[String: Any]] {
         let text = try String(contentsOf: file, encoding: .utf8)
-        let values = try text.components(separatedBy: .newlines).filter { !$0.isEmpty }.map { line -> [String: Any] in
+        let values = try text.components(separatedBy: .newlines).filter { !$0.isEmpty }.compactMap { line -> [String: Any]? in
             guard let data = line.data(using: .utf8), let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw CompanionError.message("Invalid performance window")
             }
+            if object["window.partial"] as? Bool == true { return nil }
             for key in ["frames", "window_seconds", "render_callback_fps", "frame_interval_p95_ms", "drawable_width", "drawable_height"] {
                 guard let value = number(object[key]), value > 0 else { throw CompanionError.message("Invalid window field \(key)") }
             }

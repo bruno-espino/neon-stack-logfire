@@ -5,13 +5,17 @@ import OpenTelemetryProtocolExporterHttp
 import os
 
 /// An experimental integration for local Apple development.
-public final class Logfire {
+/// Factories initialize monitors before publication. Locks protect reporter and recorder registries.
+/// OTel owns synchronization for tracer and exporter operations.
+public final class Logfire: @unchecked Sendable {
     private let tracer: Tracer
     private let provider: TracerProviderSdk?
     public let metrics: DevelopmentMetrics?
     private let remoteParent: SpanContext?
     private var responsiveness: MainThreadMonitor?
     private let signposter = OSSignposter(subsystem: "dev.logfire.swift", category: .pointsOfInterest)
+    private let telemetrySignposter = OSSignposter(subsystem: "dev.logfire.swift", category: "Telemetry")
+    @TaskLocal private static var asyncParent: SpanContext?
     public let sessionID: String
     private let buildAttributes: [String: AttributeValue]
     private let serviceName: String
@@ -21,6 +25,8 @@ public final class Logfire {
     let stateReporterLock = NSLock()
     var stateReporters: [String: AnyObject] = [:]
     private let deliveryCounters = DeliveryCounters()
+    private let recorderLock = NSLock()
+    private var recorders: [WeakFrameRecorder] = []
     public var delivery: DeliveryStatus { deliveryCounters.snapshot(enabled: provider != nil) }
 
     public convenience init(serviceName: String, configuration: LogfireConfiguration? = nil, resourceAttributes: [String: LogfireAttribute] = [:]) {
@@ -65,20 +71,39 @@ public final class Logfire {
     public func withSpan<T>(_ name: String, attributes: [String: AttributeValue] = [:], operation: () throws -> T) rethrows -> T {
         let span = begin(name, attributes: attributes)
         let interval = signposter.beginInterval("Operation", id: signposter.makeSignpostID(),
-            "\(name, privacy: .public) session=\(self.sessionID, privacy: .public)")
+            "\(name, privacy: .public) session=\(self.sessionID, privacy: .public) trace=\(span.context.traceId.hexString, privacy: .public) span=\(span.context.spanId.hexString, privacy: .public)")
         defer { signposter.endInterval("Operation", interval); span.end() }
-        do { return try OpenTelemetry.instance.contextProvider.withActiveSpan(span, operation) }
+        do {
+            return try Self.$asyncParent.withValue(nil) {
+                try OpenTelemetry.instance.contextProvider.withActiveSpan(span, operation)
+            }
+        }
         catch { span.status = .error(description: "Operation failed"); throw error }
+    }
+
+    /// SDK child operations inherit context across suspension and structured child tasks.
+    public func withSpan<T>(_ name: String, attributes: [String: AttributeValue] = [:],
+                            isolation: isolated (any Actor)? = #isolation, operation: () async throws -> T) async rethrows -> T {
+        let span = begin(name, attributes: attributes)
+        let interval = signposter.beginInterval("Operation", id: signposter.makeSignpostID(),
+            "\(name, privacy: .public) session=\(self.sessionID, privacy: .public) trace=\(span.context.traceId.hexString, privacy: .public) span=\(span.context.spanId.hexString, privacy: .public)")
+        defer { signposter.endInterval("Operation", interval); span.end() }
+        do { return try await Self.$asyncParent.withValue(span.context) { try await operation() } }
+        catch {
+            span.status = .error(description: error is CancellationError ? "Operation cancelled" : "Operation failed")
+            throw error
+        }
     }
 
     public func event(_ name: String, attributes: [String: AttributeValue] = [:]) {
         let values = attributes.merging(["logfire.span_type": .string("log"), "logfire.level_num": .int(9)]) { supplied, _ in supplied }
         let span = begin(name, attributes: values)
+        telemetrySignposter.emitEvent("Event", "\(name, privacy: .public) session=\(self.sessionID, privacy: .public) trace=\(span.context.traceId.hexString, privacy: .public) span=\(span.context.spanId.hexString, privacy: .public)")
         span.end()
     }
 
     public var activeTraceParent: String? {
-        guard let context = OpenTelemetry.instance.contextProvider.activeSpan?.context, context.isValid else { return nil }
+        guard let context = Self.asyncParent ?? OpenTelemetry.instance.contextProvider.activeSpan?.context, context.isValid else { return nil }
         return "00-\(context.traceId.hexString)-\(context.spanId.hexString)-\(context.traceFlags.hexString)"
     }
 
@@ -95,16 +120,17 @@ public final class Logfire {
         values["logfire.span_type"] = .string("log")
         values["logfire.level_num"] = .int(9)
         let span = begin(name, attributes: values, started: ended)
-        OpenTelemetry.instance.contextProvider.withActiveSpan(span, observations)
+        Self.$asyncParent.withValue(nil) {
+            OpenTelemetry.instance.contextProvider.withActiveSpan(span, observations)
+        }
+        telemetrySignposter.emitEvent("Window", "\(name, privacy: .public) session=\(self.sessionID, privacy: .public) trace=\(span.context.traceId.hexString, privacy: .public) span=\(span.context.spanId.hexString, privacy: .public) start=\(started.timeIntervalSince1970) end=\(ended.timeIntervalSince1970)")
         span.end(time: ended)
     }
 
     private func begin(_ name: String, attributes: [String: AttributeValue], started: Date = Date()) -> Span {
         let builder = tracer.spanBuilder(spanName: name).setStartTime(time: started)
-        if OpenTelemetry.instance.contextProvider.activeSpan?.context.isValid != true,
-           let parent = remoteParent {
-            builder.setParent(parent)
-        }
+        if let parent = Self.asyncParent, parent.isValid { builder.setParent(parent) }
+        else if OpenTelemetry.instance.contextProvider.activeSpan?.context.isValid != true, let parent = remoteParent { builder.setParent(parent) }
         builder.setAttribute(key: "session_id", value: sessionID)
         builder.setAttribute(key: "logfire.msg", value: name)
         if let scenarioID { builder.setAttribute(key: "scenario.id", value: scenarioID) }
@@ -115,11 +141,24 @@ public final class Logfire {
 
     /// Call from a background queue when the application enters the background.
     public func flush() {
+        let interval = telemetrySignposter.beginInterval("Flush", "session=\(self.sessionID, privacy: .public)")
+        defer { telemetrySignposter.endInterval("Flush", interval) }
+        recorderLock.lock()
+        let pending = recorders.compactMap(\.value)
+        recorders.removeAll { $0.value == nil }
+        recorderLock.unlock()
+        for recorder in pending { recorder.flushPending() }
         provider?.forceFlush(timeout: 3)
         metrics?.flush()
 #if canImport(MetricKit)
         if #available(macOS 27.0, iOS 27.0, *) { (appleReports as? MetricKitReports)?.flush() }
 #endif
+    }
+
+    func register(_ recorder: FrameRecorder) {
+        recorderLock.lock(); defer { recorderLock.unlock() }
+        recorders.removeAll { $0.value == nil }
+        recorders.append(WeakFrameRecorder(recorder))
     }
 
     func startAppleMonitoring(serviceName: String, configuration: LogfireConfiguration?, options: AppleMonitoring) {
@@ -171,6 +210,11 @@ public final class Logfire {
             signposter.emitEvent("Session", "session=\(self.sessionID, privacy: .public)")
         } catch { print("Development session marker unavailable") }
     }
+}
+
+private final class WeakFrameRecorder {
+    weak var value: FrameRecorder?
+    init(_ value: FrameRecorder) { self.value = value }
 }
 
 public typealias LogfireAttribute = AttributeValue
