@@ -1,4 +1,14 @@
 {
+  "fpsCase": {
+    "date": "2026-10-06",
+    "game": "log-roll",
+    "after": "about 15 games",
+    "runsPerBuild": 1,
+    "beforeFps": 45,
+    "afterFps": 117,
+    "beforeCpuPct": 100,
+    "afterCpuPct": 20
+  },
   "cpuCase": {
     "date": "2026-10-07",
     "configuration": "Release",

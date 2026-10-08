@@ -14,7 +14,7 @@ It is not an official released Logfire SDK.
 ![Apple Metal Overview with real ingested game sessions](video/public/apple-metal-overview.jpg)
 
 The [React showcase](video/README.md) presents dashboards, game input spans, build correlation, and native investigations in 77 seconds.
-Its animated FPS improvement uses labelled illustrative figures. The separate measured CPU case remains available below.
+Its animated FPS improvement shows a measured Log Roll fix. The separate five-run CPU case remains available below.
 
 ## Start with the game
 

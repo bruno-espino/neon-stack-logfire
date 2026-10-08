@@ -41,7 +41,7 @@ Raw footage and rendered outputs stay outside Git.
 
 ## Data and claims
 
-The 45 → 120 FPS animation is labelled **Illustrative optimization scenario** and **simulated figures** on screen.
+The 45 → 117 FPS animation shows a measured Log Roll fix. See [the presentation notes](../docs/presentation.md) for the method.
 It shows a capability and target. It does not claim that this prototype measured that improvement.
 The `CPUCase` composition shows the separate measured CPU comparison. Render it with `npm run render:cpu`.
 

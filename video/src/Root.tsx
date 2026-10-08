@@ -1,6 +1,7 @@
 import React from 'react';
 import {AbsoluteFill, Composition, Sequence} from 'remotion';
-import {SceneFade} from './components/kit';
+import {SceneFade, SpanWipe} from './components/kit';
+import {SceneMotion} from './components/motion';
 import {C, FPS} from './theme';
 import {Intro, Setup, Correlation, CPUCase, Performance, NativeTools, NativeWait, Dashboard, Montage, End, ReelProps} from './scenes/Presentation';
 import {InputTrace} from './scenes/InputTrace';
@@ -24,9 +25,12 @@ export const Reel: React.FC<ReelProps> = ({footage}) => {
       const from = at;
       const duration = seconds * FPS;
       at += duration;
-      return <Sequence key={id} from={from} durationInFrames={duration} name={id}>
-        <SceneFade duration={duration}><Scene duration={duration} footage={footage} /></SceneFade>
-      </Sequence>;
+      return <React.Fragment key={id}>
+        <Sequence from={from} durationInFrames={duration} name={id}>
+          <SceneFade duration={duration}><SceneMotion duration={duration}><Scene duration={duration} footage={footage} /></SceneMotion></SceneFade>
+        </Sequence>
+        {from > 0 && <Sequence from={from - 7} durationInFrames={15} name={`${id}-wipe`}><SpanWipe /></Sequence>}
+      </React.Fragment>;
     })}
   </AbsoluteFill>;
 };
