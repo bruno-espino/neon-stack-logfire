@@ -408,9 +408,21 @@ Runnable and preempted time can reflect host contention. External host load must
 Syscall wall time and Apple's Wait Time field overlap thread states. Do not add these measurements together.
 Thread timelines remain diagnostic evidence. They do not create a performance gate or infer GPU scheduling and frame deadlines.
 
+The same import reads Apple's optional `ca-client-buffer-wait-interval` table when the recording contains it.
+`diagnostic.threadTimelines[].drawableWaits` identifies next-drawable waits on the selected PID and native main-thread ID.
+Capture totals include complete calls. Boundary calls are counted as omissions.
+`windows[].drawableWaitMilliseconds` clips every selected wait interval to each SDK window, including boundary calls.
+Wait durations overlap thread states and syscalls. Do not add these measurements together.
+Missing, invalid, or checksum-mismatched wait exports leave a gap and preserve valid thread states.
+Only a validated table with no selected calls reports zero observed waits.
+These waits identify requests for an available drawable. They do not identify GPU saturation or prove a missed presentation deadline.
+Raw exports remain local and retain checksums for later diagnosis.
+
 Logfire receives `development.thread.timeline` with a queryable `timeline.details` object.
 Separate `development.thread.syscall` records preserve syscall counts, wall time, and measured Wait Time coverage.
 `development.thread.window` records show native states inside identified SDK investigation windows.
+Their optional `window.drawable_wait_ms` field retains clipped next-drawable wait time.
+`development.metal.drawable_wait` records retain complete-call counts, wall time, longest time, and boundary omissions.
 These records retain the native measurement interval, capture ID, session ID, and available build identity.
 The offline import has its own analysis trace. `source.run_trace_id` identifies the original run when available.
 It does not recreate a parent span that the retained report did not save.
@@ -436,11 +448,22 @@ The short game capture attempts did not produce a valid finalized recording with
 Trace finalization spent substantial time compressing data after the probe exited.
 Live captures and comparisons were then paused because the developer reported heavy host CPU use.
 Default Command-R, scenario deadlines, and development checks remain unchanged.
-Validate Metal System Trace's GPU scheduling and presentation tables in a quiet-host game recording before adding a decoder for them.
+The real Log Roll experiment confirms native states and next-drawable waits inside a partial SDK investigation window.
+The instrumented recording covers about 44% of that window. Host load remains uncontrolled.
+GPU scheduling and complete presentation timelines still require validated decoding. Next-drawable waits do not supply those timelines.
+For this experiment, Metal System Trace also included the Thread Activity and System Call Trace instruments.
+Its default template did not contain the dedicated `thread-state` and `syscall` tables required by this importer.
 Native recording finalization still belongs to the `xctrace record` process. CPU decoding already runs after the app stops.
 A concurrent recorder needs shared cancellation ownership and separate app/recorder deadlines.
 The current command runner changes process-wide signal handlers. Do not run two instances on independent background threads.
-Defer that lifecycle change until a valid game recording can verify completion, cancellation, and process cleanup.
+The experiment finalized its recorder independently after the normal scenario runner stopped its app.
+This validates the recording path. A production lifecycle still needs cancellation and cleanup checks.
+Direct executable launches on this Mac sometimes create no SwiftUI window, even while SDK queue probes remain responsive.
+Opening the owned private app copy through the native app UI restored rendering and passed the game assertions.
+Changing the bundle ID alone did not solve the direct-launch case.
+The runner needs a native app-launch integration before this recording path becomes an unattended scenario option.
+Apple's [NSWorkspace launch configuration](https://developer.apple.com/documentation/appkit/nsworkspace/openconfiguration) supplies explicit instance, URL substitution, environment, and argument controls.
+The current runner still owns and reaps a directly launched child. Preserve that ownership contract during a launcher change.
 
 The diagnostic thresholds select investigations. They do not define performance gates.
 The report counts callback intervals above 25 ms and main-queue delays above 100 ms.
@@ -545,9 +568,9 @@ Use `Apple Development Workflow` as the name and `apple-development-workflow` as
 Supply your own project. The template contains no project IDs, credentials, or recorded session IDs.
 Management credentials belong to the dashboard client. The application needs only its project write token.
 
-The twenty-seven panels query diagnostic `records` and native OTel `metrics`.
+The twenty-eight panels query diagnostic `records` and native OTel `metrics`.
 They cover SDK windows, CPU/queue signals, live Apple measurements, host context, CPU profiles, captures, and builds.
-Three native thread tables show capture-wide states, state coverage within SDK investigation windows, and syscall summaries.
+Four native tables show capture-wide states, SDK-window coverage, syscall summaries, and next-drawable waits.
 They preserve missing fields and coverage. They do not sum overlapping windows or infer synchronization owners.
 Offline imports retain their original measurement dates. Select the recording's time range to view these tables.
 Session and Build accept exact IDs. Empty values disable the filter.

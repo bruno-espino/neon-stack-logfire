@@ -30,7 +30,7 @@ Xcode build -> companion -> build span, task totals, selected host samples, and 
 Embedded build identity -> native build script -> SDK resource attributes and session marker.
 App assertions -> DevelopmentScenario handshake -> runner lifetime control and report.
 Retained report -> diagnose -> new local diagnosis without another app run.
-Completed native thread recording -> diagnose --trace -> bounded main-thread states and syscall evidence; --publish explicitly sends it.
+Completed native recording -> diagnose --trace -> main-thread states, syscalls, and optional next-drawable waits; --publish explicitly sends them.
 Identified SDK investigation windows -> raw native state intervals -> per-window coverage and correlated Logfire tables.
 
 Terminology

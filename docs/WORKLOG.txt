@@ -554,3 +554,26 @@ One chained Swift expression exceeded the compiler's type-check limit. Replaced 
 Reviewed separate recorder finalization. Rejected concurrent CommandRunner instances because each changes process-wide signal handlers.
 A future recorder lifecycle needs shared cancellation ownership, app/recorder deadlines, and cleanup tests against a valid game trace.
 No default capture, game launch, longer app deadline, Simulator run, or Xcode CI was added. GPU scheduling and presentation decoding remain unverified.
+
+2026-10-07: Real game correlation and native next-drawable waits
+Reviewed current Apple Metal guidance and the installed Xcode 27 recording options.
+Separated app lifetime from recorder finalization in a private experiment. The normal app deadline remained 20 seconds.
+The default Metal System Trace template lacks dedicated thread-state and syscall tables. Added Thread Activity and System Call Trace instruments for the experiment.
+Two direct launches produced responsive SDK queue windows but no renderer window. Their scenarios failed and supplied no target GPU rows.
+An already-running game from another checkout remained untouched. A private bundle copy isolated the experiment's app identity.
+Changing the bundle ID alone did not restore rendering. Opening the owned app through native app UI did.
+The visible high-particle Log Roll session passed two-maze/loss assertions in 15.1 seconds. The recorder saved its trace after 33.5 seconds.
+The real recording contains 8,782 main-thread state intervals. Logfire verifies one identified renderer investigation window with 43.7% native coverage.
+Added optional next-drawable wait decoding to the existing diagnose --trace importer. No new command or default recorder was added.
+The decoder selects the retained PID and native main-thread ID. Complete-call totals and clipped SDK-window durations have separate scopes.
+The capture contains 201 complete drawable waits, 758.545 ms total, and a 25.587 ms longest wait. The SDK overlap contains 174.166 ms.
+Verified target-process GPU activity in the native Metal table. Its rows include nested and overlapping work, so no utilization or critical-path sum was added.
+Also inspected client present requests and displayed-surface tables. A client request alone does not prove presentation; surface/compositor attribution remains separate work.
+These waits account for only part of blocked time. They overlap state/syscall evidence and do not establish GPU saturation or missed presentation deadlines.
+Missing, invalid, or checksum-mismatched wait evidence preserves valid native thread states and leaves an explicit gap. Old manifests remain readable.
+Explicit import acknowledges 24 records without failures. Logfire queries reproduce call totals, wait duration, thread identity, and partial window coverage.
+Added a next-drawable table and a wait column in the existing window table. The hosted dashboard has 28 panels and preserves all unrelated panels.
+All 92 Swift tests pass. New cases cover PID/thread selection, boundaries, clipping, empty versus absent evidence, overlap, legacy decoding, checksums, and optional failures.
+One existing assertion counted gap strings. Replaced it with assertions for each missing evidence condition.
+No optimization or baseline claim follows from this busy-host, instrumented session. Raw recordings and private experiment drivers stay local.
+Next: integrate native app launching and shared recorder cancellation before exposing an unattended timeline profile. Validate GPU scheduling and full presentation decoding separately.
