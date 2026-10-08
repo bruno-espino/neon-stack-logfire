@@ -107,7 +107,7 @@ export const Panel: React.FC<{children: React.ReactNode; style?: React.CSSProper
 
 export const Pill: React.FC<{color: string; children: React.ReactNode; size?: number}> = ({color, children, size = 18}) => (
   <span style={{fontFamily: mono, fontWeight: 700, fontSize: size, letterSpacing: 1.5, color, padding: `${size * 0.2}px ${size * 0.55}px`,
-    border: `1.5px solid ${color}`, borderRadius: 8, background: `${color}1f`, whiteSpace: 'nowrap'}}>{children}</span>
+    border: `1.5px solid ${color}`, borderRadius: 8, background: `${color}1f`, display: 'inline-flex', alignSelf: 'flex-start', whiteSpace: 'nowrap'}}>{children}</span>
 );
 
 export const count = (frame: number, from: number, length: number, a: number, b: number) =>

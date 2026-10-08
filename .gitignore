@@ -23,4 +23,6 @@ tmp/
 *.dSYM/
 .DS_Store
 
-video/
+video/node_modules/
+video/out/
+video/public/footage/

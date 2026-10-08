@@ -11,6 +11,11 @@ The toolkit has three parts:
 Log Roll, Flappy Log, and Neon Stack are the reference workloads. This is a community prototype for trusted developer and manual tester machines.
 It is not an official released Logfire SDK.
 
+![Apple Metal Overview with real ingested game sessions](video/public/apple-metal-overview.jpg)
+
+The [React showcase](video/README.md) presents dashboards, game input spans, build correlation, and native investigations in 77 seconds.
+Its animated FPS improvement shows the collaborator's reported Log Roll fix. The separate measured five-run CPU case remains available below.
+
 ## Configure this Mac
 
 Use Xcode 27 and its Metal toolchain. Configure a project write token once.
