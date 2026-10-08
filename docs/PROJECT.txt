@@ -24,7 +24,7 @@ Apple MetricKit -> SDK adapter -> historical diagnostic records when Apple deliv
 Whole-host CPU/memory/filesystem -> optional companion -> live records and selected metrics.
 Apple layer/process measurements -> metalperftrace -> companion -> correlated summaries.
 Shader compiler updates -> retained metalperftrace timeline -> post-run companion analysis -> correlated diagnostic records.
-CPU recording -> Instruments trace -> offline export -> leaf functions and caller paths.
+CPU recording -> Instruments trace -> offline export -> leaf functions, inclusive callers, and caller paths.
 GPU workload capture -> gpudebug replay -> encoder/shader diagnostics.
 Xcode build -> companion -> build span, task totals, selected host samples, and local xcresult.
 Embedded build identity -> native build script -> SDK resource attributes and session marker.

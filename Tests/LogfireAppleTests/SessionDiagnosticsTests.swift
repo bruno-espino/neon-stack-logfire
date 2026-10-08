@@ -116,10 +116,12 @@ final class SessionDiagnosticsTests: XCTestCase {
         let valid = SessionDiagnostics.build(report: run, folder: folder, windows: [])
         XCTAssertEqual(valid.observations["cpu.running_samples"], 1)
         XCTAssertEqual(valid.cpuCallPaths.first?.frames.map(\.symbol), ["update", "draw"])
+        XCTAssertEqual(valid.cpuCallers?.first { $0.function.symbol == "update" }?.function.weightNanoseconds, 1_000_000)
         XCTAssertTrue(valid.artifacts.contains { $0.kind == "cpu" })
         try Data((xml + " ").utf8).write(to: cpuFile)
         let changed = SessionDiagnostics.build(report: run, folder: folder, windows: [])
         XCTAssertTrue(changed.cpuCallPaths.isEmpty)
+        XCTAssertNil(changed.cpuCallers)
         XCTAssertTrue(changed.observationGaps.contains { $0.contains("manifests are invalid") })
     }
 }

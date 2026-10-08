@@ -237,6 +237,10 @@ Missing compiler timeline fields produce an observation gap. Missing fields do n
 The [SDK-free Metal probe](../examples/metal-shader-probe/README.md) demonstrates the same runner handshake without the Swift SDK.
 The runner stops and reaps the app before either profiler analyzes the saved artifact.
 CPU analysis exports Instruments XML, validates the original process and actual interval, ranks leaf functions, and sends summaries to Logfire.
+It also ranks inclusive functions for each main/background scope. Each function counts once per sample, including recursive occurrences.
+The weights overlap. They must not be summed or interpreted as wait time.
+`diagnose` can recover this information from older retained exports after it checks their hashes and recording identity.
+The [SwiftUI CPU case](cpu-investigation.md) verifies a fixed-seed comparison without adding a profiler to the default development check.
 `app.duration_seconds` excludes that analysis. `profile.analysis.duration_seconds` reports its separate cost.
 The trace contains timed `development.cpu.record` / `development.cpu.analysis` or `development.gpu.capture` / `development.gpu.analysis` children.
 The capture retains the original session/build identity, binary hash, recording, and available symbols.

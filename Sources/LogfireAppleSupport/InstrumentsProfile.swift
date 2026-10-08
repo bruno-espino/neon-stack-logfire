@@ -27,6 +27,17 @@ struct CPUCallPath: Codable {
     var weightNanoseconds: Double
 }
 
+/// Each function counts once per sample, including recursive occurrences. Different callers' weights overlap.
+struct CPUCaller: Codable {
+    let threadScope: String
+    let function: CPUFunction
+}
+
+private struct CPUCallerKey: Hashable {
+    let threadScope: String
+    let frame: CPUFrame
+}
+
 private struct CPUPathKey: Hashable {
     let threadScope: String
     let frames: [CPUFrame]
@@ -44,6 +55,7 @@ struct CPUProfileSummary: Codable {
     var callPaths: [CPUCallPath] = []
     var pathSamples = 0
     var partialPathSamples = 0
+    var callers: [CPUCaller]?
 }
 
 /// xctrace weights describe sampled CPU work. They do not measure wall time or blocked threads.
@@ -79,6 +91,7 @@ enum InstrumentsXML {
         var result = CPUProfileSummary()
         var functions: [String: CPUFunction] = [:]
         var paths: [CPUPathKey: CPUCallPath] = [:]
+        var callers: [CPUCallerKey: CPUFunction] = [:]
         for case let row as XMLElement in try root.nodes(forXPath: "node/row") {
             let process = try resolve(row.elements(forName: "process").first)
             let processPID = try resolve(process.elements(forName: "pid").first)
@@ -117,6 +130,15 @@ enum InstrumentsXML {
             }
             let truncated = stackFrames.count > 256
             let pathKey = CPUPathKey(threadScope: mainThread ? "main" : "background", frames: Array(frames.reversed()), truncated: truncated)
+            for frame in Set(frames) where frame.symbol != "<unresolved>" {
+                let key = CPUCallerKey(threadScope: pathKey.threadScope, frame: frame)
+                guard callers[key] != nil || callers.count < 100_000 else {
+                    throw CompanionError.message("Instruments export exceeds 100000 distinct callers")
+                }
+                var caller = callers[key] ?? CPUFunction(symbol: frame.symbol, image: frame.image,
+                    imageUUID: frame.imageUUID, samples: 0, weightNanoseconds: 0)
+                caller.samples += 1; caller.weightNanoseconds += nanoseconds; callers[key] = caller
+            }
             guard paths[pathKey] != nil || paths.count < 50_000 else { throw CompanionError.message("Instruments export exceeds 50000 distinct call paths") }
             var path = paths[pathKey] ?? CPUCallPath(threadScope: pathKey.threadScope, frames: pathKey.frames,
                 truncated: truncated, unresolvedFrames: unresolved, samples: 0, weightNanoseconds: 0)
@@ -144,6 +166,12 @@ enum InstrumentsXML {
                 return $0.frames.map { "\($0.image)/\($0.symbol)/\($0.imageUUID)" }.joined(separator: "\0") <
                     $1.frames.map { "\($0.image)/\($0.symbol)/\($0.imageUUID)" }.joined(separator: "\0")
             }.prefix(20))
+        }
+        result.callers = ["main", "background"].flatMap { scope in
+            Array(callers.filter { $0.key.threadScope == scope }.values.sorted {
+                if $0.weightNanoseconds != $1.weightNanoseconds { return $0.weightNanoseconds > $1.weightNanoseconds }
+                return "\($0.imageUUID)/\($0.image)/\($0.symbol)" < "\($1.imageUUID)/\($1.image)/\($1.symbol)"
+            }.prefix(20)).map { CPUCaller(threadScope: scope, function: $0) }
         }
         return result
     }
@@ -246,6 +274,7 @@ enum InstrumentsProfile {
             "cpu.non_running_samples": summary.nonRunningSamples,
             "cpu.path_samples": summary.pathSamples, "cpu.partial_path_samples": summary.partialPathSamples,
             "cpu.call_paths": summary.callPaths.count,
+            "cpu.inclusive_callers": summary.callers?.count ?? 0,
             "cpu.summary_available": summaryAvailable,
         ]) { _, actual in actual }
         if !summaryAvailable { details["profile.observation_gap"] = "CPU export could not be decoded" }
@@ -273,6 +302,17 @@ enum InstrumentsProfile {
         }
         for scope in ["main", "background"] {
             let denominator = scope == "main" ? summary.mainThreadWeightNanoseconds : summary.weightNanoseconds - summary.mainThreadWeightNanoseconds
+            for (index, caller) in (summary.callers ?? []).filter({ $0.threadScope == scope }).enumerated() {
+                let function = caller.function
+                let values: [String: Any] = ["measurement.scope": "cpu_inclusive_function", "cpu.thread_scope": scope,
+                    "function.name": function.symbol, "function.image": function.image, "function.image_uuid": function.imageUUID,
+                    "function.rank": index + 1, "function.samples": function.samples,
+                    "function.inclusive_sampled_weight_ms": function.weightNanoseconds / 1_000_000,
+                    "function.inclusive_sampled_weight_fraction": function.weightNanoseconds / denominator,
+                    "function.denominator": "all_running_weight_in_thread_scope", "function.recursion": "counted_once_per_sample",
+                    "function.weights_overlap": true]
+                client.event("game.cpu.caller", attributes: Companion.attributes(context.merging(values) { _, caller in caller }))
+            }
             for (index, path) in summary.callPaths.filter({ $0.threadScope == scope }).enumerated() {
                 let display = path.frames.map(\.symbol).joined(separator: " → ")
                 let values: [String: Any] = ["measurement.scope": "cpu_sampled_call_path", "cpu.thread_scope": scope,

@@ -57,7 +57,7 @@ The [distribution plan](docs/native-workflow.md#package-and-distribution) separa
 ## Visualize the native workflow
 
 Import [Apple Development Workflow](dashboards/apple-development.json) into a Logfire custom dashboard.
-It includes twenty-three panels for SDK windows, Apple presentation timings, shader compilation, process memory, host context, CPU caller paths, GPU replay costs, diagnoses, captures, and builds.
+It includes twenty-four panels for SDK windows, Apple presentation timings, shader compilation, process memory, host context, CPU callers and paths, GPU replay costs, diagnoses, captures, and builds.
 Leave Session and Build empty to show all records. Paste exact IDs to filter.
 Copy a session's build ID into Build to connect runtime evidence to an observed build.
 The Session filter does not apply to the build table. Builds and app runs have different session IDs.
@@ -82,10 +82,12 @@ Capture collects Apple's retained history and saves recordings and symbols local
 Logfire receives selected summaries and capture metadata.
 Attach streams selected native measurements and whole-host load during its bounded observation period.
 Profile records a short Time Profiler interval and exports selected CPU samples and the top 20 leaf functions.
-It also exports up to 20 caller paths for each main/background thread scope. Unresolved frames remain explicit.
+It also exports up to 20 caller paths and 20 inclusive functions for each main/background thread scope. Unresolved frames remain explicit.
+Inclusive functions count once per sample, including recursion. Their weights overlap and must not be summed.
 For automated scenarios, `run --profile cpu` records during the app run, then exports and decodes the recording after the runner stops the app.
 Use `run --profile shader` to analyze Apple's retained shader compiler updates after the app stops.
 See [the SDK-free Metal probe](examples/metal-shader-probe/README.md) for a short controlled experiment.
+See [the repeatable SwiftUI CPU case](docs/cpu-investigation.md) for a matched Release comparison and a separate native diagnosis.
 Use a Release build for optimization. The full `.trace` and symbols remain local.
 All three commands use Swift only and report exporter acknowledgements and failures.
 Add `--no-telemetry` to retain evidence locally without export.

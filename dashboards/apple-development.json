@@ -763,6 +763,32 @@
             }
           ]
         }
+      },
+      "CPUCallers": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Inclusive CPU callers by capture",
+            "description": "Up to 20 functions per main/background scope. Each function counts once per running sample, including recursion. Caller weights overlap and must not be summed. Fractions include unresolved running samples. Event-loop ancestors are expected. Filter the session/build and time range."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'cpu.thread_scope' AS thread_scope, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.inclusive_sampled_weight_ms' AS DOUBLE) AS inclusive_cpu_ms, CAST(attributes->>'function.inclusive_sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind IN ('span', 'log') AND ($session = '' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.caller' ORDER BY measured_end DESC, capture, thread_scope, rank ASC LIMIT 200"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -1058,6 +1084,25 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/ShaderCompilation"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Inclusive CPU evidence"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPUCallers"
               }
             }
           ]

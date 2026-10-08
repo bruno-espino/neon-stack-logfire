@@ -43,6 +43,7 @@ struct SessionDiagnostic: Codable {
     let limitations: [String]
     let artifacts: [DiagnosticArtifact]
     let cpuCallPaths: [CPUCallPath]
+    let cpuCallers: [CPUCaller]?
 }
 
 /// The hosted overview omits caller paths because each path has its own bounded record.
@@ -148,6 +149,7 @@ enum SessionDiagnostics {
             observations["cpu.unresolved_leaf_samples"] = Double(cpu.unresolvedSamples)
             observations["cpu.partial_path_samples"] = Double(cpu.partialPathSamples)
             observations["cpu.main_thread_sampled_weight_ms"] = cpu.mainThreadWeightNanoseconds / 1_000_000
+            observations["cpu.inclusive_callers"] = Double(cpu.callers?.count ?? 0)
             if cpu.samples == 0 { missing.append("The CPU capture contains no selected running samples.") }
             if cpu.unresolvedSamples > 0 || cpu.partialPathSamples > 0 {
                 missing.append("Some CPU symbols or call paths are unavailable. Retain the matching binary and dSYM for Instruments.")
@@ -164,12 +166,13 @@ enum SessionDiagnostics {
             "CPU ratios average five-second windows. A stall and CPU activity in the same window may not occur at the same instant.",
             "Sampled call paths describe running work. Their weights are not wall time, blocked time, or a chronological flame graph.",
             "CPU path fractions use all running weight in their main or background thread scope. Partial and unresolved samples remain in that denominator.",
+            "Inclusive caller weights count recursive functions once per sample. Callers can overlap, so their weights must not be added.",
             "Apple captures remain on this Mac. A retained artifact does not imply successful delivery to Logfire."
         ]
         return SessionDiagnostic(summary: findings.isEmpty ? "No investigation threshold was crossed in the available windows. Missing evidence still limits this result." :
             "Available evidence suggests \(findings.count) investigation(s). Confirm each cause in the affected interval.",
             observations: observations, findings: findings, observationGaps: Array(Set(missing)).sorted(),
-            limitations: limitations, artifacts: artifacts, cpuCallPaths: cpu?.callPaths ?? [])
+            limitations: limitations, artifacts: artifacts, cpuCallPaths: cpu?.callPaths ?? [], cpuCallers: cpu?.callers)
     }
 
     static func build(report: [String: Any], folder: URL, windows: [[String: Any]]) -> SessionDiagnostic {
@@ -211,7 +214,7 @@ enum SessionDiagnostics {
                     if var summary = values["cpu.summary"] as? [String: Any] {
                         guard cpu == nil else { throw CompanionError.message("More than one CPU recording requires separate reports") }
                         let export = capture.appendingPathComponent("cpu.xml")
-                        if (summary["callPaths"] == nil || values["cpu.summary_available"] as? Bool == false),
+                        if (summary["callPaths"] == nil || summary["callers"] == nil || values["cpu.summary_available"] as? Bool == false),
                            FileManager.default.fileExists(atPath: export.path) {
                             let pid = Int32(SessionAnalysis.number(report["app.pid"])!)
                             let toc = capture.appendingPathComponent("toc.xml")
