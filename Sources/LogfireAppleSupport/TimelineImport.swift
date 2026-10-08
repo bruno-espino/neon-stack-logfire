@@ -62,12 +62,75 @@ import LogfireSwift
             let (pid, start, interval) = try identity(
                 toc: SessionDiagnostics.data(folder.appendingPathComponent("toc.xml")),
                 report: report, folder: runFolder)
-            return try ThreadTimeline.decode(
+            let selection = try requests(report: report, folder: runFolder)
+            var evidence = try ThreadTimeline.decode(
                 states: SessionDiagnostics.data(
                     folder.appendingPathComponent("thread-state.xml"), limit: 64 * 1024 * 1024),
                 syscalls: SessionDiagnostics.data(
                     folder.appendingPathComponent("syscall.xml"), limit: 64 * 1024 * 1024),
-                pid: pid, recordingStart: start, interval: interval, captureID: captureID)
+                pid: pid, recordingStart: start, interval: interval, captureID: captureID,
+                requests: selection.windows)
+            evidence.correlationGaps = selection.gaps
+            return evidence
+        }
+
+        static func requests(report: [String: Any], folder: URL) throws -> (
+            windows: [TimelineWindowRequest], gaps: [String]
+        ) {
+            guard let started = SessionAnalysis.number(report["run.started_at"]),
+                let duration = SessionAnalysis.number(report["app.duration_seconds"])
+            else { throw ThreadTimelineError.identity }
+            let frameFile = folder.appendingPathComponent("performance.jsonl")
+            let responseFile = folder.appendingPathComponent("responsiveness.jsonl")
+            var frames: [[String: Any]] = []
+            var response: [[String: Any]] = []
+            var gaps: [String] = []
+            if FileManager.default.fileExists(atPath: frameFile.path) {
+                do {
+                    _ = try SessionDiagnostics.data(frameFile, limit: 1024 * 1024)
+                    let rows = try SessionAnalysis.windows(at: frameFile)
+                    frames = rows.filter { row in
+                        guard row["session_id"] as? String == report["session_id"] as? String,
+                            SessionAnalysis.number(row["pid"]) == SessionAnalysis.number(report["app.pid"]),
+                            let interval = SessionDiagnostics.intervals([row], source: "sdk.frame_recorder").first,
+                            interval.startedAt >= started, interval.endedAt <= started + duration + 1
+                        else { return false }
+                        return true
+                    }
+                    if frames.count != rows.count {
+                        gaps.append(
+                            "Some renderer windows lack matching session/PID/interval identity and were not correlated."
+                        )
+                    }
+                } catch {
+                    gaps.append(
+                        "Renderer windows are invalid. Native state evidence remains available without renderer correlation."
+                    )
+                }
+            }
+            if FileManager.default.fileExists(atPath: responseFile.path) {
+                do { response = try SessionDiagnostics.responsiveness(at: responseFile, report: report) } catch {
+                    gaps.append(
+                        "Responsiveness windows are invalid. Native state evidence remains available without queue correlation."
+                    )
+                }
+            }
+            let diagnosis = SessionDiagnostics.make(
+                report: report, folder: folder, windows: frames,
+                responsiveness: response, cpu: nil, artifacts: [], gaps: [])
+            var windows: [TimelineWindowRequest] = []
+            for finding in diagnosis.findings {
+                for interval in finding.intervals {
+                    windows.append(
+                        TimelineWindowRequest(
+                            findingID: finding.id, source: interval.source,
+                            startedAt: interval.startedAt, endedAt: interval.endedAt))
+                }
+            }
+            windows.sort {
+                $0.startedAt == $1.startedAt ? $0.source < $1.source : $0.startedAt < $1.startedAt
+            }
+            return (windows, gaps)
         }
 
         static func read(_ manifest: [String: Any], folder: URL, runFolder: URL, report: [String: Any]) throws
@@ -151,7 +214,8 @@ import LogfireSwift
                 let delivery = client.delivery
                 code =
                     delivery.enabled && delivery.failedSpans == 0
-                        && delivery.exportedSpans == evidence.syscalls.count + 2 ? 0 : 2
+                        && delivery.exportedSpans == evidence.syscalls.count + (evidence.windows?.count ?? 0) + 2
+                    ? 0 : 2
             }
             print("Timeline manifest: \(folder.appendingPathComponent("manifest.json").path)")
             return code
@@ -181,6 +245,21 @@ import LogfireSwift
                 client.window(
                     "development.thread.syscall", started: Date(timeIntervalSince1970: evidence.startedAt),
                     ended: Date(timeIntervalSince1970: evidence.endedAt), attributes: Companion.attributes(attributes))
+            }
+            for window in evidence.windows ?? [] {
+                var values = context.merging([
+                    "measurement.scope": "main_thread_states_in_sdk_window", "thread.id": String(evidence.mainThreadID),
+                    "diagnostic.finding_id": window.request.findingID, "window.source": window.request.source,
+                    "window.coverage_fraction": window.coverageFraction,
+                    "window.observed_ms": window.observedMilliseconds,
+                    "window.requested_ms": (window.request.endedAt - window.request.startedAt) * 1000,
+                    "window.correlation": "temporal_overlap_not_causation",
+                ]) { _, actual in actual }
+                for (state, duration) in window.statesMilliseconds { values["thread.state.\(state).ms"] = duration }
+                client.window(
+                    "development.thread.window", started: Date(timeIntervalSince1970: window.request.startedAt),
+                    ended: Date(timeIntervalSince1970: window.request.endedAt), attributes: Companion.attributes(values)
+                )
             }
         }
     }

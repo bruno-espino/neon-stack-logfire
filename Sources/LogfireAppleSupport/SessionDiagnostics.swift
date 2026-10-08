@@ -163,9 +163,16 @@ enum SessionDiagnostics {
             missing.append("No GPU replay evidence. GPU command sums do not measure utilization or presentation latency.")
         }
         if let threadTimelines {
+            missing += threadTimelines.flatMap { $0.correlationGaps ?? [] }
             observations["thread.timeline_captures"] = Double(threadTimelines.count)
             if threadTimelines.contains(where: { $0.unobservedMilliseconds >= 1 }) {
                 missing.append("Native main-thread state coverage has gaps. Unobserved time does not mean the thread was idle.")
+            }
+            if threadTimelines.contains(where: { ($0.omittedWindowRequests ?? 0) > 0 }) {
+                missing.append("Native window correlation keeps at most twenty SDK observation windows per capture.")
+            }
+            if threadTimelines.contains(where: { ($0.windows ?? []).contains { $0.coverageFraction < 0.999999 } }) {
+                missing.append("Some SDK investigation windows have partial or no native state coverage.")
             }
         }
         let requested = report["profile.requested"] as? String ?? "none"

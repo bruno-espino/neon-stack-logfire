@@ -69,6 +69,8 @@ final class FrameRecorderTests: XCTestCase {
         XCTAssertEqual(value?["frames"] as? Int, 2)
         XCTAssertEqual(value?["gpu_samples"] as? Int, 0)
         XCTAssertNil(value?["gpu_command_p95_ms"])
+        XCTAssertEqual(value?["session_id"] as? String, client.sessionID)
+        XCTAssertEqual(value?["pid"] as? Int, Int(ProcessInfo.processInfo.processIdentifier))
     }
 
 #if os(macOS)

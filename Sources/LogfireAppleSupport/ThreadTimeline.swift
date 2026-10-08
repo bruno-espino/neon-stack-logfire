@@ -36,6 +36,20 @@ import Foundation
         var longestMilliseconds = 0.0
     }
 
+    struct TimelineWindowRequest: Codable {
+        let findingID: String
+        let source: String
+        let startedAt: Double
+        let endedAt: Double
+    }
+
+    struct ThreadTimelineWindow: Codable {
+        let request: TimelineWindowRequest
+        let observedMilliseconds: Double
+        let coverageFraction: Double
+        let statesMilliseconds: [String: Double]
+    }
+
     /// States partition one thread's observed interval. Syscalls describe overlapping evidence within that interval.
     struct ThreadTimelineEvidence: Codable {
         let captureID: String
@@ -49,6 +63,9 @@ import Foundation
         let syscalls: [ThreadSyscall]
         let boundarySyscallsOmitted: Int
         let limitations: [String]
+        var windows: [ThreadTimelineWindow]?
+        var omittedWindowRequests: Int?
+        var correlationGaps: [String]?
     }
 
     private struct TimelineTable {
@@ -142,12 +159,14 @@ import Foundation
             "Syscall summaries omit calls cut by an interval boundary. Missing Wait Time fields are counted, not filled with zero.",
             "The import matches PID, executable path, session marker and interval. The recording does not independently verify the reported binary hash.",
             "Absolute interval boundaries inherit the precision of Apple's exported recording start date.",
+            "Window correlation uses all decoded state intervals. SDK windows are coarse observation periods, not exact stall timestamps. Overlap does not establish causation.",
+            "Window coverage uses observed main-thread state time divided by the requested SDK window duration. Overlapping windows must not be added.",
             "No GPU scheduling, presentation deadline, synchronization owner, or complete frame timeline is inferred from these tables.",
         ]
 
         static func decode(
             states: Data, syscalls: Data, pid: Int32, recordingStart: Double,
-            interval: ClosedRange<Double>, captureID: String
+            interval: ClosedRange<Double>, captureID: String, requests: [TimelineWindowRequest] = []
         ) throws -> ThreadTimelineEvidence {
             guard pid > 0, recordingStart.isFinite, interval.lowerBound.isFinite, interval.upperBound.isFinite,
                 interval.upperBound > interval.lowerBound, interval.lowerBound >= recordingStart
@@ -187,6 +206,25 @@ import Foundation
             var totals: [String: Double] = [:]
             for state in selected { totals[state.state, default: 0] += state.milliseconds }
             guard totals.count <= 32 else { throw ThreadTimelineError.field("state count") }
+            guard
+                requests.allSatisfy({
+                    ["slow_callback_intervals", "main_queue_delay"].contains($0.findingID)
+                        && ["sdk.frame_recorder", "sdk.main_thread_monitor"].contains($0.source)
+                        && $0.startedAt.isFinite && $0.endedAt.isFinite && $0.endedAt > $0.startedAt
+                })
+            else { throw ThreadTimelineError.field("window requests") }
+            let windows = requests.prefix(20).map { request in
+                var values: [String: Double] = [:]
+                for state in selected {
+                    let duration = min(state.endedAt, request.endedAt) - max(state.startedAt, request.startedAt)
+                    if duration > 0 { values[state.state, default: 0] += duration * 1000 }
+                }
+                let observed = values.values.reduce(0, +)
+                return ThreadTimelineWindow(
+                    request: request, observedMilliseconds: observed,
+                    coverageFraction: min(1, observed / ((request.endedAt - request.startedAt) * 1000)),
+                    statesMilliseconds: values)
+            }
             let syscallTable = try TimelineTable(
                 syscalls, name: "syscall",
                 required: [
@@ -246,7 +284,8 @@ import Foundation
                             $0.milliseconds == $1.milliseconds
                                 ? $0.startedAt < $1.startedAt : $0.milliseconds > $1.milliseconds
                         }.prefix(20)),
-                syscalls: Array(ordered.prefix(20)), boundarySyscallsOmitted: boundaryCalls, limitations: limitations)
+                syscalls: Array(ordered.prefix(20)), boundarySyscallsOmitted: boundaryCalls, limitations: limitations,
+                windows: windows, omittedWindowRequests: max(0, requests.count - 20))
         }
     }
 #endif

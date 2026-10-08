@@ -160,6 +160,91 @@ import XCTest
             XCTAssertEqual(evidence.statesMilliseconds["Blocked"]!, 1000, accuracy: 0.001)
         }
 
+        func testWindowCorrelationUsesAllStatesBeyondTheTwentyRetainedIntervals() throws {
+            let rows = (0..<40).map { state("Blocked", start: $0 * 25_000_000, duration: 25_000_000) }.joined()
+            let requests = [
+                TimelineWindowRequest(
+                    findingID: "main_queue_delay", source: "sdk.main_thread_monitor",
+                    startedAt: 100.5, endedAt: 101)
+            ]
+            let evidence = try ThreadTimeline.decode(
+                states: states(rows), syscalls: calls(), pid: 42,
+                recordingStart: 100, interval: 100...101, captureID: UUID().uuidString, requests: requests)
+            XCTAssertEqual(evidence.longestNonRunning.count, 20)
+            let window = try XCTUnwrap(evidence.windows?.first)
+            XCTAssertEqual(window.statesMilliseconds["Blocked"] ?? 0, 500, accuracy: 0.001)
+            XCTAssertEqual(window.coverageFraction, 1, accuracy: 0.001)
+            XCTAssertTrue(evidence.limitations.contains { $0.contains("not exact stall timestamps") })
+        }
+
+        func testWindowCoverageRetainsMissingTimeAndKeepsOverlappingWindowsSeparate() throws {
+            let requests = [
+                TimelineWindowRequest(
+                    findingID: "main_queue_delay", source: "sdk.main_thread_monitor", startedAt: 100, endedAt: 102),
+                TimelineWindowRequest(
+                    findingID: "slow_callback_intervals", source: "sdk.frame_recorder", startedAt: 100, endedAt: 101),
+                TimelineWindowRequest(
+                    findingID: "main_queue_delay", source: "sdk.main_thread_monitor", startedAt: 103, endedAt: 104),
+            ]
+            let evidence = try ThreadTimeline.decode(
+                states: states(state("Runnable", start: 0, duration: 500_000_000)),
+                syscalls: calls(), pid: 42, recordingStart: 100, interval: 100...101,
+                captureID: UUID().uuidString, requests: requests)
+            XCTAssertEqual(evidence.windows?.map(\.coverageFraction), [0.25, 0.5, 0])
+            XCTAssertEqual(evidence.windows?.last?.statesMilliseconds.count, 0)
+            XCTAssertEqual(evidence.statesMilliseconds["Runnable"], 500)
+            XCTAssertNil(evidence.statesMilliseconds["Blocked"])
+            let bounded = try ThreadTimeline.decode(
+                states: states(state("Running", start: 0, duration: 1_000_000_000)),
+                syscalls: calls(), pid: 42, recordingStart: 100, interval: 100...101,
+                captureID: UUID().uuidString, requests: Array(repeating: requests[0], count: 21))
+            XCTAssertEqual(bounded.windows?.count, 20)
+            XCTAssertEqual(bounded.omittedWindowRequests, 1)
+        }
+
+        func testOnlyIdentifiedSDKWindowsCorrelateAndInvalidOptionalFilesDoNotLoseNativeStates() throws {
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            var (report, capture) = try fixture(folder)
+            report["run.started_at"] = 100.0
+            report["app.duration_seconds"] = 10.0
+            var frame: [String: Any] = [
+                "frames": 10, "window_seconds": 5.0, "render_callback_fps": 10,
+                "frame_interval_p95_ms": 30, "frames_over_25_ms": 1, "drawable_width": 600, "drawable_height": 1200,
+                "workload": "onscreen", "render_mode": "classic", "thermal_state": 0,
+                "recorded_at": "1970-01-01T00:01:45Z",
+            ]
+            let file = folder.appendingPathComponent("performance.jsonl")
+            func save() throws { try JSONSerialization.data(withJSONObject: frame).write(to: file) }
+            try save()
+            let legacy = try TimelineImport.requests(report: report, folder: folder)
+            XCTAssertTrue(legacy.windows.isEmpty)
+            XCTAssertEqual(legacy.gaps.count, 1)
+            frame["session_id"] = report["session_id"]
+            frame["pid"] = 42
+            try save()
+            let valid = try TimelineImport.decode(
+                folder: capture, runFolder: folder, report: report, captureID: UUID().uuidString)
+            XCTAssertEqual(valid.windows?.first?.request.findingID, "slow_callback_intervals")
+            XCTAssertEqual(valid.windows?.first?.coverageFraction ?? 0, 0.2, accuracy: 0.001)
+            XCTAssertEqual(valid.windows?.first?.statesMilliseconds["Blocked"] ?? 0, 1000, accuracy: 0.001)
+            frame["pid"] = 99
+            try save()
+            XCTAssertTrue(try TimelineImport.requests(report: report, folder: folder).windows.isEmpty)
+            try Data("invalid".utf8).write(to: folder.appendingPathComponent("responsiveness.jsonl"))
+            let partial = try TimelineImport.decode(
+                folder: capture, runFolder: folder, report: report, captureID: UUID().uuidString)
+            XCTAssertEqual(partial.statesMilliseconds["Blocked"] ?? 0, 1000, accuracy: 0.001)
+            XCTAssertEqual(partial.correlationGaps?.count, 2)
+            var legacyJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(partial)) as! [String: Any]
+            for key in ["windows", "omittedWindowRequests", "correlationGaps"] { legacyJSON.removeValue(forKey: key) }
+            XCTAssertNil(
+                try JSONDecoder().decode(
+                    ThreadTimelineEvidence.self,
+                    from: JSONSerialization.data(withJSONObject: legacyJSON)
+                ).windows)
+        }
+
         private func fixture(_ folder: URL) throws -> ([String: Any], URL) {
             let session = UUID().uuidString
             let report: [String: Any] = [
