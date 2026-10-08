@@ -52,7 +52,7 @@
           "plugin": {
             "kind": "Markdown",
             "spec": {
-              "text": "Choose a measurement time range. Select a Session or filter by Build."
+              "text": "Choose a session. Zoom to minutes. Dots show short runs. Open runtime/build links under Events and trace drilldown."
             }
           }
         }
@@ -62,7 +62,7 @@
         "spec": {
           "display": {
             "name": "Recent SDK sessions",
-            "description": "Complete SDK windows. CPU is duration-weighted per session, relative to one core. GPU is the worst window p95, never a session percentile. Empty values mean missing evidence."
+            "description": "Observed SDK sessions, including sessions with no complete renderer window. CPU is duration-weighted relative to one core. GPU is the worst window p95. Missing values stay empty."
           },
           "plugin": {
             "kind": "Table",
@@ -75,7 +75,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "WITH frame AS (\n SELECT attributes->>'session_id' AS session, attributes->>'build.id' AS build,\n max(start_timestamp) AS measured,\n avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz,\n max(CAST(attributes->>'gpu_command_p95_ms' AS DOUBLE)) AS gpu_worst_window_p95_ms\n FROM records WHERE kind='log' AND span_name='game.performance.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build)\n GROUP BY session,build\n), cpu AS (\n SELECT attributes->>'session_id' AS session,\n 100 * sum(CAST(attributes->>'main_thread.cpu.utilization' AS DOUBLE) * CAST(attributes->>'window_seconds' AS DOUBLE)) / sum(CAST(attributes->>'window_seconds' AS DOUBLE)) AS main_thread_one_core_pct\n FROM records WHERE kind='log' AND span_name='app.responsiveness.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build)\n GROUP BY session\n)\nSELECT frame.measured, left(frame.session,8) AS session,\n round(cpu.main_thread_one_core_pct,1) AS \"CPU % (1 core)\",\n round(frame.callback_hz,1) AS callback_hz,\n round(frame.gpu_worst_window_p95_ms,2) AS \"GPU window p95 ms\",\n left(frame.build,8) AS build\nFROM frame LEFT JOIN cpu ON frame.session=cpu.session\nORDER BY measured DESC LIMIT 20"
+                    "query": "WITH frame AS (\n SELECT attributes->>'session_id' AS session, attributes->>'build.id' AS build,\n max(start_timestamp) AS measured, max(attributes->>'render_mode') AS game, count(*) AS frame_windows,\n avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz,\n max(CAST(attributes->>'gpu_command_p95_ms' AS DOUBLE)) AS gpu_worst_window_p95_ms\n FROM records WHERE kind='log' AND span_name='game.performance.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build)\n GROUP BY session,build\n), cpu AS (\n SELECT attributes->>'session_id' AS session, max(attributes->>'build.id') AS build, max(start_timestamp) AS measured,\n 100 * sum(CAST(attributes->>'main_thread.cpu.utilization' AS DOUBLE) * CAST(attributes->>'window_seconds' AS DOUBLE)) / sum(CAST(attributes->>'window_seconds' AS DOUBLE)) AS main_thread_one_core_pct\n FROM records WHERE kind='log' AND span_name='app.responsiveness.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build)\n GROUP BY session\n)\nSELECT coalesce(frame.measured,cpu.measured) AS measured, left(coalesce(frame.session,cpu.session),8) AS session, frame.game, coalesce(frame.frame_windows,0) AS frame_windows,\n round(cpu.main_thread_one_core_pct,1) AS \"CPU % (1 core)\",\n round(frame.callback_hz,1) AS callback_hz,\n round(frame.gpu_worst_window_p95_ms,2) AS \"GPU window p95 ms\",\n left(coalesce(frame.build,cpu.build),8) AS build\nFROM frame FULL OUTER JOIN cpu ON frame.session=cpu.session\nORDER BY measured DESC LIMIT 20"
                   }
                 }
               }
@@ -101,7 +101,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT left(attributes->>'session_id',8) AS session, left(attributes->>'capture.id',8) AS capture, round(100*CAST(attributes->>'window.coverage_fraction' AS DOUBLE),1) AS coverage_pct, round(CAST(attributes->>'thread.state.Running.ms' AS DOUBLE),1) AS running_ms, round(CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE),1) AS blocked_ms, round(CAST(attributes->>'window.drawable_wait_ms' AS DOUBLE),1) AS drawable_wait_ms FROM records WHERE kind='log' AND span_name='development.thread.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC,capture LIMIT 20"
+                    "query": "SELECT left(attributes->>'session_id',8) AS session, left(attributes->>'capture.id',8) AS capture, round(100*CAST(attributes->>'window.coverage_fraction' AS DOUBLE),1) AS coverage_pct, round(CAST(attributes->>'thread.state.Running.ms' AS DOUBLE),1) AS running_ms, round(CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE),1) AS blocked_ms, round(CAST(attributes->>'window.drawable_wait_ms' AS DOUBLE),1) AS drawable_wait_ms, trace_id,span_id FROM records WHERE kind='log' AND span_name='development.thread.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC,capture LIMIT 20"
                   }
                 }
               }
@@ -127,7 +127,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT left(attributes->>'session_id',8) AS session, attributes->>'diagnostic.observation' AS observation, attributes->>'diagnostic.next_investigation' AS next_investigation FROM records WHERE kind='log' AND span_name='development.diagnostic.finding' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 10"
+                    "query": "SELECT left(attributes->>'session_id',8) AS session, attributes->>'diagnostic.observation' AS observation, attributes->>'diagnostic.next_investigation' AS next_investigation, trace_id,span_id FROM records WHERE kind='log' AND span_name='development.diagnostic.finding' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 10"
                   }
                 }
               }
@@ -140,13 +140,30 @@
         "spec": {
           "display": {
             "name": "Main-thread and process CPU activity",
-            "description": "One-core wall-time ratios. Process CPU can exceed 1 across multiple cores. The SDK samples outside rendering callbacks. These values do not identify slow functions or blocked resources."
+            "description": "CPU activity as a percentage of one core. Process CPU can exceed 100% across multiple cores. The SDK samples independently of rendering. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
             "spec": {
               "yAxis": {
-                "unit": "decimal"
+                "format": {
+                  "unit": "decimal",
+                  "suffix": "%",
+                  "decimalPlaces": 1
+                },
+                "show": true,
+                "min": 0,
+                "label": "% of one core"
+              },
+              "visual": {
+                "showPoints": "always",
+                "pointRadius": 5,
+                "lineWidth": 2,
+                "connectNulls": false,
+                "areaOpacity": 0
+              },
+              "legend": {
+                "position": "bottom"
               }
             }
           },
@@ -157,7 +174,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_thread.cpu.utilization','app.process.cpu.utilization') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, 100 * MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_thread.cpu.utilization','app.process.cpu.utilization') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -174,13 +191,28 @@
         "spec": {
           "display": {
             "name": "SDK raw-frame distribution p95",
-            "description": "Delta histograms contain individual samples from complete five-second windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance."
+            "description": "Delta histograms contain individual samples from complete five-second windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
             "spec": {
               "yAxis": {
-                "unit": "ms"
+                "format": {
+                  "unit": "milliseconds",
+                  "decimalPlaces": 2
+                },
+                "show": true,
+                "min": 0
+              },
+              "visual": {
+                "showPoints": "always",
+                "pointRadius": 5,
+                "lineWidth": 2,
+                "connectNulls": false,
+                "areaOpacity": 0
+              },
+              "legend": {
+                "position": "bottom"
               }
             }
           },
@@ -191,7 +223,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -254,6 +286,256 @@
             }
           ]
         }
+      },
+      "Callback": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "SDK callback rate",
+            "description": "Renderer callback cadence. This does not measure display presentation. Values average complete SDK windows within each chart bucket. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "show": true,
+                "label": "Hz",
+                "min": 0
+              },
+              "visual": {
+                "showPoints": "always",
+                "pointRadius": 5,
+                "lineWidth": 2,
+                "connectNulls": false,
+                "areaOpacity": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'recorded_at' AS TIMESTAMPTZ)) AS time, attributes->>'session_id' AS session, avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time DESC LIMIT 10000",
+                    "groupBy": "session",
+                    "metrics": [
+                      "callback_hz"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "MainQueueDelay": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Main-queue completed delay and pending age",
+            "description": "Worst completed probe delay and the maximum age of an unfinished probe in each five-second window. One outstanding probe bounds queued work. A blocked queue stays observable before that probe completes. Probe delay includes scheduling latency. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "milliseconds",
+                  "decimalPlaces": 2
+                },
+                "show": true,
+                "min": 0
+              },
+              "visual": {
+                "showPoints": "always",
+                "pointRadius": 5,
+                "lineWidth": 2,
+                "connectNulls": false,
+                "areaOpacity": 0
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_queue.delay','app.main_queue.pending_age.max') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "HostCPU": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Whole-host CPU during game observation",
+            "description": "Whole-Mac load while the companion observes a game. Other apps contribute. Command-R alone supplies no host samples. Dots show isolated samples; gaps stay empty."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "show": true,
+                "label": "%",
+                "format": {
+                  "unit": "decimal",
+                  "suffix": "%",
+                  "decimalPlaces": 1
+                },
+                "min": 0
+              },
+              "visual": {
+                "showPoints": "always",
+                "pointRadius": 5,
+                "lineWidth": 2,
+                "connectNulls": false,
+                "areaOpacity": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'recorded_at' AS TIMESTAMPTZ)) AS time, attributes->>'session_id' AS session, 100 * avg(CAST(attributes->>'cpu_utilization' AS DOUBLE)) AS host_cpu_percent FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.host.sample' AND attributes->>'measurement.scope' = 'whole_host' GROUP BY time, session ORDER BY time DESC LIMIT 10000",
+                    "groupBy": "session",
+                    "metrics": [
+                      "host_cpu_percent"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Builds": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Observed Xcode builds",
+            "description": "The Build filter connects runtime records to builds. The Session filter does not apply here because the build command and app have different sessions. Only companion builds provide complete timing."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, trace_id, attributes->>'build.id' AS build, attributes->>'build.configuration' AS configuration, attributes->>'build.scenario' AS scenario, CAST(attributes->>'build.duration_seconds' AS DOUBLE) AS seconds, CAST(attributes->>'build.exit_code' AS DOUBLE) AS exit_code, CAST(attributes->>'build.warnings' AS DOUBLE) AS warnings, CAST(attributes->>'build.errors' AS DOUBLE) AS errors FROM records WHERE kind IN ('span', 'log') AND span_name = 'xcode.build' AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "BuildTaskTotals": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Xcode aggregate task costs",
+            "description": "Task totals can overlap because compilation runs in parallel. This table cannot identify the critical path or reconstruct task ordering. Open the retained result bundle for detailed Xcode inspection."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'build.id' AS build, trace_id, attributes->>'build.task' AS task, CAST(attributes->>'build.task_seconds' AS DOUBLE) AS aggregate_seconds FROM records WHERE kind IN ('span','log') AND span_name='xcode.build.task_summary' AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC, aggregate_seconds DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "AppEvents": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Gameplay and scenario events",
+            "description": "Reference-game events keep their measurement dates. Trace and span columns open the real record. Historical obstacle collisions retain game.crash."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp AS measured, span_name AS event, attributes->>'game' AS game, attributes->>'score' AS score, trace_id,span_id FROM records WHERE kind='log' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name IN ('game.session.started','game.line_clear','game.all_clear','game.hold','game.collision','game.crash','app.state','development.scenario.ready','development.scenario.finished') ORDER BY start_timestamp DESC LIMIT 30"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "TraceLinks": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Session windows and trace links",
+            "description": "Select one session. Open trace_id or span_id for a report, or build_trace_id for its build. Manual launches can have several independent traces. Full app_session values are filters, not web replay IDs."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp AS measured, span_name AS report, trace_id, attributes->>'build.trace_id' AS build_trace_id, span_id, attributes->>'session_id' AS app_session, attributes->>'build.id' AS build FROM records WHERE kind='log' AND span_name IN ('game.performance.window','app.responsiveness.window') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 20"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -280,7 +562,7 @@
               "x": 0,
               "y": 3,
               "width": 24,
-              "height": 6,
+              "height": 4,
               "content": {
                 "$ref": "#/spec/panels/Sessions"
               }
@@ -292,9 +574,129 @@
         "kind": "Grid",
         "spec": {
           "display": {
+            "title": "Live app measurements",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/Callback"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/MainThreadCPU"
+              }
+            },
+            {
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/FrameDistributions"
+              }
+            },
+            {
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/MainQueueDelay"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Events and trace drilldown",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/AppEvents"
+              }
+            },
+            {
+              "x": 0,
+              "y": 5,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/TraceLinks"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Builds and host context",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/Builds"
+              }
+            },
+            {
+              "x": 0,
+              "y": 5,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/BuildTaskTotals"
+              }
+            },
+            {
+              "x": 0,
+              "y": 10,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/HostCPU"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
             "title": "Native investigation",
             "collapse": {
-              "open": true
+              "open": false
             }
           },
           "items": [
@@ -314,37 +716,6 @@
               "height": 5,
               "content": {
                 "$ref": "#/spec/panels/Findings"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Metrics for a selected session",
-            "collapse": {
-              "open": false
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 6,
-              "content": {
-                "$ref": "#/spec/panels/MainThreadCPU"
-              }
-            },
-            {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 6,
-              "content": {
-                "$ref": "#/spec/panels/FrameDistributions"
               }
             }
           ]
@@ -383,6 +754,6 @@
       }
     ],
     "duration": "24h",
-    "refreshInterval": "0s"
+    "refreshInterval": "5s"
   }
 }

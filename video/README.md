@@ -49,6 +49,7 @@ The optional `NativeEvidence` composition preserves those scopes. It makes no co
 
 The trace diagram uses the current names and kinds. Operation spans and structured logs are distinct.
 The screenshot comes from the real **Apple Metal Overview** dashboard with one ingested Log Roll session.
+The current overview also exposes build timing, host load, queue delays, gameplay events, and runtime/build trace links.
 It contains no token or local path. Its historical records predate the `game.crash` → `game.collision` naming correction.
 
 See [the presentation and trace review](../docs/presentation.md) and [the measured CPU case](../docs/cpu-investigation.md).

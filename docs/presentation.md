@@ -32,14 +32,29 @@ Callback values average complete renderer-window rates. GPU values select the wo
 A missing CPU value remains empty. It does not mean zero CPU activity.
 The table includes instrumented runs and uncontrolled desktop sessions. It is not an automatic comparison of equivalent cohorts.
 
-Expand native evidence to see capture identity and coverage of an SDK investigation window.
+The overview has 15 panels. Expand Live app measurements for callback cadence, raw distributions, CPU activity, and queue delay.
+Expand Events and trace drilldown for gameplay events and session window records.
+Open `trace_id` or `span_id` for the runtime evidence. Open `build_trace_id` for the associated Xcode build.
+These links avoid copying an ID into another filter. An absent build trace remains empty.
+A narrow app interval can exclude an earlier build from the build table. Its trace link opens independently of that interval.
+Builds and host context restores build duration, task totals, and whole-host CPU load.
+The build table ignores Session. Use Build to select one build across the dashboard.
+
+Expand Native investigation to see capture identity and coverage of an SDK investigation window.
 Repeated imports remain separate rows. Do not sum them.
-Expand metrics only after selecting a session and a short time range.
-Short captures can disappear as isolated points in a wide chart bucket. The default overview uses tables for this reason.
+Charts use five-second buckets and visible points. UTC timestamp casts align callback, host, and CPU observations.
+Select a session and zoom to seconds or minutes. Short captures remain visible as dots in a day-wide view.
+The overview refreshes every five seconds when Live is enabled. A stopped session does not produce a continuous feed.
 
 Use [Apple Development Workflow](../dashboards/apple-development.json) for the full 28-panel investigation.
 It retains original IDs, selected CPU callers, GPU replay nodes, host context, builds, and native capture details.
+Its session selector also discovers native-only imports that have no SDK window.
 Raw recordings remain local. The dashboard does not provide a hosted Instruments viewer.
+
+The browser review found one older diagnostic run with three completed frame logs but only two ingested histogram batches.
+Its retained report records a runner-requested stop and no acknowledged export failures.
+This shows that delivery counters alone do not prove complete metric coverage.
+The exact shutdown cause remains unverified. The exporter has no durable offline queue.
 
 ## Trace review on October 8, 2026
 

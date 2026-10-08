@@ -55,8 +55,10 @@ Physical iOS runtime and real daily MetricKit delivery remain unverified.
 
 Import [Apple Metal Overview](dashboards/apple-metal-overview.json) into Logfire.
 Choose the measurement time range. Its session selector discovers SDK sessions automatically.
-The overview starts with compact session summaries and explicit native coverage.
-Expand metrics for a selected session and a short time range.
+The 15-panel overview starts with compact session summaries, including launches without a complete renderer window.
+Expand live measurements, gameplay events, builds, host context, or native evidence as needed.
+Charts retain five-second buckets and show isolated observations as dots. Select one session and zoom to minutes for detail.
+Open the runtime or build trace directly from the session window table.
 Use [Apple Development Workflow](dashboards/apple-development.json) for the complete 28-panel investigation dashboard.
 
 | Evidence | Producer | Availability |

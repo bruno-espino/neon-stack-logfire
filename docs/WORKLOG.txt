@@ -599,3 +599,28 @@ The final 67-second H.264 reel renders at 1920x1080 and 30 FPS. Visual inspectio
 Hosted and reusable overview definitions match. All panel queries pass; exact session/build filters and an unknown-session case return the expected evidence.
 No profiler, Simulator, game run, or Xcode CI enters default checks. No new performance baseline was measured on the busy host.
 Next: verify a clean second-Mac setup, consolidate native app launch and recorder cancellation, and validate full presentation attribution before release claims.
+
+2026-10-08: Use Logfire to review session continuity and workflow UX
+Used retained game sessions in the real dashboard and followed runtime/build links into Live View.
+The shorter reel omitted prominent build, host, queue-delay, and gameplay coverage. The underlying fifteen instruments remain available.
+Expanded the overview from eight to fifteen panels. Restored those signals and added direct session-window links to runtime records and their build trace.
+Moved trace links earlier in the tables. App session values use app_session so Logfire does not interpret them as web replay IDs.
+Included CPU-only launches in the session table. Missing renderer values remain empty, with zero completed frame windows.
+The detailed dashboard also discovers native-only imported sessions. It retains all twenty-eight panels.
+Found a UTC bug in timestamp casts. Naive timestamps shifted callback and host charts by four hours on this Mac. TIMESTAMPTZ preserves alignment.
+Automatic chart buckets merged short SDK windows. Fixed five-second buckets retain detail; visible dots preserve isolated observations.
+Charts retain separate source-series identity, include legends, and use supported CPU/millisecond formats. They return the latest bounded rows.
+The overview refreshes every five seconds in Live mode. A stopped session remains historical evidence, not a continuous feed.
+Rejected a per-query step hint because the hosted dashboard manager dropped it. Literal SQL bucket widths preserve the supported query shape.
+Removed a relative full-dashboard link because Logfire resolved it outside the project route. The compact guide names the drilldown group instead.
+All forty-three panel queries pass against actual ingested data. Both hosted definitions match the reusable templates.
+Exact session/build and unknown-session checks pass. A CPU-only session has no fabricated callback or GPU value.
+One retained session has three completed frame logs and all 903 histogram observations in three exports. A flush places two exports in one five-second bucket.
+OTel charts use collection timestamps. SDK logs retain measured window dates. Their points need not align exactly even when delivery is complete.
+An older profiled run has three frame logs but only two ingested histogram batches. Its report records a requested stop and no acknowledged exporter failures.
+The precise shutdown cause remains unverified. No durable queue or delivery-completeness guarantee was added.
+Updated the existing walkthrough and video capability list. No SDK, exporter, profiler, scenario deadline, Simulator, or Xcode CI behavior changed.
+Browser checks verify real runtime/build drilldown, aligned short-session charts, and a compact guide at the normal narrow browser width.
+Repository checks and TypeScript compilation pass. The refreshed dashboard scene passes visual inspection before the moving-footage render.
+The moving-footage reel renders successfully. Its final dashboard frame passes inspection; media metadata confirms 67 seconds, H.264, 1920x1080, and 30 FPS.
+Next: verify a clean second-Mac setup and reproduce metric completeness across graceful and runner-requested shutdowns before release packaging.

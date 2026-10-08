@@ -179,7 +179,7 @@ export const Dashboard: React.FC<SceneProps> = () => {
       </Panel>
       <div style={{flex: 1}}>
         <Pill color={C.ember}>ACTUAL INGESTED DATA</Pill>
-        <Note>Session and build filters<br />SDK measurements<br />Native coverage and gaps<br />CPU callers and GPU replay</Note>
+        <Note>Session → runtime and build traces<br />Frames, CPU and queue delays<br />Build timing and host load<br />Gameplay events<br />Native coverage and GPU replay</Note>
         <Note>Query the evidence through MCP.<br />Keep the full recording for Instruments.</Note>
       </div>
     </div>
