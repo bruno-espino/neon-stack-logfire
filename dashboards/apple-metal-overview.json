@@ -1,0 +1,388 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "apple-metal-overview"
+  },
+  "spec": {
+    "display": {
+      "name": "Apple Metal Overview",
+      "description": "A compact starting point for SDK sessions and correlated Apple investigations. Full captures remain local."
+    },
+    "datasources": {},
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "session",
+          "allowMultiple": false,
+          "allowAllValue": true,
+          "customAllValue": "all",
+          "defaultValue": "$__all",
+          "display": {
+            "name": "Session",
+            "description": "SDK sessions discovered in the selected measurement time range."
+          },
+          "plugin": {
+            "kind": "LogfireQueryListVariable",
+            "spec": {
+              "query": "SELECT attributes->>'session_id' AS session FROM records WHERE kind='log' AND span_name IN ('game.performance.window','app.responsiveness.window') AND attributes->>'session_id' IS NOT NULL GROUP BY session ORDER BY max(start_timestamp) DESC LIMIT 100"
+            }
+          }
+        }
+      },
+      {
+        "kind": "TextVariable",
+        "spec": {
+          "name": "build",
+          "value": "",
+          "display": {
+            "name": "Build",
+            "description": "Leave empty to show all records. Paste an exact build ID to filter."
+          }
+        }
+      }
+    ],
+    "panels": {
+      "Guide": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Start with a session"
+          },
+          "plugin": {
+            "kind": "Markdown",
+            "spec": {
+              "text": "Choose a measurement time range. Select a Session or filter by Build."
+            }
+          }
+        }
+      },
+      "Sessions": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Recent SDK sessions",
+            "description": "Complete SDK windows. CPU is duration-weighted per session, relative to one core. GPU is the worst window p95, never a session percentile. Empty values mean missing evidence."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "WITH frame AS (\n SELECT attributes->>'session_id' AS session, attributes->>'build.id' AS build,\n max(start_timestamp) AS measured,\n avg(CAST(attributes->>'render_callback_fps' AS DOUBLE)) AS callback_hz,\n max(CAST(attributes->>'gpu_command_p95_ms' AS DOUBLE)) AS gpu_worst_window_p95_ms\n FROM records WHERE kind='log' AND span_name='game.performance.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build)\n GROUP BY session,build\n), cpu AS (\n SELECT attributes->>'session_id' AS session,\n 100 * sum(CAST(attributes->>'main_thread.cpu.utilization' AS DOUBLE) * CAST(attributes->>'window_seconds' AS DOUBLE)) / sum(CAST(attributes->>'window_seconds' AS DOUBLE)) AS main_thread_one_core_pct\n FROM records WHERE kind='log' AND span_name='app.responsiveness.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build)\n GROUP BY session\n)\nSELECT frame.measured, left(frame.session,8) AS session,\n round(cpu.main_thread_one_core_pct,1) AS \"CPU % (1 core)\",\n round(frame.callback_hz,1) AS callback_hz,\n round(frame.gpu_worst_window_p95_ms,2) AS \"GPU window p95 ms\",\n left(frame.build,8) AS build\nFROM frame LEFT JOIN cpu ON frame.session=cpu.session\nORDER BY measured DESC LIMIT 20"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "WaitWindows": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Native evidence within SDK windows",
+            "description": "Each row is one import and SDK window. Do not sum repeated imports. Waits overlap CPU states. Coverage below 100% limits the conclusion."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT left(attributes->>'session_id',8) AS session, left(attributes->>'capture.id',8) AS capture, round(100*CAST(attributes->>'window.coverage_fraction' AS DOUBLE),1) AS coverage_pct, round(CAST(attributes->>'thread.state.Running.ms' AS DOUBLE),1) AS running_ms, round(CAST(attributes->>'thread.state.Blocked.ms' AS DOUBLE),1) AS blocked_ms, round(CAST(attributes->>'window.drawable_wait_ms' AS DOUBLE),1) AS drawable_wait_ms FROM records WHERE kind='log' AND span_name='development.thread.window' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC,capture LIMIT 20"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Findings": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Investigation findings",
+            "description": "Observations guide the next native investigation. They do not assert an automatic root cause."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT left(attributes->>'session_id',8) AS session, attributes->>'diagnostic.observation' AS observation, attributes->>'diagnostic.next_investigation' AS next_investigation FROM records WHERE kind='log' AND span_name='development.diagnostic.finding' AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) ORDER BY start_timestamp DESC LIMIT 10"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "MainThreadCPU": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Main-thread and process CPU activity",
+            "description": "One-core wall-time ratios. Process CPU can exceed 1 across multiple cores. The SDK samples outside rendering callbacks. These values do not identify slow functions or blocked resources."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "decimal"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_thread.cpu.utilization','app.process.cpu.utilization') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "FrameDistributions": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "SDK raw-frame distribution p95",
+            "description": "Delta histograms contain individual samples from complete five-second windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "unit": "ms"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT time_bucket($resolution, recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration') GROUP BY time_bucket($resolution, recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time LIMIT 10000",
+                    "groupBy": "series",
+                    "metrics": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "CPUCallers": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Inclusive CPU callers by capture",
+            "description": "Up to 20 functions per main/background scope. Each function counts once per running sample, including recursion. Caller weights overlap and must not be summed. Fractions include unresolved running samples. Event-loop ancestors are expected. Filter the session/build and time range."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT trace_id, span_id, attributes->>'profile.ended_at' AS measured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'cpu.thread_scope' AS thread_scope, CAST(attributes->>'function.rank' AS DOUBLE) AS rank, attributes->>'function.name' AS function, attributes->>'function.image' AS image, CAST(attributes->>'function.samples' AS DOUBLE) AS samples, CAST(attributes->>'function.inclusive_sampled_weight_ms' AS DOUBLE) AS inclusive_cpu_ms, CAST(attributes->>'function.inclusive_sampled_weight_fraction' AS DOUBLE) AS fraction FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.cpu.caller' ORDER BY measured_end DESC, capture, thread_scope, rank ASC LIMIT 200"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "GPUReplay": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "GPU replay encoder and shader costs",
+            "description": "One captured workload replay. Up to three cost-ranked encoders and three cost-ranked shaders from Apple tables. Costs within different scopes overlap. Do not sum them or interpret them as live frame latency, utilization, or CPU waiting. Raw captures and resource contents remain local."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'capture.ended_at' AS captured_end, attributes->>'session_id' AS session, attributes->>'capture.id' AS capture, attributes->>'measurement.scope' AS scope, attributes->>'gpu.node.label' AS node, attributes->>'gpu.shader.stage' AS stage, CAST(attributes->>'gpu.replay.duration_ms' AS DOUBLE) AS encoder_ms, CAST(attributes->>'gpu.replay.cost_fraction' AS DOUBLE) AS cost_fraction, CAST(attributes->>'gpu.shader.spilled_bytes' AS DOUBLE) AS spilled_bytes, CAST(attributes->>'gpu.shader.wait_instructions' AS DOUBLE) AS wait_instructions FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.gpu.replay' ORDER BY captured_end DESC, capture, scope, cost_fraction DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Session overview",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/Guide"
+              }
+            },
+            {
+              "x": 0,
+              "y": 3,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/Sessions"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Native investigation",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/WaitWindows"
+              }
+            },
+            {
+              "x": 0,
+              "y": 5,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/Findings"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Metrics for a selected session",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/MainThreadCPU"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/FrameDistributions"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Detailed CPU and GPU evidence",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/CPUCallers"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/GPUReplay"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "24h",
+    "refreshInterval": "0s"
+  }
+}

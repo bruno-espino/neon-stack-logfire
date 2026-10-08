@@ -1,452 +1,71 @@
 {
- "spans": [
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.build",
-   "start": 0.0,
-   "duration": 12.438321
+  "cpuCase": {
+    "date": "2026-10-07",
+    "configuration": "Release",
+    "particles": 65536,
+    "width": 1688,
+    "height": 1055,
+    "runsPerPolicy": 5,
+    "warmupsExcluded": 2,
+    "before": [
+      28.2248,
+      29.01,
+      29.3607,
+      31.5948,
+      28.2448
+    ],
+    "after": [
+      7.7281,
+      11.3362,
+      7.811,
+      11.2444,
+      8.1396
+    ],
+    "beforeMedian": 29.0,
+    "afterMedian": 8.1,
+    "beforeCallbackHz": 60.0,
+    "afterCallbackHz": 60.0
   },
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.host.sample",
-   "start": 1.027,
-   "duration": 3.7e-05
+  "nativeWait": {
+    "date": "2026-10-07",
+    "calls": 201,
+    "totalWallMs": 758.545388,
+    "longestWallMs": 25.587459,
+    "windowWaitMs": 174.16620254516602,
+    "windowCoveragePct": 43.6628783545129,
+    "controlledBenchmark": false
   },
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.host.sample",
-   "start": 2.059,
-   "duration": 2.2e-05
-  },
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.host.sample",
-   "start": 3.075,
-   "duration": 2.1e-05
-  },
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.build.task_summary",
-   "start": 12.438,
-   "duration": 1.1e-05
-  },
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.build.task_summary",
-   "start": 12.438,
-   "duration": 0.0
-  },
-  {
-   "service": "logfire-apple-build",
-   "name": "xcode.build.task_summary",
-   "start": 12.438,
-   "duration": 0.0
-  },
-  {
-   "service": "logfire-apple-run",
-   "name": "development.run",
-   "start": 43.042,
-   "duration": 12.574142
-  },
-  {
-   "service": "neon-stack",
-   "name": "xcode.build.identity",
-   "start": 43.247,
-   "duration": 0.000192
-  },
-  {
-   "service": "neon-stack",
-   "name": "game.session.started",
-   "start": 43.248,
-   "duration": 8e-06
-  },
-  {
-   "service": "logfire-apple-run",
-   "name": "game.host.sample",
-   "start": 44.058,
-   "duration": 8.2e-05
-  },
-  {
-   "service": "logfire-apple-run",
-   "name": "game.host.sample",
-   "start": 45.067,
-   "duration": 6.7e-05
-  },
-  {
-   "service": "neon-stack",
-   "name": "game.performance.window",
-   "start": 45.738,
-   "duration": 5.011378
-  },
-  {
-   "service": "neon-stack",
-   "name": "app.state",
-   "start": 45.738,
-   "duration": 0.000155
-  },
-  {
-   "service": "logfire-apple-run",
-   "name": "game.host.sample",
-   "start": 46.081,
-   "duration": 0.000129
-  },
-  {
-   "service": "neon-stack",
-   "name": "development.scenario.ready",
-   "start": 50.757,
-   "duration": 8.2e-05
-  },
-  {
-   "service": "neon-stack",
-   "name": "game.crash",
-   "start": 55.492,
-   "duration": 6e-05
-  },
-  {
-   "service": "neon-stack",
-   "name": "development.scenario.finished",
-   "start": 55.492,
-   "duration": 6.5e-05
-  },
-  {
-   "service": "logfire-apple-run",
-   "name": "development.run.summary",
-   "start": 55.619,
-   "duration": 6.9e-05
-  }
- ],
- "events": [
-  {
-   "t": 0.0,
-   "span": "xcode.build.identity",
-   "message": "xcode.build.identity",
-   "level": 9,
-   "time": "18:54:50.379"
-  },
-  {
-   "t": 0.0,
-   "span": "game.session.started",
-   "message": "new game started",
-   "level": 9,
-   "time": "18:54:50.379"
-  },
-  {
-   "t": 2.128,
-   "span": "app.state",
-   "message": "app.state",
-   "level": 9,
-   "time": "18:54:52.507"
-  },
-  {
-   "t": 2.261,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:54:52.640"
-  },
-  {
-   "t": 2.627,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:54:53.006"
-  },
-  {
-   "t": 2.978,
-   "span": "game.log_burned",
-   "message": "log burned 3 rows",
-   "level": 10,
-   "time": "18:54:53.357"
-  },
-  {
-   "t": 3.345,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:54:53.724"
-  },
-  {
-   "t": 4.411,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:54:54.790"
-  },
-  {
-   "t": 5.494,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:54:55.873"
-  },
-  {
-   "t": 5.853,
-   "span": "game.log_burned",
-   "message": "log burned 3 rows",
-   "level": 10,
-   "time": "18:54:56.232"
-  },
-  {
-   "t": 8.003,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:54:58.382"
-  },
-  {
-   "t": 8.361,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:54:58.740"
-  },
-  {
-   "t": 8.362,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:54:58.741"
-  },
-  {
-   "t": 8.728,
-   "span": "game.log_burned",
-   "message": "log burned 3 rows",
-   "level": 10,
-   "time": "18:54:59.107"
-  },
-  {
-   "t": 10.886,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:55:01.265"
-  },
-  {
-   "t": 11.243,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:55:01.622"
-  },
-  {
-   "t": 11.603,
-   "span": "game.log_burned",
-   "message": "log burned 3 rows",
-   "level": 10,
-   "time": "18:55:01.982"
-  },
-  {
-   "t": 13.043,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:55:03.422"
-  },
-  {
-   "t": 14.11,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:55:04.489"
-  },
-  {
-   "t": 14.469,
-   "span": "game.log_burned",
-   "message": "log burned 2 rows",
-   "level": 10,
-   "time": "18:55:04.848"
-  },
-  {
-   "t": 16.978,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:55:07.357"
-  },
-  {
-   "t": 17.335,
-   "span": "game.log_burned",
-   "message": "log burned 4 rows",
-   "level": 10,
-   "time": "18:55:07.714"
-  },
-  {
-   "t": 17.694,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:55:08.073"
-  },
-  {
-   "t": 19.503,
-   "span": "game.line_clear",
-   "message": "cleared 1 line",
-   "level": 9,
-   "time": "18:55:09.882"
-  },
-  {
-   "t": 19.862,
-   "span": "game.burning_log",
-   "message": "burning log incoming",
-   "level": 13,
-   "time": "18:55:10.241"
-  }
- ],
- "cpu": [
-  {
-   "fn": "mach_msg2_trap",
-   "image": "libsystem_kernel.dylib",
-   "ms": 131.0
-  },
-  {
-   "fn": "_xzm_xzone_malloc_tiny",
-   "image": "libsystem_malloc.dylib",
-   "ms": 96.0
-  },
-  {
-   "fn": "_xzm_free_main",
-   "image": "libsystem_malloc.dylib",
-   "ms": 58.0
-  },
-  {
-   "fn": "start_wqthread",
-   "image": "libsystem_pthread.dylib",
-   "ms": 55.0
-  },
-  {
-   "fn": "_malloc_zone_malloc",
-   "image": "libsystem_malloc.dylib",
-   "ms": 30.0
-  },
-  {
-   "fn": "iokit_user_client_trap",
-   "image": "IOKit",
-   "ms": 29.0
-  },
-  {
-   "fn": "MutableCollection<>._insertionSort(within:sortedEnd:by:)",
-   "image": "libswiftCore.dylib",
-   "ms": 22.0
-  },
-  {
-   "fn": "UnsafeMutableBufferPointer.swapAt(_:_:)",
-   "image": "libswiftCore.dylib",
-   "ms": 17.0
-  }
- ],
- "gpu": [
-  {
-   "label": "MazeFloorWallsLogFire",
-   "stage": null,
-   "cost": 0.8543
-  },
-  {
-   "label": "rollParticleFragment",
-   "stage": "fragment",
-   "cost": 0.3996
-  },
-  {
-   "label": "rollParticleVertex",
-   "stage": "vertex",
-   "cost": 0.163
-  },
-  {
-   "label": "rollFloor",
-   "stage": "fragment",
-   "cost": 0.1576
-  },
-  {
-   "label": "ToneMapAndHeatHaze",
-   "stage": null,
-   "cost": 0.0985
-  },
-  {
-   "label": "rollParticles",
-   "stage": "compute",
-   "cost": 0.0427
-  }
- ],
- "perf": [
-  {
-   "fps": 59.41344919621925,
-   "gpu": 23.49250001134351,
-   "cpu": 0.6287500000325963
-  },
-  {
-   "fps": 59.33297090282473,
-   "gpu": 25.737458330695517,
-   "cpu": 0.5920833355048671
-  },
-  {
-   "fps": 59.4017126282098,
-   "gpu": 26.649541658116505,
-   "cpu": 0.4326666676206514
-  },
-  {
-   "fps": 60.000709008247064,
-   "gpu": 27.375083329388872,
-   "cpu": 0.4914583259960637
-  },
-  {
-   "fps": 59.41308889795879,
-   "gpu": 28.57941667025443,
-   "cpu": 0.5334583256626502
-  },
-  {
-   "fps": 59.98937088326131,
-   "gpu": 26.179000007687137,
-   "cpu": 0.5180416628718376
-  },
-  {
-   "fps": 59.40889244830125,
-   "gpu": 27.00691667268984,
-   "cpu": 0.59291668003425
-  },
-  {
-   "fps": 59.99514258597582,
-   "gpu": 26.27308334922418,
-   "cpu": 0.5184583278605714
-  },
-  {
-   "fps": 60.0008595122215,
-   "gpu": 29.9306249798974,
-   "cpu": 0.562999994144775
-  }
- ],
- "totals": {
-  "n": 10118,
-  "services": 6,
-  "builds": 66,
-  "sessions": 60
- },
- "build": {
-  "id": "781b282b-d919-420a-b7c8-24aed294940f",
-  "duration": 12.31,
-  "errors": 0,
-  "warnings": 0,
-  "configuration": "Debug",
-  "scheme": "NeonStack",
-  "host": "Mac16,13",
-  "commit": "3e12f0f"
- },
- "run": {
-  "scenario": "log-roll-two-mazes-then-loss-v1",
-  "phase": "passed",
-  "duration": 12.57,
-  "exportedSpans": 7,
-  "failedSpans": 0
- },
- "profile": {
-  "samples": 1447,
-  "mainThreadMs": 655,
-  "seconds": 5.8,
-  "template": "Game Performance Overview"
- },
- "fix": {
-  "fpsBefore": 45,
-  "fpsAfter": 117,
-  "cpuBefore": 100,
-  "cpuAfter": 20,
-  "games": 15
- }
+  "records": [
+    {
+      "name": "game.session.started",
+      "kind": "log",
+      "parent": "development.run"
+    },
+    {
+      "name": "app.responsiveness.window",
+      "kind": "log",
+      "parent": "development.run"
+    },
+    {
+      "name": "app.responsiveness.window",
+      "kind": "log",
+      "parent": "development.run"
+    },
+    {
+      "name": "game.performance.window",
+      "kind": "log",
+      "parent": "development.run"
+    },
+    {
+      "name": "development.scenario.finished",
+      "kind": "log",
+      "parent": "development.run"
+    },
+    {
+      "name": "development.run.summary",
+      "kind": "log",
+      "parent": "development.run"
+    }
+  ],
+  "source": "docs/cpu-investigation.md and validated Logfire records; no credentials, local paths, or session IDs"
 }

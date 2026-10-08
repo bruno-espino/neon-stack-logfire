@@ -577,3 +577,25 @@ All 92 Swift tests pass. New cases cover PID/thread selection, boundaries, clipp
 One existing assertion counted gap strings. Replaced it with assertions for each missing evidence condition.
 No optimization or baseline claim follows from this busy-host, instrumented session. Raw recordings and private experiment drivers stay local.
 Next: integrate native app launching and shared recorder cancellation before exposing an unattended timeline profile. Validate GPU scheduling and full presentation decoding separately.
+
+2026-10-08: Package presentation, compact dashboard, and trace review
+Defined the reusable offering as the Swift SDK, native companion, and dashboard templates. The three games remain reference workloads.
+Reviewed Apple's current Metal investigation guidance, Logfire dashboards, and Remotion's documented rendering workflow.
+Replaced the older reel's span names and unverified figures with current operation spans, structured logs, and native CPU/GPU capabilities.
+The developer requested a flashy capability showcase. The reel includes moving game footage and a labelled illustrative 45-to-120 FPS scenario.
+Kept the measured CPU comparison separate. Logfire queries reproduce all ten duration-weighted CPU ratios and the 29.0%-to-8.1% medians.
+Rejected presenting simulated FPS as a measured optimization. Fixed-clock footage supplies visuals, not timing evidence.
+Added an eight-panel Apple Metal Overview. Session summaries and native coverage appear first; detailed charts and tables are collapsible.
+The session selector discovers SDK sessions in the chosen range. Exact session/build filters preserve missing evidence and repeated capture identity.
+An empty All value produced a SQL array coercion error. A scalar All value fixes it; both All and one real game session render in the browser.
+The public screenshot shows the real Log Roll run. The controlled timer fixture is excluded from that selected view.
+Verified the current runner propagates its parent to SDK windows, events, host samples, and its summary. Builds and offline imports have separate traces.
+Manual Command-R records still correlate through session/build identity without one session root. MetricKit retains its historical identity.
+Renamed in-game obstacle events from game.crash to game.collision, with matching Collision signposts. Gameplay remains unchanged.
+Extended the repository checker to inspect all dashboard templates. Replaced the broad video ignore with generated-output exclusions.
+The default video uses included posters and the real dashboard screenshot. A native recorder script supplies optional moving footage without export.
+The local check passes all 92 Swift tests, game checks, repository checks, formatting, and the cached macOS Debug build.
+The final 67-second H.264 reel renders at 1920x1080 and 30 FPS. Visual inspection covers the scenes and separate CPU/default-poster compositions.
+Hosted and reusable overview definitions match. All panel queries pass; exact session/build filters and an unknown-session case return the expected evidence.
+No profiler, Simulator, game run, or Xcode CI enters default checks. No new performance baseline was measured on the busy host.
+Next: verify a clean second-Mac setup, consolidate native app launch and recorder cancellation, and validate full presentation attribution before release claims.

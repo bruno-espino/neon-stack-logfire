@@ -4,8 +4,11 @@
   "type": "module",
   "scripts": {
     "studio": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts Reel out/logfire-swift-reel.mp4",
-    "still": "remotion still src/index.ts Reel"
+    "render": "remotion render src/index.ts Reel out/logfire-swift-reel.mp4 --concurrency=2",
+    "still": "remotion still src/index.ts Reel",
+    "check": "tsc --noEmit",
+    "render:footage": "remotion render src/index.ts Reel out/logfire-swift-reel.mp4 --props='{\"footage\":true}' --concurrency=2",
+    "render:cpu": "remotion render src/index.ts CPUCase out/cpu-case.mp4 --concurrency=2"
   },
   "dependencies": {
     "@remotion/cli": "4.0.533",
