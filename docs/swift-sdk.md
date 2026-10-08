@@ -33,8 +33,21 @@ The current embedding script is a NeonStack example. It is not a generic project
 Capture and attach can use another instrumented macOS app's verified session marker.
 The automated `test-game` action controls only the NeonStack reference game.
 
-The package currently supports synchronous `withSpan` operations.
-It does not provide an async span API or automatic URLSession instrumentation.
+The SDK target compiles in Swift 6 mode. The companion remains in Swift 5 mode.
+Clients, recorders, configuration, and frame context support Sendable use.
+Locks protect recorder state and registries. Audited bridges cover upstream OTel types without Sendable annotations.
+The package supports synchronous and async `withSpan` operations. It does not automatically instrument URLSession.
+
+```swift
+try await telemetry.withSpan("game.load") {
+    try await loadLevel()
+}
+```
+
+SDK async operations use Swift TaskLocal context. Structured child tasks inherit that context.
+Detached tasks require explicit context propagation. The SDK does not replace OTel's global context manager.
+Third-party async OTel instrumentation needs its own compatible context setup.
+Synchronous SDK operations still activate the upstream OTel context.
 Retain one client. Do not create a client for each frame or operation.
 
 ## Configure once
@@ -95,14 +108,32 @@ frames.record(commandBuffer: commandBuffer,
 The renderer supplies callback intervals and elapsed preparation time.
 The Metal adapter reads completed command-buffer timestamps.
 The recorder excludes two seconds of warmup and exports five-second windows.
-Context changes reset an incomplete window. Modes, sizes, and workloads do not share a window.
+Context changes publish the previous partial window. Modes, sizes, and workloads do not share a window.
 The recorder reports the same context through Apple StateReporting and Logfire.
 Use a dedicated domain. The SDK owns its metadata types for that domain.
 Do not register that domain through direct StateReporting calls with other types.
 
 Use `telemetry.state(domain:label:metadata:)` for other application states.
 `onWindow` receives values for a local report or display on the recorder's serial worker.
-Call `frames.finish()` after the renderer stops submitting frames. Do not call it inside `onWindow`.
+Register drawable observation before the renderer presents it:
+
+```swift
+frames.observe(drawable, context: context)
+commandBuffer.present(drawable)
+```
+
+Continue recording completed command buffers. Presentation observation complements renderer timing.
+`display_presented_fps` and `display_present_interval_p95_ms` use valid Metal presentation timestamps.
+Zero timestamps do not become timing samples. Unknown presentations do not become a dropped-frame count.
+Provide `targetPresentationTime` only when the render loop supplies a target in Metal's host clock.
+The recorder then reports nonnegative presentation lateness. This does not establish a missed-refresh count.
+The SDK integrates with MTKView or an engine's current loop. It does not replace it with CAMetalDisplayLink.
+
+`client.flush()` publishes and drains pending recorder windows before exporter collection.
+Call it outside `onWindow` to drain the serial writer. Calls inside that callback cannot drain later queued work.
+Call `frames.finish()` after rendering and its completion/presentation callbacks stop. It closes the recorder and ignores later callbacks.
+Final and context-change windows use `window.partial=true`. The companion excludes them from regression comparisons.
+A presentation-only tail has `frames=0` and omits callback statistics. `FrameWindow.callbackFPS` remains zero for source compatibility.
 
 Callback FPS is not presented FPS. Preparation wall time is not CPU utilization.
 Renderer windows exclude other main-thread and SwiftUI work. They publish `main_thread.measured=false` and the preparation measurement scope.
@@ -205,8 +236,8 @@ The metrics endpoint is `/v1/metrics`. The reader exports every five seconds.
 These counts describe attempted exports, not unique observations or durable delivery.
 
 `FrameRecorder` records individual frame intervals, preparation durations, and GPU command durations into delta histograms.
-It records these values after a complete window, outside the renderer callback.
-Incomplete warmup or final windows do not enter these histograms.
+It records these values after full and partial windows, outside the renderer callback.
+Warmup remains excluded. Graceful flushes retain final samples and do not replay delta observations.
 Histograms have finer bounds around 60 Hz and 120 Hz frame budgets.
 Histogram quantiles remain estimates. Window reports retain their exact sampled percentiles.
 
@@ -232,3 +263,21 @@ The runner keeps its completion summary inside the run span.
 An ordinary Command-R launch has separate operation traces and correlated session records.
 
 See `examples/responsiveness-probe` for a controlled sleep-versus-busy-work experiment.
+
+## Delivery and native correlation
+
+Trace and metric exporters send gzip-compressed OTLP protobuf over HTTPS.
+iOS lifecycle flushes request a finite UIApplication background task before queueing the upload.
+Completion and expiration end the task once. Consecutive lifecycle notifications coalesce while an upload runs.
+This improves the opportunity to finish. Suspension, abrupt stops, and network failures can still leave gaps.
+Physical-device lifecycle behavior remains unverified. The generic iOS SDK build covers compilation only.
+
+The desktop credential file does not provision physical iOS devices.
+An app can supply `LogfireConfiguration(endpoint:token:)` from its own trusted tester provisioning flow.
+Keychain storage needs initial provisioning. An Info.plist token remains visible in the app bundle.
+
+Operation signposts include session, trace, and span IDs in Points of Interest.
+SDK event, window, and flush markers use the Telemetry category.
+Window markers include measurement dates. They are report markers, not backdated native intervals.
+
+The [presentation probe](../examples/presentation-probe/README.md) verifies actual onscreen callbacks and complete histogram counts.

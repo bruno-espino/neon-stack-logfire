@@ -20,7 +20,7 @@ The scripts select one full Xcode and honor DEVELOPER_DIR without changing the g
 
 Data map
 App operations, frame windows, responsiveness -> Swift SDK -> OTLP HTTPS -> Logfire.
-SDK metrics -> fifteen fixed OTel instruments; only observed instruments appear in Logfire.
+SDK metrics -> nineteen fixed OTel instruments; only observed instruments appear in Logfire.
 Rendering state -> SDK -> Logfire and Apple StateReporting.
 Apple MetricKit -> SDK adapter -> historical diagnostic records when Apple delivers reports.
 Whole-host CPU/memory/filesystem -> optional companion -> live records and selected metrics.
@@ -43,6 +43,8 @@ Session: one app launch. A private marker links its PID, executable, start time,
 Build identity: ID, source fingerprint, commit, configuration, SDK, and Xcode version embedded at build time.
 Source fingerprint: selected Swift, Metal, project, and package inputs. It is not a complete Xcode input manifest.
 Signpost: native operation timing for Instruments. The SDK also emits a correlated Logfire span.
+Presented FPS: cadence from confirmed Metal drawable timestamps. It differs from renderer callback cadence.
+Partial window: retained samples at flush or context change. Regression comparisons use full windows.
 StateReporting: named app workload state for Apple's measurements. It does not collect CPU stacks.
 MetricKit: Apple-delivered historical metrics and diagnostics. It is not a live per-frame feed.
 Capture manifest: original session/build identity, interval, binary, available symbols, and artifact checksums.
@@ -54,7 +56,7 @@ Overview dashboard: fifteen panels for SDK sessions, live app signals, gameplay,
 Chart buckets: five seconds with UTC timestamps. Dots show short observations; separate launches remain separate series.
 
 Interpretation limits
-Callback FPS differs from presented FPS. Preparation wall time differs from CPU utilization.
+Callback FPS differs from presented FPS. Optional drawable observation reports live presentation cadence. Preparation wall time differs from CPU utilization.
 Main-queue delay and main-thread CPU independently observe responsiveness and activity.
 GPU command duration is not hardware utilization. GPU replay is not live frame latency.
 CPU sample weights describe running work. They do not establish waiting time or a root cause.
@@ -68,7 +70,12 @@ The exporter has no durable offline queue. Failed batches and abrupt stops can l
 Real MetricKit delivery, physical iOS, and a clean second-Mac setup remain unverified.
 
 Current priorities
-Verify complete metric delivery across graceful and runner-requested stops. Exporter acknowledgement alone does not prove complete observation coverage.
+Graceful flushes now publish partial frame windows before exporter collection. Verify runner-requested and abrupt stops separately. Acknowledgement alone does not prove complete observation coverage.
+SDK async spans inherit parent context across suspension and structured tasks. Detached tasks need explicit parent propagation.
+The SDK target uses Swift 6. Audited bridges still cover synchronized upstream OTel types.
+Trace and metric requests use gzip. An onscreen probe verifies 612 frame samples and 612 presentations in Logfire.
+iOS requests finite background execution time for flushes. Physical-device behavior and credential provisioning remain unverified.
+Keep GPU stage-boundary counters optional until profiling overhead and device fallback are verified.
 Corroborate the coworker's MetricKit crash with its runtime version and crash stack.
 Keep the short native development loop. Xcode CI remains deferred by request.
 Preserve input limits and banner/trailing-data policies before consolidating the two JSON scanners.

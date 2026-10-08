@@ -61,7 +61,8 @@ Use [Apple Development Workflow](dashboards/apple-development.json) for the comp
 | Operations, gameplay events, frame histograms, queue delay and CPU windows | App + Swift SDK | During app sessions |
 | Host load and memory context | Native companion | During builds, scenarios and live attach |
 | Build timing and task totals | Companion + Xcode | During and after a build |
-| Presented frames and selected Apple resource measurements | Apple tools + companion | Explicit attach or retained capture |
+| Presented frame cadence | Swift SDK + Metal drawable observation | During onscreen sessions |
+| Layer and process resource measurements | Apple tools + companion | Live attach or retained capture |
 | Running CPU callers, GPU replay costs, native thread states and drawable waits | Apple tools + companion | Targeted capture and analysis |
 | Daily metrics and selected diagnostics | MetricKit + SDK adapter | Apple's delayed delivery |
 
@@ -70,7 +71,7 @@ Builds have their own traces. Automated runs connect SDK records under `developm
 Offline imports carry the original run trace ID, session ID and capture ID in a separate analysis trace.
 Manual Command-R records share session/build identity; they do not automatically share one root span.
 
-Callback cadence differs from presented FPS. GPU command sums differ from utilization.
+The SDK reports callback cadence and optional presented FPS separately. GPU command sums differ from utilization.
 Native wait intervals overlap CPU states. Replay shader costs describe the captured replay.
 See [the telemetry catalog](docs/telemetry-metrics.md) and [dashboard and trace review](docs/session-review.md) for the exact scopes.
 The [measured CPU case](docs/cpu-investigation.md) verifies CPU savings with callback rate near 60 Hz.

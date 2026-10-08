@@ -16,7 +16,7 @@ public enum LogfireConfigurationError: Error, CustomStringConvertible {
 }
 
 /// Runtime configuration for development and trusted tester builds.
-public struct LogfireConfiguration {
+public struct LogfireConfiguration: Sendable {
     public let endpoint: URL
     private let token: String?
     public static var developmentCredentialFile: URL {
@@ -66,16 +66,18 @@ public struct LogfireConfiguration {
 
     private var metricsEndpoint: URL { endpoint.deletingLastPathComponent().appendingPathComponent("metrics") }
 
-    func makeMetricExporter() -> OtlpHttpMetricExporter {
+    func makeMetricExporter(httpClient: HTTPClient = BaseHTTPClient()) -> OtlpHttpMetricExporter {
         OtlpHttpMetricExporter(endpoint: metricsEndpoint,
-            config: .init(timeout: 3, compression: .none, exportAsJson: false),
+            config: .init(timeout: 3, compression: .gzip, exportAsJson: false),
             aggregationTemporalitySelector: AggregationTemporality.alwaysDelta(),
+            httpClient: httpClient,
             envVarHeaders: token.map { [("Authorization", "Bearer " + $0)] } ?? [], requeueOnFailure: false)
     }
 
-    func makeExporter() -> OtlpHttpTraceExporter {
+    func makeExporter(httpClient: HTTPClient = BaseHTTPClient()) -> OtlpHttpTraceExporter {
         OtlpHttpTraceExporter(endpoint: endpoint,
-            config: .init(timeout: 3, compression: .none, exportAsJson: false),
+            config: .init(timeout: 3, compression: .gzip, exportAsJson: false),
+            httpClient: httpClient,
             envVarHeaders: token.map { [("Authorization", "Bearer " + $0)] } ?? [], requeueOnFailure: false)
     }
 }
