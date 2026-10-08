@@ -522,3 +522,19 @@ The case runner initially let its Debug-build rejection escape as a Swift error.
 The final local check passes all 75 Swift tests, game checks, repository checks, formatting, and the macOS Debug build. The Release companion is installed.
 Next: try a fresh regression with another developer, without naming the fault in advance. Measure investigation time before claiming workflow savings.
 See docs/cpu-investigation.md for commands, measurement ranges, scope limits, and the Apple guidance used.
+
+2026-10-07: Completed native thread-timeline import
+Followed Apple's Instruments 27 responsiveness guidance and inspected the installed xctrace templates, options, and actual export schemas.
+The short System Trace and Metal System Trace game experiments did not yield valid finalized recordings within their budgets.
+A controlled timer-wait probe completed. The recorder then spent substantial time compressing its saved trace.
+The developer reported heavy host CPU use. Live captures and performance comparisons were paused. Offline analysis continued.
+Rejected summing only state-named ThreadActivity rows. Apple nests some blocked-state intervals under syscall rows in that combined table.
+Added diagnose --trace for completed recordings with dedicated thread-state and syscall tables. The default command stays local.
+The import checks retained session, PID, executable path, interval, table schema, and export checksums. It does not independently verify the reported binary hash.
+Bounded main-thread states, coverage gaps, longest non-running intervals, and complete syscall summaries join the existing diagnostic report.
+Normal sleeps and event-loop waits are not classified as defects. Runnable time, blocked time, and syscall Wait Time remain distinct evidence.
+The native probe identifies all fifteen intentional sleep calls and its recorded main-thread ID. Its retained fixture uses the probe's logged identity and timestamps.
+Explicit --publish delivered five records. Logfire MCP independently verified the structured details, matching session/thread identity, and all fifteen sleep calls.
+The offline import has a separate analysis trace. It carries the original run trace ID when available and the shared session/build identity.
+All 85 Swift tests pass. Repository checks and the low-priority native companion build pass. No game baseline, profiler run, Simulator, or Xcode CI enters default checks.
+Next: record a real quiet-host Metal game session and verify its GPU scheduling, presentation, and wait tables before adding those fields.

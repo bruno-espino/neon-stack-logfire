@@ -45,9 +45,10 @@ struct SessionDiagnostic: Codable {
     let cpuCallPaths: [CPUCallPath]
     let cpuCallers: [CPUCaller]?
     let gpuReplays: [GPUReplayEvidence]?
+    let threadTimelines: [ThreadTimelineEvidence]?
 }
 
-/// The hosted overview omits CPU and GPU details because they have separate bounded records.
+/// The hosted overview omits profiler details because they have separate bounded records.
 private struct DiagnosticDetails: Encodable {
     let schemaVersion: Int
     let summary: String
@@ -110,7 +111,7 @@ enum SessionDiagnostics {
 
     static func make(report: [String: Any], folder: URL, windows: [[String: Any]], responsiveness: [[String: Any]],
                      cpu: CPUProfileSummary?, artifacts: [DiagnosticArtifact], gaps: [String],
-                     gpuReplays: [GPUReplayEvidence]? = nil) -> SessionDiagnostic {
+                     gpuReplays: [GPUReplayEvidence]? = nil, threadTimelines: [ThreadTimelineEvidence]? = nil) -> SessionDiagnostic {
         var observations: [String: Double] = ["frame.windows": Double(windows.count), "responsiveness.windows": Double(responsiveness.count)]
         var findings: [DiagnosticFinding] = []
         var missing = (report["issues"] as? [String] ?? []) + gaps
@@ -161,6 +162,12 @@ enum SessionDiagnostics {
         if gpuReplays?.contains(where: { !$0.measurements.isEmpty }) != true {
             missing.append("No GPU replay evidence. GPU command sums do not measure utilization or presentation latency.")
         }
+        if let threadTimelines {
+            observations["thread.timeline_captures"] = Double(threadTimelines.count)
+            if threadTimelines.contains(where: { $0.unobservedMilliseconds >= 1 }) {
+                missing.append("Native main-thread state coverage has gaps. Unobserved time does not mean the thread was idle.")
+            }
+        }
         let requested = report["profile.requested"] as? String ?? "none"
         if requested != "none" { missing.append("This run requested a profiler. Use an unprofiled matched Release run for a performance baseline.") }
         let limitations = [
@@ -177,7 +184,7 @@ enum SessionDiagnostics {
             "Available evidence suggests \(findings.count) investigation(s). Confirm each cause in the affected interval.",
             observations: observations, findings: findings, observationGaps: Array(Set(missing)).sorted(),
             limitations: limitations, artifacts: artifacts, cpuCallPaths: cpu?.callPaths ?? [], cpuCallers: cpu?.callers,
-            gpuReplays: gpuReplays)
+            gpuReplays: gpuReplays, threadTimelines: threadTimelines)
     }
 
     static func build(report: [String: Any], folder: URL, windows: [[String: Any]]) -> SessionDiagnostic {
@@ -186,6 +193,7 @@ enum SessionDiagnostics {
         var response: [[String: Any]] = []
         var cpu: CPUProfileSummary?
         var gpuReplays: [GPUReplayEvidence] = []
+        var threadTimelines: [ThreadTimelineEvidence] = []
         let responseFile = folder.appendingPathComponent("responsiveness.jsonl")
         if FileManager.default.fileExists(atPath: responseFile.path) {
             do {
@@ -217,7 +225,10 @@ enum SessionDiagnostics {
                           SessionAnalysis.number(values["process.pid"]) == SessionAnalysis.number(report["app.pid"]) else {
                         throw CompanionError.message("Profile manifest does not identify this run")
                     }
-                    if var summary = values["cpu.summary"] as? [String: Any] {
+                    if values["timeline.summary"] != nil {
+                        threadTimelines.append(try TimelineImport.read(values, folder: capture, runFolder: folder, report: report))
+                        artifacts.append(DiagnosticArtifact(kind: "thread-timeline", path: manifest.path))
+                    } else if var summary = values["cpu.summary"] as? [String: Any] {
                         guard cpu == nil else { throw CompanionError.message("More than one CPU recording requires separate reports") }
                         let export = capture.appendingPathComponent("cpu.xml")
                         if (summary["callPaths"] == nil || summary["callers"] == nil || values["cpu.summary_available"] as? Bool == false),
@@ -261,7 +272,7 @@ enum SessionDiagnostics {
             if FileManager.default.fileExists(atPath: file.path) { artifacts.append(DiagnosticArtifact(kind: kind, path: file.path)) }
         }
         return make(report: report, folder: folder, windows: windows, responsiveness: response, cpu: cpu, artifacts: artifacts, gaps: gaps,
-            gpuReplays: gpuReplays.isEmpty ? nil : gpuReplays)
+            gpuReplays: gpuReplays.isEmpty ? nil : gpuReplays, threadTimelines: threadTimelines.isEmpty ? nil : threadTimelines)
     }
 
     static func object(_ diagnostic: SessionDiagnostic) throws -> [String: Any] {
@@ -285,11 +296,26 @@ enum SessionDiagnostics {
 
     static func run(_ arguments: [String]) throws -> Int32 {
         if arguments == ["--help"] {
-            print("Usage: logfire-apple diagnose --report REPORT. Rebuild a local diagnostic report without launching an app or exporting telemetry.")
+            print("Usage: logfire-apple diagnose --report REPORT [--trace TRACE] [--publish]")
+            print("Rebuild a local diagnostic report without launching an app. --trace imports completed main-thread state/syscall tables; --publish explicitly exports that import.")
             return 0
         }
-        guard arguments.count == 2, arguments[0] == "--report" else { throw CompanionError.message("Use diagnose --report REPORT") }
-        let file = URL(fileURLWithPath: arguments[1]).standardizedFileURL
+        var reportPath: String?, tracePath: String?, publish = false
+        var index = 0
+        while index < arguments.count {
+            let flag = arguments[index]
+            if flag == "--publish", !publish { publish = true; index += 1; continue }
+            guard ["--report", "--trace"].contains(flag), index + 1 < arguments.count,
+                  !arguments[index + 1].hasPrefix("--"), flag == "--report" ? reportPath == nil : tracePath == nil else {
+                throw CompanionError.message("Use diagnose --report REPORT [--trace TRACE] [--publish]")
+            }
+            if flag == "--report" { reportPath = arguments[index + 1] } else { tracePath = arguments[index + 1] }
+            index += 2
+        }
+        guard let reportPath, !publish || tracePath != nil else {
+            throw CompanionError.message("Supply --report REPORT. --publish also requires --trace TRACE.")
+        }
+        let file = URL(fileURLWithPath: reportPath).standardizedFileURL
         guard var report = try JSONSerialization.jsonObject(with: data(file)) as? [String: Any],
               SessionAnalysis.number(report["schema_version"]) == 1,
               let session = report["session_id"] as? String, UUID(uuidString: session) != nil,
@@ -299,6 +325,8 @@ enum SessionDiagnostics {
             throw DiagnosticEvidenceError.invalidRunReport
         }
         let folder = file.deletingLastPathComponent()
+        let code = try tracePath.map { try TimelineImport.run(trace: URL(fileURLWithPath: $0).standardizedFileURL,
+            report: report, runFolder: folder, publish: publish) } ?? 0
         let frames = folder.appendingPathComponent("performance.jsonl")
         let windows: [[String: Any]]
         if FileManager.default.fileExists(atPath: frames.path) {
@@ -311,7 +339,7 @@ enum SessionDiagnostics {
         print(diagnostic.summary)
         for finding in diagnostic.findings { print("\(finding.id): \(finding.nextInvestigation)") }
         print("Diagnostic report: \(file.path)")
-        return 0
+        return code
     }
 }
 #endif

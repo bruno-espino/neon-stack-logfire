@@ -372,7 +372,7 @@ public enum Companion {
            logfire-apple test-game --app APP [--seconds 20] [--render-mode neon] [--offscreen] [--no-telemetry]
            logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu] [--no-telemetry]
            logfire-apple analyze --report REPORT [--baseline REPORT] [--max-regression-percent 10]
-           logfire-apple diagnose --report REPORT
+           logfire-apple diagnose --report REPORT [--trace TRACE] [--publish]
     Capture, attach, and profile select the latest verified live SDK session automatically.
     Optional overrides: --sessions DIRECTORY --output DIRECTORY.
     All actions use Swift and Apple tools. Full reports and captures remain local.
