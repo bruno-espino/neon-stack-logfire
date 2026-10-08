@@ -16,7 +16,7 @@ enum GameTelemetry {
     }()
 }
 
-final class PerformanceRecorder {
+final class PerformanceRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var latest: (Double, Double)?
     private let output = ProcessInfo.processInfo.environment["NEON_PERF_REPORT"]
@@ -80,5 +80,6 @@ final class PerformanceRecorder {
         let result = latest; latest = nil
         return result
     }
+    func observe(_ drawable: MTLDrawable, context: RenderContext) { recorder.observe(drawable, context: context) }
     func finish() { recorder.finish() }
 }

@@ -631,3 +631,59 @@ Separated the dashboard templates, collision terminology, repository checks, int
 The workflow branch contains no video changes. The video branch retains its scenes, posters, screenshot, footage recorder, and showcase documentation.
 The requested next video pass includes a clear dashboard view and animated game inputs beside their trace events.
 The separated workflow passes all 92 Swift tests, game checks, repository checks, formatting, and the macOS Debug build.
+
+2026-10-08: Native SDK runtime and complete graceful frame reporting
+The developer authorized experiments after reviewing native SDK feedback.
+Adopted drawable presented handlers without replacing the app's render loop. All three example renderers observe onscreen drawables.
+Callback cadence and confirmed presentation cadence remain separate. Invalid timestamps remain absent; no dropped-frame count is inferred.
+Graceful flush and context changes retain partial windows. A presentation-only tail can have zero renderer samples.
+The client drains registered frame recorders before exporter collection. Companion comparisons retain full windows only.
+Report callbacks may request a flush without waiting on another report writer. Complete draining requires a call outside those callbacks.
+Added async spans with SDK-owned TaskLocal context. Actor hops and concurrent structured children preserve parentage.
+Rejected replacing the global OTel context provider. Third-party async instrumentation still needs compatible context setup.
+The SDK target now compiles in Swift 6 mode. Public configuration and frame values are Sendable; synchronized OTel bridges remain explicit.
+Kept existing locks where their ownership is clear. Swift Mutex would raise the current macOS 14 and iOS 17 minimum targets.
+Adopted gzip for trace and metric OTLP requests. Tests inspect headers and compressed protobuf bodies.
+Added native event/window/flush markers with operation trace and span IDs. Frequent telemetry uses a separate Instruments category.
+iOS acquires a finite background-task lease before a queued flush. Completion and expiration end the lease once.
+A generic iOS SDK build passes. Real-device background delivery and tester credential provisioning remain unverified.
+An onscreen Metal probe sent two full windows and a final partial window through gzip to Logfire.
+Queries reproduce all 612 renderer samples, 612 confirmed presentations, and 611 presentation intervals.
+The probe proves transport and callback coverage. It does not establish a performance baseline on this busy Mac.
+Dashboard templates compare callback and presented cadence. Weighted buckets prevent a small final window from dominating a mean.
+The optional Metal counter probe resolves eight stage-boundary timestamps for two passes inside one command buffer on an Apple M4.
+Kept counters outside the game and default checks. Sampling overhead and fallback behavior need verification before replacing its buffer split.
+Deferred persistent export. Upstream defaults allow a large queue and treat local persistence as success; retention and acknowledgement need a bounded policy.
+Deferred an attribute builder and physical-device provisioning to focused changes. SDK callbacks and credential storage keep their existing explicit contracts.
+The video remains a separate review. No Simulator, profiler, longer app deadline, or Xcode CI enters default checks.
+The full development check passes 100 Swift tests, game logic checks, repository checks, formatting, and the macOS Debug build.
+All three MetricKit report tests pass on this Mac. The coworker's earlier crash still needs its original environment and stack.
+The hosted overview and detailed dashboards match both updated panels. Readback verifies their other panels, variables, and layouts are preserved.
+All four changed panel queries return real session data. Browser inspection shows callback and presented cadence as separate chart series.
+A Swift 6 consumer compiles actor-owned state and concurrent tasks with warnings treated as errors.
+A real async probe sends one parent, eight children, and eight resumed events. Logfire queries confirm all seventeen records and exact parent IDs in one trace.
+
+2026-10-08: Controlled presentation diagnosis and independent package pilot
+Merged the native SDK iteration in PR 19. The video stays in PR 16 for collaborator review.
+Added two opt-in twelve-second Metal policies through the existing generic scenario runner.
+The verified normal session reports 59.88 callbacks/s and 59.60 presented FPS. Half-rate reports 59.99 and 30.00.
+Logfire confirms their shared build identity, separate run traces, linked SDK records, and half-rate presentation finding.
+Raw metrics retain all partial-window samples. Normal has 620 callbacks and 620 confirmed presentations. Half-rate has 607 and 303.
+The new presentation_cadence_gap finding suggests submission-policy and pacing checks. It does not identify GPU saturation or count missed refreshes.
+Rejected a zero-unknown requirement after two unavailable timestamps hid a clear half-rate policy.
+Each unknown timestamp now gets one extra presentation in the observed interval before the 80% heuristic selects an investigation.
+Rejected runs with no valid presentation timestamps or no full window after focus-triggered flushes. Missing FPS stays absent.
+A valid final assertion exposed live-process revalidation near app exit. The runner now checks its owned child's retained launch identity.
+It revalidates the final marker, binary hash, and embedded build metadata. Natural exits pass; wrong identity and changed builds fail.
+One driver edit overlapped a running shell script. Its retained app reports passed the independent verifier.
+The stable driver then completed both app assertions but correctly failed cadence verification after the windows became occluded.
+The optional probe now uses a small floating window to reduce this interference. Game window behavior stays unchanged.
+The visible paired evidence and Logfire queries prove the diagnosis. Occluded runs do not prove display cadence.
+An independent Swift 6 package consumer pins the public SDK revision and links only LogfireSwift.
+Its cold build and export pass. Logfire confirms exactly one async parent and its child event in one trace.
+Consolidated setup in the README and added a second-Mac pilot checklist. No credential enters the binary or repository.
+Another Mac, physical iOS delivery, and daily MetricKit delivery remain unverified. GPU counter overhead waits for a quieter host.
+The default check retains the cached macOS build and short local tests. No GUI probe, Simulator, profiler, longer deadline, or Xcode CI is added.
+The full development check passes 104 Swift tests, game logic, repository checks, formatting, and the macOS Debug build.
+The final changed-build assertion also passes its focused scenario suite.
+The final floating-window command passes both policies and the verifier. Logfire queries reproduce rates, parent IDs, build identity, and every metric sample.

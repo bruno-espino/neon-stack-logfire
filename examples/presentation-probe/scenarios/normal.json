@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "id": "presentation-normal-v1",
+  "arguments": [],
+  "environment": { "PROBE_PRESENT_EVERY": "1" },
+  "require_frame_windows": true
+}

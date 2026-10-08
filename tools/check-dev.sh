@@ -14,7 +14,7 @@ if [ "$#" -gt 1 ]; then printf 'Use at most one option.\n' >&2; exit 2; fi
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$root/tools/xcode-env.sh"
 cd "$root"
-/usr/bin/xcrun swift-format lint --strict --configuration .swift-format tools/embed-build.swift tools/check-repository.swift
+/usr/bin/xcrun swift-format lint --strict --configuration .swift-format tools/embed-build.swift tools/check-repository.swift tools/check-presentation.swift
 /usr/bin/xcrun swift tools/check-repository.swift
 tools/check-game.sh
 /usr/bin/xcrun swift test --quiet

@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 import LogfireSwift
 #if os(macOS)
 
@@ -67,6 +68,24 @@ private struct DiagnosticDetails: Encodable {
 
 /// Findings select an investigation. They do not establish a performance regression or its cause.
 enum SessionDiagnostics {
+    private static func drawableCadence(_ row: [String: Any]) -> (callback: Double, presented: Double, upperRatio: Double, unavailable: Double)? {
+        func number(_ key: String) -> Double? {
+            guard let value = row[key] as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(),
+                  value.doubleValue.isFinite else { return nil }
+            return value.doubleValue
+        }
+        guard row["workload"] as? String == "onscreen", row["window.partial"] as? Bool != true,
+              row["sample_limit_reached"] as? Bool != true,
+              row["display_time.source"] as? String == "metal.drawable.presented_time",
+              let seconds = number("window_seconds"), seconds >= 5,
+              let samples = number("display_presentation_intervals"), samples >= 10, samples.rounded() == samples,
+              let unavailable = number("display_timestamp_unavailable"), unavailable >= 0, unavailable.rounded() == unavailable,
+              let callback = number("render_callback_fps"), callback > 0,
+              let presented = number("display_presented_fps"), presented > 0 else { return nil }
+        // Allow every unknown timestamp one extra presentation before selecting an investigation.
+        return (callback, presented, presented / callback * (samples + unavailable) / samples, unavailable)
+    }
+
     static func intervals(_ rows: [[String: Any]], source: String) -> [DiagnosticInterval] {
         rows.compactMap { row in
             let ended = SessionAnalysis.number(row["recorded_at"]) ?? (row["recorded_at"] as? String)
@@ -128,6 +147,32 @@ enum SessionDiagnostics {
                     intervals: intervals(windows.filter { (SessionAnalysis.number($0["frames_over_25_ms"]) ?? 0) > 0 }, source: "sdk.frame_recorder")))
             }
         } else { missing.append("No complete renderer windows. This report cannot assess callback cadence.") }
+        let onscreen = windows.filter { $0["workload"] as? String == "onscreen" && $0["window.partial"] as? Bool != true }
+        let presentation = onscreen.compactMap { row -> (row: [String: Any], callback: Double, presented: Double, upperRatio: Double, unavailable: Double)? in
+            guard let cadence = drawableCadence(row) else { return nil }
+            return (row, cadence.callback, cadence.presented, cadence.upperRatio, cadence.unavailable)
+        }
+        if !onscreen.isEmpty {
+            observations["display.windows_observed"] = Double(presentation.count)
+            if presentation.count < onscreen.count {
+                missing.append("Some onscreen windows have no validated drawable presentation cadence. Callback rate alone does not establish display rate.")
+            }
+        }
+        if presentation.contains(where: { $0.presented / $0.callback < 0.8 && $0.upperRatio >= 0.8 }) {
+            missing.append("Unavailable presentation timestamps can explain an observed rate gap. Inspect presentation coverage before selecting a pacing investigation.")
+        }
+        let divergent = presentation.filter { $0.upperRatio < 0.8 }
+        if let worst = divergent.min(by: { $0.upperRatio < $1.upperRatio }) {
+            let signals = ["display.affected_windows": Double(divergent.count), "display.presented_to_callback_ratio": worst.presented / worst.callback,
+                "display.presented_fps": worst.presented, "display.callback_hz": worst.callback,
+                "display.ratio_with_unknown_allowance": worst.upperRatio, "display.timestamp_unavailable": worst.unavailable]
+            observations.merge(signals) { _, measured in measured }
+            findings.append(DiagnosticFinding(id: "presentation_cadence_gap",
+                observation: "Confirmed presentation cadence remains below 80% of renderer callback cadence after an allowance for unavailable timestamps in a full SDK window.",
+                signals: signals,
+                nextInvestigation: "Check drawable submission policy and render-loop pacing. Intentional presentation limits can produce this gap. Use a native frame timeline if the gap is unexpected; these rates do not identify a GPU bottleneck or count missed refreshes.",
+                intervals: intervals(divergent.map(\.row), source: "sdk.drawable_presentation")))
+        }
         let stalled = responsiveness.filter {
             max(SessionAnalysis.number($0["main_queue.delay_max_ms"]) ?? 0,
                 SessionAnalysis.number($0["main_queue.pending_age_max_ms"]) ?? 0) >= 100
@@ -179,6 +224,7 @@ enum SessionDiagnostics {
         if requested != "none" { missing.append("This run requested a profiler. Use an unprofiled matched Release run for a performance baseline.") }
         let limitations = [
             "The 25 ms callback and 100 ms queue thresholds select investigations. They are not display budgets or regression gates.",
+            "The 80% presentation ratio selects full windows with at least ten valid intervals. Each unavailable timestamp gets one extra presentation in the same observed interval for this heuristic. Intentional limits and delayed handlers can affect the ratio. It is not a missed-refresh count.",
             "CPU ratios average five-second windows. A stall and CPU activity in the same window may not occur at the same instant.",
             "Sampled call paths describe running work. Their weights are not wall time, blocked time, or a chronological flame graph.",
             "CPU path fractions use all running weight in their main or background thread scope. Partial and unresolved samples remain in that denominator.",

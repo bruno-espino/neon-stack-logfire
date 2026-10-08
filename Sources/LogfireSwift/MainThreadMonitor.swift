@@ -2,7 +2,8 @@ import Foundation
 import Darwin
 
 /// Queue delay and CPU activity describe different responsiveness conditions.
-final class MainThreadMonitor {
+/// The private queue owns mutable state. Main-thread callbacks only enqueue timestamp observations.
+final class MainThreadMonitor: @unchecked Sendable {
     private weak var client: Logfire?
     private let queue = DispatchQueue(label: "dev.logfire.swift.responsiveness", qos: .utility)
     private var timer: DispatchSourceTimer?

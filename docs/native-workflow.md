@@ -336,7 +336,7 @@ It also runs Apple's state aggregation for the configured rendering domain.
 Logfire receives selected process, layer, and state-layer summaries.
 These overlapping summaries must not be summed together.
 The SDK and native values describe related intervals. They are not exact samples of the same set of frames.
-SDK callback rate and native presented FPS remain separate measurements.
+SDK callback rate, SDK drawable presentation cadence, and native frame timelines describe different scopes.
 
 Each session directory contains:
 
@@ -364,6 +364,10 @@ logfire-apple diagnose --report PATH/TO/report.json
 ```
 
 This command rebuilds the local diagnosis. It does not launch the application, record another profile, or export telemetry.
+For onscreen full windows, `presentation_cadence_gap` selects rates below 80% of callback cadence after an allowance for unavailable timestamps.
+It requires at least ten valid presentation intervals and excludes capped sample windows.
+Intentional presentation limits also produce this finding. It does not identify a GPU bottleneck or count missed refreshes.
+Use [the controlled presentation probe](../examples/presentation-probe/README.md) to verify this distinction.
 The local `diagnostic.gpuReplays` array includes each accepted GPU capture's identity, replay mode, and selected encoder and shader measurements.
 Each capture has at most three encoders and three shaders. Empty or invalid evidence leaves an observation gap.
 Replay costs describe captured workloads. They do not measure live utilization, presentation latency, or CPU waits.
@@ -648,7 +652,7 @@ Keep longer tests, iOS Simulator validation, and the tester report button deferr
 ## Metric and trace semantics
 
 The configured SDK exports both `/v1/traces` and `/v1/metrics` through native OTLP HTTP.
-The [metric catalog](telemetry-metrics.md) lists the fifteen fixed instruments.
+The [metric catalog](telemetry-metrics.md) lists the nineteen fixed instruments.
 Events and window summaries use Logfire logs. A window log appears at its measurement end time.
 Its attributes retain the interval start and end. It does not claim that interval as an operation duration.
 Explicit `withSpan` operations keep their real durations and native signposts.

@@ -17,7 +17,7 @@ let package = Package(
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
-        ]),
+        ], swiftSettings: [.swiftLanguageMode(.v6)]),
         .testTarget(name: "LogfireSwiftTests", dependencies: ["LogfireSwift",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
         ]),

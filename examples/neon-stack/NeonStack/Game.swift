@@ -544,6 +544,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         let mode = game.renderMode; let lines = game.engine.lines; let score = game.engine.score
         let size = view.drawableSize
         let detail = Int(auroraLayers)
+        performance.observe(drawable, context: RenderContext(mode: mode, width: Int(size.width), height: Int(size.height),
+            metadata: ["aurora_layers": .int(detail)]))
         command.addCompletedHandler { [weak self] buffer in
             guard let self else { return }
             self.performance.record(commandBuffer: buffer, frameMilliseconds: delta * 1000, cpuMilliseconds: cpu,

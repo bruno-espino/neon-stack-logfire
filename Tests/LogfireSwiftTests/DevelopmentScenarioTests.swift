@@ -4,6 +4,18 @@ import OpenTelemetrySdk
 @testable import LogfireSwift
 
 final class DevelopmentScenarioTests: XCTestCase {
+    func testPartialWindowRetainsEvidenceWithoutDeclaringReadiness() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let client = Logfire(serviceName: "test", configuration: nil)
+        let scenario = try XCTUnwrap(DevelopmentScenario(client: client, environment: ["LOGFIRE_SESSION_ID": client.sessionID,
+            "LOGFIRE_SCENARIO_ID": "partial", "LOGFIRE_SCENARIO_STATUS": folder.appendingPathComponent("scenario.json").path]))
+        try scenario.record(FrameWindow(started: Date(), ended: Date(), callbackFPS: 60, gpuMeanMilliseconds: nil,
+            attributes: ["frames": .int(1), "window.partial": .bool(true)]))
+        XCTAssertFalse(scenario.isReady)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("performance.jsonl").path))
+    }
     func testScenarioRequiresRunnerIdentityAndReadinessBeforeCompletion() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -30,7 +42,7 @@ final class DevelopmentScenarioTests: XCTestCase {
         XCTAssertNil(DevelopmentScenario(client: client, environment: [:]))
     }
 
-    func testFinishReleasesScenarioLockWhileExporterRunsAndStopsAcceptingFrames() throws {
+    func testFinishRetainsDrainedFramesWithoutHoldingTheLockAndRejectsFramesAfterCompletion() throws {
         final class BlockingExporter: SpanExporter, @unchecked Sendable {
             let entered = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
             func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
@@ -69,11 +81,16 @@ final class DevelopmentScenarioTests: XCTestCase {
             responsive.fulfill()
         }
         wait(for: [responsive], timeout: 0.5)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("performance.jsonl").path))
+        let performance = folder.appendingPathComponent("performance.jsonl")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: performance.path))
         exporter.resume.signal(); exporter.resume.signal()
         wait(for: [done], timeout: 3)
         let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("scenario.json"))) as? [String: Any])
         XCTAssertEqual(value["phase"] as? String, "passed")
+        let retained = try Data(contentsOf: performance)
+        try scenario.record(FrameWindow(started: Date(), ended: Date(), callbackFPS: 60,
+            gpuMeanMilliseconds: nil, attributes: ["frames": .int(1), "window.partial": .bool(true)]))
+        XCTAssertEqual(try Data(contentsOf: performance), retained)
     }
 
     func testRendererEvidencePrecedesReadiness() throws {

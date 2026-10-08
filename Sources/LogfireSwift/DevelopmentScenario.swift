@@ -3,7 +3,7 @@ import Foundation
 public enum DevelopmentScenarioError: Error { case notReady, completionInProgress, reportTooLarge }
 
 /// A development app supplies readiness and its own scenario assertions.
-public final class DevelopmentScenario {
+public final class DevelopmentScenario: @unchecked Sendable {
     private let client: Logfire
     private let id: String
     private let output: URL
@@ -28,10 +28,10 @@ public final class DevelopmentScenario {
         client.event("development.scenario.ready", attributes: ["scenario.id": .string(id)])
     }
 
-    /// A completed renderer window supplies readiness and retained local evidence.
+    /// The recorder retains drained windows during completion. Only a full window supplies readiness.
     public func record(_ window: FrameWindow) throws {
         lock.lock()
-        guard phase == .waiting || phase == .ready else { lock.unlock(); return }
+        guard phase != .finished else { lock.unlock(); return }
         do {
             let file = output.deletingLastPathComponent().appendingPathComponent("performance.jsonl")
             if !FileManager.default.fileExists(atPath: file.path) {
@@ -44,6 +44,7 @@ public final class DevelopmentScenario {
             try handle.seekToEnd(); try handle.write(contentsOf: window.encodedReport())
         } catch { lock.unlock(); throw error }
         lock.unlock()
+        if case .bool(true) = window.attributes["window.partial"] { return }
         try markReady()
     }
 

@@ -14,14 +14,13 @@ It is not an official released Logfire SDK.
 ![Apple Metal Overview with real ingested game sessions](video/public/apple-metal-overview.jpg)
 
 The [React showcase](video/README.md) presents dashboards, game input spans, build correlation, and native investigations in 77 seconds.
-Its animated FPS improvement shows a measured Log Roll fix. The separate five-run CPU case remains available below.
+Its animated FPS improvement shows the collaborator's reported Log Roll fix. The separate measured five-run CPU case remains available below.
 
-## Start with the game
+## Configure this Mac
 
-Use Xcode 27 and its Metal toolchain. Open the project, select **NeonStack / My Mac**, and press **Command-R**.
+Use Xcode 27 and its Metal toolchain. Configure a project write token once.
 
 ```sh
-open examples/neon-stack/NeonStack.xcodeproj
 tools/install-companion.sh
 ~/.local/bin/logfire-apple configure --region us
 ~/.local/bin/logfire-apple doctor --send
@@ -29,6 +28,14 @@ tools/install-companion.sh
 
 The configuration command hides token input and saves a private runtime file outside the application and Git.
 Ordinary runs export directly. They need no Python, relay, or observer daemon.
+
+## Run the reference game
+
+```sh
+open examples/neon-stack/NeonStack.xcodeproj
+```
+
+Select **NeonStack / My Mac** and press **Command-R**.
 The game still runs if telemetry is unavailable. The [game guide](examples/neon-stack/README.md) covers controls and workloads.
 
 ## Add the SDK to your own app
@@ -50,6 +57,8 @@ Add `FrameRecorder` and the independent responsiveness monitor for performance m
 The [SDK guide](docs/swift-sdk.md) explains direct configuration, Metal callbacks, signposts, and delayed MetricKit reports.
 The SDK supports macOS 14 and iOS 17. The deeper native companion workflows require macOS 27 and Xcode 27.
 Physical iOS runtime and real daily MetricKit delivery remain unverified.
+The independent [Swift 6 consumer](examples/sdk-consumer/README.md) pins a reviewed public revision and links only the SDK product.
+Use it on a tester Mac to verify setup, async parentage, and live delivery before a wider pilot.
 
 ## Inspect a session
 
@@ -66,7 +75,8 @@ Use [Apple Development Workflow](dashboards/apple-development.json) for the comp
 | Operations, gameplay events, frame histograms, queue delay and CPU windows | App + Swift SDK | During app sessions |
 | Host load and memory context | Native companion | During builds, scenarios and live attach |
 | Build timing and task totals | Companion + Xcode | During and after a build |
-| Presented frames and selected Apple resource measurements | Apple tools + companion | Explicit attach or retained capture |
+| Presented frame cadence | Swift SDK + Metal drawable observation | During onscreen sessions |
+| Layer and process resource measurements | Apple tools + companion | Live attach or retained capture |
 | Running CPU callers, GPU replay costs, native thread states and drawable waits | Apple tools + companion | Targeted capture and analysis |
 | Daily metrics and selected diagnostics | MetricKit + SDK adapter | Apple's delayed delivery |
 
@@ -75,7 +85,7 @@ Builds have their own traces. Automated runs connect SDK records under `developm
 Offline imports carry the original run trace ID, session ID and capture ID in a separate analysis trace.
 Manual Command-R records share session/build identity; they do not automatically share one root span.
 
-Callback cadence differs from presented FPS. GPU command sums differ from utilization.
+The SDK reports callback cadence and optional presented FPS separately. GPU command sums differ from utilization.
 Native wait intervals overlap CPU states. Replay shader costs describe the captured replay.
 See [the telemetry catalog](docs/telemetry-metrics.md) and [dashboard and trace review](docs/session-review.md) for the exact scopes.
 The [measured CPU case](docs/cpu-investigation.md) verifies CPU savings with callback rate near 60 Hz.
@@ -96,10 +106,12 @@ See [the native workflow](docs/native-workflow.md) for builds, live attach, impo
 ```sh
 tools/check-dev.sh          # Local checks and cached macOS Debug build
 tools/check-dev.sh --smoke  # Also run a short SDK session
+tools/check-presentation.sh # Opt-in normal versus half-rate onscreen verification
 ```
 
 Default checks add no profiler, Simulator, or Xcode CI. The normal scenario app deadline remains 20 seconds.
-Native launch and recorder finalization still need consolidation before a fully unattended timeline workflow.
+The [presentation verification](examples/presentation-probe/README.md) checks a controlled submission policy through real scenario reports and diagnosis.
+Native app launch and shared profiler cancellation still need consolidation before a fully unattended timeline workflow.
 The exporter has bounded batches and no persistent offline queue. Abrupt debugger stops can lose the final batch.
 
 [PROJECT.txt](docs/PROJECT.txt) gives the compact terminology. [WORKLOG.txt](docs/WORKLOG.txt) records experiments, decisions, and remaining gaps.

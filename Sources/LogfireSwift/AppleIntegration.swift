@@ -8,7 +8,7 @@ import UIKit
 import StateReporting
 #endif
 
-public struct AppleMonitoring {
+public struct AppleMonitoring: Sendable {
     public var metricKit: Bool
     public var responsiveness: Bool
     public var stateDomains: Set<String>
@@ -83,11 +83,15 @@ private struct SDKStateMetadata: ReportableMetadata {
 
 #endif
 
-final class AppleLifecycle {
+/// Observer registration is immutable after init. Flush requests use the queue or main actor.
+final class AppleLifecycle: @unchecked Sendable {
     private var observers: [NSObjectProtocol] = []
     private let queue = DispatchQueue(label: "dev.logfire.swift.lifecycle")
+#if os(iOS)
+    @MainActor private var backgroundFlush: BackgroundFlush?
+#endif
 
-    init(flush: @escaping () -> Void) {
+    init(flush: @escaping @Sendable () -> Void) {
 #if os(macOS)
         let names = [NSApplication.didResignActiveNotification, NSApplication.willTerminateNotification]
 #elseif os(iOS)
@@ -97,10 +101,48 @@ final class AppleLifecycle {
 #endif
         for name in names {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+#if os(iOS)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if backgroundFlush == nil { backgroundFlush = BackgroundFlush(queue: queue, flush: flush) }
+                    backgroundFlush?.start()
+                }
+#else
                 self?.queue.async(execute: flush)
+#endif
             })
         }
     }
 
     deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
 }
+
+#if os(iOS)
+@MainActor
+private final class BackgroundFlush {
+    private let queue: DispatchQueue
+    private let flush: @Sendable () -> Void
+    private var token = UIBackgroundTaskIdentifier.invalid
+    private var running = false
+
+    init(queue: DispatchQueue, flush: @escaping @Sendable () -> Void) {
+        self.queue = queue; self.flush = flush
+    }
+
+    func start() {
+        guard !running else { return }
+        running = true
+        token = UIApplication.shared.beginBackgroundTask(withName: "Logfire telemetry") { self.endLease() }
+        queue.async { [self, flush] in
+            flush()
+            Task { @MainActor in self.endLease(); self.running = false }
+        }
+    }
+
+    private func endLease() {
+        guard token != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(token)
+        token = .invalid
+    }
+}
+#endif

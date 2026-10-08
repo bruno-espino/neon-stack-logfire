@@ -1,5 +1,7 @@
 import Foundation
 import XCTest
+import OpenTelemetrySdk
+import os
 #if os(macOS)
 import AppKit
 #endif
@@ -32,7 +34,7 @@ final class FrameRecorderTests: XCTestCase {
         XCTAssertEqual(window.attributes["session_id"], .string(client.sessionID))
     }
 
-    func testDetailChangesDiscardMixedWorkloadSamples() throws {
+    func testDetailChangesPreserveSeparatePartialWindows() throws {
         let exporter = CaptureExporter()
         let client = Logfire(serviceName: "frame-test", exporter: exporter)
         let recorder = FrameRecorder(client: client, stateDomain: "test.frames.\(UUID())", spanName: "test.window", began: 0)
@@ -43,7 +45,12 @@ final class FrameRecorderTests: XCTestCase {
                 context: context, attributes: [:], uptime: time, wallTime: Date(timeIntervalSince1970: time))
         }
         recorder.finish()
-        let window = try XCTUnwrap(exporter.spans.first { $0.name == "test.window" })
+        let windows = exporter.spans.filter { $0.name == "test.window" }
+        XCTAssertEqual(windows.count, 2)
+        let partial = try XCTUnwrap(windows.first { $0.attributes["detail"] == .int(8) })
+        XCTAssertEqual(partial.attributes["frames"], .int(1))
+        XCTAssertEqual(partial.attributes["window.partial"], .bool(true))
+        let window = try XCTUnwrap(windows.first { $0.attributes["detail"] == .int(48) })
         XCTAssertEqual(window.attributes["frames"], .int(2))
         XCTAssertEqual(window.attributes["detail"], .int(48))
         XCTAssertEqual(window.attributes["frame_interval_p95_ms"], .double(82))
@@ -52,12 +59,96 @@ final class FrameRecorderTests: XCTestCase {
         XCTAssertEqual(exporter.spans.filter { $0.name == "app.state" }.count, 2)
     }
 
+    func testFlushPublishesPartialSamplesOnceAndFinishStopsRecording() throws {
+        let spans = CaptureExporter(), metrics = CaptureMetricExporter()
+        let client = Logfire(serviceName: "partial-test", exporter: spans, metricExporter: metrics)
+        let recorder = FrameRecorder(client: client, stateDomain: "test.partial", spanName: "window", began: 0)
+        let context = RenderContext(mode: "test", width: 42, height: 42)
+        for time in [2.0, 3.0] {
+            recorder.record(frameMilliseconds: 10, preparationMilliseconds: 1, gpuMilliseconds: nil,
+                context: context, attributes: [:], uptime: time, wallTime: Date(timeIntervalSince1970: time))
+        }
+        client.flush()
+        client.flush()
+        recorder.finish(uptime: 4)
+        recorder.record(frameMilliseconds: 10, preparationMilliseconds: 1, gpuMilliseconds: nil,
+            context: context, attributes: [:], uptime: 5, wallTime: Date())
+        recorder.finish(uptime: 6)
+        let windows = spans.spans.filter { $0.name == "window" }
+        XCTAssertEqual(windows.count, 1)
+        XCTAssertEqual(windows.first?.attributes["frames"], .int(2))
+        XCTAssertEqual(windows.first?.attributes["window.partial"], .bool(true))
+        let histograms = metrics.metrics.filter { $0.name == "game.frame.interval" }
+        XCTAssertEqual(histograms.flatMap { $0.data.points }.compactMap { ($0 as? HistogramPointData)?.count }.reduce(0, +), 2)
+    }
+
+    func testPresentedCadenceUsesSortedValidDisplayTimesAndExportsTheTail() throws {
+        let spans = CaptureExporter(), metrics = CaptureMetricExporter()
+        let client = Logfire(serviceName: "display-test", exporter: spans, metricExporter: metrics)
+        let recorder = FrameRecorder(client: client, stateDomain: "test.display", spanName: "window", began: 0)
+        let context = RenderContext(mode: "test", width: 42, height: 42)
+        recorder.record(frameMilliseconds: 10, preparationMilliseconds: 1, gpuMilliseconds: nil,
+            context: context, attributes: [:], uptime: 2, wallTime: Date(timeIntervalSince1970: 2))
+        for time in [100.0 + 2.0 / 30, 100.0, 100.0 + 1.0 / 30, 0, Double.nan] {
+            recorder.recordPresentation(time: time, target: 100, context: context)
+        }
+        recorder.record(frameMilliseconds: 10, preparationMilliseconds: 1, gpuMilliseconds: nil,
+            context: context, attributes: [:], uptime: 7, wallTime: Date(timeIntervalSince1970: 7))
+        recorder.recordPresentation(time: 100 + 3.0 / 30, context: context)
+        recorder.finish(uptime: 7.1)
+        let windows = spans.spans.filter { $0.name == "window" }
+        XCTAssertEqual(windows.count, 2)
+        let complete = try XCTUnwrap(windows.first { $0.attributes["window.partial"] == .bool(false) })
+        XCTAssertEqual(complete.attributes["render_callback_fps"], .double(100))
+        guard case .double(let fps) = complete.attributes["display_presented_fps"] else { return XCTFail("Missing presented FPS") }
+        XCTAssertEqual(fps, 30, accuracy: 0.001)
+        XCTAssertEqual(complete.attributes["display_presented_frames"], .int(3))
+        XCTAssertEqual(complete.attributes["display_timestamp_unavailable"], .int(2))
+        let tail = try XCTUnwrap(windows.first { $0.attributes["window.partial"] == .bool(true) })
+        XCTAssertEqual(tail.attributes["frames"], .int(0))
+        XCTAssertEqual(tail.attributes["display_presented_frames"], .int(1))
+        XCTAssertNil(tail.attributes["render_callback_fps"])
+        let intervals = metrics.metrics.filter { $0.name == "game.display.present.interval" }
+        XCTAssertEqual(intervals.flatMap { $0.data.points }.compactMap { ($0 as? HistogramPointData)?.count }.reduce(0, +), 3)
+        let confirmed = metrics.metrics.filter { $0.name == "game.display.present.count" }
+        XCTAssertEqual(confirmed.flatMap { $0.data.points }.compactMap { ($0 as? LongPointData)?.value }.reduce(0, +), 4)
+    }
+
+    func testConcurrentReportCallbacksCanRequestFlushWithoutWaitingOnEachOther() {
+        let spans = CaptureExporter()
+        let client = Logfire(serviceName: "callback-flush", exporter: spans)
+        let reports = expectation(description: "Both callbacks return from flush")
+        reports.expectedFulfillmentCount = 2
+        let arrived = DispatchGroup()
+        arrived.enter(); arrived.enter()
+        let callback: @Sendable (FrameWindow) -> Void = { _ in
+            arrived.leave()
+            _ = arrived.wait(timeout: .now() + 1)
+            client.flush()
+            reports.fulfill()
+        }
+        let first = FrameRecorder(client: client, stateDomain: "first", spanName: "window", began: 0, onWindow: callback)
+        let second = FrameRecorder(client: client, stateDomain: "second", spanName: "window", began: 0, onWindow: callback)
+        let context = RenderContext(mode: "test", width: 42, height: 42)
+        for recorder in [first, second] {
+            for time in [2.0, 7.0] {
+                recorder.record(frameMilliseconds: 10, preparationMilliseconds: 1, gpuMilliseconds: nil,
+                    context: context, attributes: [:], uptime: time, wallTime: Date(timeIntervalSince1970: time))
+            }
+        }
+        wait(for: [reports], timeout: 3)
+        client.flush()
+        XCTAssertEqual(spans.spans.filter { $0.name == "window" }.count, 2)
+        withExtendedLifetime([first, second]) {}
+    }
+
     func testInvalidDurationsDoNotCreateFakeGpuSamples() throws {
         let exporter = CaptureExporter()
         let client = Logfire(serviceName: "frame-test", exporter: exporter)
-        var report: Data?
+        let report = OSAllocatedUnfairLock<Data?>(initialState: nil)
         let recorder = FrameRecorder(client: client, stateDomain: "test.frames.\(UUID())", spanName: "test.window", began: 0) {
-            report = try? $0.encodedReport()
+            let data = try? $0.encodedReport()
+            report.withLock { $0 = data }
         }
         let context = RenderContext(mode: "classic", width: 600, height: 1200)
         for (time, frame, gpu) in [(2.0, 16.0, Double.nan), (3, Double.nan, 1), (7, 16, -2)] {
@@ -65,7 +156,7 @@ final class FrameRecorderTests: XCTestCase {
                 context: context, attributes: [:], uptime: time, wallTime: Date(timeIntervalSince1970: time))
         }
         recorder.finish()
-        let value = try JSONSerialization.jsonObject(with: XCTUnwrap(report)) as? [String: Any]
+        let value = try JSONSerialization.jsonObject(with: XCTUnwrap(report.withLock { $0 })) as? [String: Any]
         XCTAssertEqual(value?["frames"] as? Int, 2)
         XCTAssertEqual(value?["gpu_samples"] as? Int, 0)
         XCTAssertNil(value?["gpu_command_p95_ms"])
