@@ -662,3 +662,28 @@ The hosted overview and detailed dashboards match both updated panels. Readback 
 All four changed panel queries return real session data. Browser inspection shows callback and presented cadence as separate chart series.
 A Swift 6 consumer compiles actor-owned state and concurrent tasks with warnings treated as errors.
 A real async probe sends one parent, eight children, and eight resumed events. Logfire queries confirm all seventeen records and exact parent IDs in one trace.
+
+2026-10-08: Controlled presentation diagnosis and independent package pilot
+Merged the native SDK iteration in PR 19. The video stays in PR 16 for collaborator review.
+Added two opt-in twelve-second Metal policies through the existing generic scenario runner.
+The verified normal session reports 59.88 callbacks/s and 59.60 presented FPS. Half-rate reports 59.99 and 30.00.
+Logfire confirms their shared build identity, separate run traces, linked SDK records, and half-rate presentation finding.
+Raw metrics retain all partial-window samples. Normal has 620 callbacks and 620 confirmed presentations. Half-rate has 607 and 303.
+The new presentation_cadence_gap finding suggests submission-policy and pacing checks. It does not identify GPU saturation or count missed refreshes.
+Rejected a zero-unknown requirement after two unavailable timestamps hid a clear half-rate policy.
+Each unknown timestamp now gets one extra presentation in the observed interval before the 80% heuristic selects an investigation.
+Rejected runs with no valid presentation timestamps or no full window after focus-triggered flushes. Missing FPS stays absent.
+A valid final assertion exposed live-process revalidation near app exit. The runner now checks its owned child's retained launch identity.
+It revalidates the final marker, binary hash, and embedded build metadata. Natural exits pass; wrong identity and changed builds fail.
+One driver edit overlapped a running shell script. Its retained app reports passed the independent verifier.
+The stable driver then completed both app assertions but correctly failed cadence verification after the windows became occluded.
+The optional probe now uses a small floating window to reduce this interference. Game window behavior stays unchanged.
+The visible paired evidence and Logfire queries prove the diagnosis. Occluded runs do not prove display cadence.
+An independent Swift 6 package consumer pins the public SDK revision and links only LogfireSwift.
+Its cold build and export pass. Logfire confirms exactly one async parent and its child event in one trace.
+Consolidated setup in the README and added a second-Mac pilot checklist. No credential enters the binary or repository.
+Another Mac, physical iOS delivery, and daily MetricKit delivery remain unverified. GPU counter overhead waits for a quieter host.
+The default check retains the cached macOS build and short local tests. No GUI probe, Simulator, profiler, longer deadline, or Xcode CI is added.
+The full development check passes 104 Swift tests, game logic, repository checks, formatting, and the macOS Debug build.
+The final changed-build assertion also passes its focused scenario suite.
+The final floating-window command passes both policies and the verifier. Logfire queries reproduce rates, parent IDs, build identity, and every metric sample.

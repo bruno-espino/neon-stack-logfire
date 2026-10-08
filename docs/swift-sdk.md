@@ -29,7 +29,8 @@ Alternatively, use the companion's hidden-input configuration command below.
 
 Operation spans work without build integration.
 Build correlation requires an application resource named `LogfireBuild.json`.
-The current embedding script is a NeonStack example. It is not a generic project installer.
+The example build phase calls `tools/embed-build.swift` with explicit app-source and package roots.
+Adapt that phase to your target. The companion does not install it automatically.
 Capture and attach can use another instrumented macOS app's verified session marker.
 The automated `test-game` action controls only the NeonStack reference game.
 
@@ -51,6 +52,9 @@ Synchronous SDK operations still activate the upstream OTel context.
 Retain one client. Do not create a client for each frame or operation.
 
 ## Configure once
+
+The [repository setup](../README.md#configure-this-mac) supplies the shortest reference-game path.
+Use the independent [Swift 6 consumer](../examples/sdk-consumer/README.md) to verify a package-only app.
 
 Install the companion with [the native setup guide](native-workflow.md#install-once).
 Run `logfire-apple configure --region us`.

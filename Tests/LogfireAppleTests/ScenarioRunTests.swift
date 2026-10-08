@@ -87,7 +87,7 @@ final class ScenarioRunTests: XCTestCase {
         try assertFixture(executable: "/bin/sh", arguments: ["-c", "exit 2"], seconds: "2", expected: 2)
     }
 
-    func testProtocolCompletionProducesPassedAndIncompleteReportsAndReapsBothApps() throws {
+    func testProtocolCompletionValidatesIdentityForStoppedAndNaturallyExitedApps() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let app = folder.appendingPathComponent("Fixture.app"), contents = app.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents.appendingPathComponent("MacOS"), withIntermediateDirectories: true)
@@ -98,10 +98,16 @@ final class ScenarioRunTests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         let pid = ProcessInfo.processInfo.processIdentifier
         let session = env["LOGFIRE_SESSION_ID"]!
-        let marker: [String: Any] = ["session_id": session, "pid": pid,
-            "executable": CommandLine.arguments[0], "started_at": Date().timeIntervalSince1970]
+        let markerSession = env["WRONG_MARKER"] == "1" ? UUID().uuidString : session
+        let marker: [String: Any] = ["session_id": markerSession, "pid": pid,
+            "executable": CommandLine.arguments[0], "started_at": Date().timeIntervalSince1970, "build.id": "fixture-build"]
         let sessions = URL(fileURLWithPath: env["LOGFIRE_SESSION_DIR"]!)
         try JSONSerialization.data(withJSONObject: marker).write(to: sessions.appendingPathComponent("\(pid).json"), options: .atomic)
+        if env["CHANGE_BUILD"] == "1" {
+            let resource = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Resources/LogfireBuild.json")
+            try JSONSerialization.data(withJSONObject: ["build.id": "changed-build"]).write(to: resource, options: .atomic)
+        }
         let status = URL(fileURLWithPath: env["LOGFIRE_SCENARIO_STATUS"]!)
         if env["INVALID_FRAME"] == "1" {
             try Data("invalid retained JSON".utf8).write(to: status.deletingLastPathComponent().appendingPathComponent("performance.jsonl"))
@@ -110,7 +116,7 @@ final class ScenarioRunTests: XCTestCase {
             "session_id": session, "pid": pid, "ready": true, "phase": "passed",
             "recorded_at": Date().timeIntervalSince1970, "details": ["assertion": "passed"]]
         try JSONSerialization.data(withJSONObject: completion).write(to: status, options: .atomic)
-        Thread.sleep(forTimeInterval: 10)
+        if env["NATURAL_EXIT"] != "1" { Thread.sleep(forTimeInterval: 10) }
         """#
         try program.write(to: source, atomically: true, encoding: .utf8)
         let compilation = try HostCommand.run("/usr/bin/xcrun", ["swiftc", source.path, "-o", command.path],
@@ -119,22 +125,37 @@ final class ScenarioRunTests: XCTestCase {
         let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleExecutable": "Fixture",
             "CFBundleIdentifier": "dev.example.ScenarioFixture", "CFBundlePackageType": "APPL"], format: .xml, options: 0)
         try plist.write(to: contents.appendingPathComponent("Info.plist"))
-        for (invalid, expected, expectedStatus) in [("0", Int32(0), "passed"), ("1", Int32(2), "incomplete")] {
-            let spec = folder.appendingPathComponent("scenario.json"), out = folder.appendingPathComponent("output-" + invalid)
+        let resources = contents.appendingPathComponent("Resources")
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["build.id": "fixture-build"])
+            .write(to: resources.appendingPathComponent("LogfireBuild.json"))
+        for (name, environment, expected, expectedStatus) in [
+            ("passed", ["INVALID_FRAME": "0"], Int32(0), "passed"),
+            ("incomplete", ["INVALID_FRAME": "1"], Int32(2), "incomplete"),
+            ("natural-exit", ["NATURAL_EXIT": "1"], Int32(0), "passed"),
+            ("wrong-marker", ["NATURAL_EXIT": "1", "WRONG_MARKER": "1"], Int32(1), "failed"),
+            ("changed-build", ["NATURAL_EXIT": "1", "CHANGE_BUILD": "1"], Int32(1), "failed"),
+        ] {
+            let spec = folder.appendingPathComponent("scenario.json"), out = folder.appendingPathComponent("output-" + name)
             try JSONEncoder().encode(ScenarioDefinition(schemaVersion: 1, id: "fixture", arguments: [],
-                environment: ["INVALID_FRAME": invalid], requireFrameWindows: false)).write(to: spec)
+                environment: environment, requireFrameWindows: false)).write(to: spec)
             XCTAssertEqual(try ScenarioRun.run(["--app", app.path, "--scenario", spec.path, "--seconds", "3",
                 "--output", out.path, "--no-telemetry"]), expected)
             let run = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: out, includingPropertiesForKeys: nil).first)
             let report = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: run.appendingPathComponent("report.json"))) as? [String: Any])
             XCTAssertEqual(report["status"] as? String, expectedStatus)
             XCTAssertEqual((report["exit_code"] as? NSNumber)?.int32Value, expected)
-            XCTAssertEqual((report["scenario.details"] as? [String: String])?["assertion"], "passed")
+            if expectedStatus != "failed" {
+                XCTAssertEqual((report["scenario.details"] as? [String: String])?["assertion"], "passed")
+            }
             let pid = try XCTUnwrap((report["app.pid"] as? NSNumber)?.int32Value)
             var status: Int32 = 0
             XCTAssertEqual(waitpid(pid, &status, WNOHANG), -1)
             XCTAssertEqual(errno, ECHILD)
-            if invalid == "1" { XCTAssertEqual(report["issues"] as? [String], ["Frame evidence is invalid."]) }
+            if name == "incomplete" { XCTAssertEqual(report["issues"] as? [String], ["Frame evidence is invalid."]) }
+            if name == "changed-build" {
+                XCTAssertEqual(report["issues"] as? [String], ["The app identity changed or became unavailable during the scenario."])
+            }
         }
     }
 

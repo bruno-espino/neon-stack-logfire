@@ -81,7 +81,9 @@ Keep the short native development loop. Xcode CI remains deferred by request.
 Preserve input limits and banner/trailing-data policies before consolidating the two JSON scanners.
 Migrate command errors, report dictionaries, and public attribute types in focused compatible changes.
 Investigate waiting/concurrency and startup evidence only when existing observations justify the capture.
-Verify setup on another tester Mac before reusable release packaging and version tags.
+Use examples/sdk-consumer to verify SDK-only setup on another tester Mac before release packaging and version tags.
+Use tools/check-presentation.sh for optional normal versus half-rate diagnosis verification.
+Presentation cadence gap selects a pacing investigation after an allowance for unknown timestamps. It is not a dropped-frame count.
 Validate demand with Metal developers who already use Instruments or Tracy. Workflow convenience alone does not prove a market.
 Keep the Swift SDK as the normal app integration. Test engine adapters for the same identity/assertion protocol before claiming broader support.
 

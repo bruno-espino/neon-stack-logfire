@@ -364,6 +364,10 @@ logfire-apple diagnose --report PATH/TO/report.json
 ```
 
 This command rebuilds the local diagnosis. It does not launch the application, record another profile, or export telemetry.
+For onscreen full windows, `presentation_cadence_gap` selects rates below 80% of callback cadence after an allowance for unavailable timestamps.
+It requires at least ten valid presentation intervals and excludes capped sample windows.
+Intentional presentation limits also produce this finding. It does not identify a GPU bottleneck or count missed refreshes.
+Use [the controlled presentation probe](../examples/presentation-probe/README.md) to verify this distinction.
 The local `diagnostic.gpuReplays` array includes each accepted GPU capture's identity, replay mode, and selected encoder and shader measurements.
 Each capture has at most three encoders and three shaders. Empty or invalid evidence leaves an observation gap.
 Replay costs describe captured workloads. They do not measure live utilization, presentation latency, or CPU waits.

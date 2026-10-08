@@ -8,6 +8,72 @@ final class SessionDiagnosticsTests: XCTestCase {
             "app.pid": 42, "run.started_at": 100.0, "app.duration_seconds": 12.0, "profile.requested": profile, "issues": [String]()]
     }
 
+    private func presentationWindow(fps: Double = 30) -> [String: Any] {
+        ["frames": 300, "frames_over_25_ms": 0, "render_callback_fps": 60.0, "display_presented_fps": fps,
+         "display_presentation_intervals": 149, "display_timestamp_unavailable": 0,
+         "display_time.source": "metal.drawable.presented_time", "window_seconds": 5.0,
+         "recorded_at": 110.0, "workload": "onscreen", "window.partial": false]
+    }
+
+    func testPresentationGapSelectsPacingInvestigationWithoutBlamingTheGPU() throws {
+        let diagnostic = SessionDiagnostics.make(report: report(), folder: URL(fileURLWithPath: "/synthetic"),
+            windows: [presentationWindow(fps: 60), presentationWindow()], responsiveness: [], cpu: nil, artifacts: [], gaps: [])
+        let finding = try XCTUnwrap(diagnostic.findings.first { $0.id == "presentation_cadence_gap" })
+        XCTAssertEqual(finding.signals["display.presented_to_callback_ratio"], 0.5)
+        XCTAssertEqual(finding.signals["display.callback_hz"], 60)
+        XCTAssertEqual(finding.signals["display.presented_fps"], 30)
+        XCTAssertEqual(finding.signals["display.affected_windows"], 1)
+        XCTAssertEqual(finding.intervals.count, 1)
+        XCTAssertEqual(finding.intervals.first?.startedAt, 105)
+        XCTAssertTrue(finding.nextInvestigation.contains("Intentional presentation limits"))
+        XCTAssertFalse(finding.observation.contains("GPU"))
+        XCTAssertEqual(diagnostic.observations["display.windows_observed"], 2)
+    }
+
+    func testMatchedAndBoundaryPresentationRatesDoNotCreateAGap() {
+        for fps in [60.0, 48.0] {
+            let diagnostic = SessionDiagnostics.make(report: report(), folder: URL(fileURLWithPath: "/synthetic"),
+                windows: [presentationWindow(fps: fps)], responsiveness: [], cpu: nil, artifacts: [], gaps: [])
+            XCTAssertFalse(diagnostic.findings.contains { $0.id == "presentation_cadence_gap" })
+            XCTAssertFalse(diagnostic.observationGaps.contains { $0.contains("validated drawable") })
+        }
+    }
+
+    func testPartialOffscreenAndInvalidPresentationEvidenceCannotCreateAGap() {
+        for (key, value) in [("workload", "offscreen" as Any), ("window.partial", true),
+                             ("sample_limit_reached", true), ("display_presentation_intervals", 1),
+                             ("display_presentation_intervals", 10.5), ("display_timestamp_unavailable", -1),
+                             ("display_presented_fps", Double.nan), ("display_presented_fps", true),
+                             ("display_presented_fps", 0), ("display_time.source", "unknown")] {
+            var window = presentationWindow(); window[key] = value
+            let diagnostic = SessionDiagnostics.make(report: report(), folder: URL(fileURLWithPath: "/synthetic"),
+                windows: [window], responsiveness: [], cpu: nil, artifacts: [], gaps: [])
+            XCTAssertFalse(diagnostic.findings.contains { $0.id == "presentation_cadence_gap" }, key)
+        }
+        var absent = presentationWindow(); absent.removeValue(forKey: "display_presented_fps")
+        let diagnostic = SessionDiagnostics.make(report: report(), folder: URL(fileURLWithPath: "/synthetic"),
+            windows: [absent], responsiveness: [], cpu: nil, artifacts: [], gaps: [])
+        XCTAssertEqual(diagnostic.observations["display.windows_observed"], 0)
+        XCTAssertNil(diagnostic.observations["display.presented_fps"])
+        XCTAssertTrue(diagnostic.observationGaps.contains { $0.contains("validated drawable") })
+    }
+
+    func testUnknownTimestampAllowanceKeepsSmallGapsAndSuppressesAmbiguousRates() throws {
+        for (unknown, expected) in [(2, true), (149, false)] {
+            var window = presentationWindow(); window["display_timestamp_unavailable"] = unknown
+            let diagnostic = SessionDiagnostics.make(report: report(), folder: URL(fileURLWithPath: "/synthetic"),
+                windows: [window], responsiveness: [], cpu: nil, artifacts: [], gaps: [])
+            let finding = diagnostic.findings.first { $0.id == "presentation_cadence_gap" }
+            XCTAssertEqual(finding != nil, expected)
+            if expected {
+                XCTAssertEqual(try XCTUnwrap(finding).signals["display.timestamp_unavailable"], 2)
+                XCTAssertEqual(try XCTUnwrap(finding?.signals["display.ratio_with_unknown_allowance"]), 0.5 * 151 / 149, accuracy: 0.000001)
+            } else {
+                XCTAssertTrue(diagnostic.observationGaps.contains { $0.contains("timestamps can explain") })
+            }
+        }
+    }
+
     func testBusyAndIdleStallWindowsSelectDifferentInvestigationsWithoutClaimingCause() {
         for (cpu, expected) in [(0.9, "Time Profiler"), (0.01, "System Trace")] {
             let diagnostic = SessionDiagnostics.make(report: report(), folder: URL(fileURLWithPath: "/synthetic"), windows: [],
