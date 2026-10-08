@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Img, OffthreadVideo, interpolate, interpolateColors, staticFile, useCurrentFrame, useVideoConfig, spring} from 'remotion';
+import {AbsoluteFill, Img, Loop, OffthreadVideo, interpolate, interpolateColors, staticFile, useCurrentFrame, useVideoConfig, spring} from 'remotion';
 import data from '../data.json';
 import {C, fire, mono, sans} from '../theme';
 import {Atmosphere, Embers, Headline, Kicker, Panel, Pill, count, progress} from '../components/kit';
@@ -21,14 +21,17 @@ const Note: React.FC<{children: React.ReactNode; delay?: number}> = ({children, 
   const body = <div style={{fontFamily: mono, fontSize: 23, lineHeight: 1.55, color: C.dim, marginTop: 28}}>{children}</div>;
   return delay === undefined ? body : <Rise delay={delay} distance={18}>{body}</Rise>;
 };
-const Game: React.FC<{footage: boolean; start?: number}> = ({footage, start = 0}) => footage
-  ? <OffthreadVideo src={staticFile('footage/log-roll.mp4')} muted startFrom={start} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
-  : <KenBurns src={staticFile('log-roll.jpg')} />;
+const Game: React.FC<ReelProps> = ({footage}) => {
+  const {fps} = useVideoConfig();
+  return footage
+    ? <Loop durationInFrames={8 * fps}><OffthreadVideo src={staticFile('footage/log-roll.mp4')} muted style={{width: '100%', height: '100%', objectFit: 'cover'}} /></Loop>
+    : <KenBurns src={staticFile('log-roll.jpg')} />;
+};
 
 export const Intro: React.FC<SceneProps> = ({footage}) => {
   const frame = useCurrentFrame();
   return <AbsoluteFill style={{background: C.bg}}>
-    <AbsoluteFill style={{opacity: 0.5, transform: `scale(${1.08 + frame / 2500}) translateX(${-frame / 30}px)`}}><Game footage={footage} start={30} /></AbsoluteFill>
+    <AbsoluteFill style={{opacity: 0.5, transform: `scale(${1.08 + frame / 2500}) translateX(${-frame / 30}px)`}}><Game footage={footage} /></AbsoluteFill>
     <AbsoluteFill style={{background: 'linear-gradient(90deg, #0a0706f5 10%, #0a070670)'}} />
     <Embers count={60} intensity={0.9} seed="intro" />
     <AbsoluteFill style={{justifyContent: 'center', padding: 130}}>
@@ -115,7 +118,7 @@ export const Performance: React.FC<SceneProps> = ({footage}) => {
   const landed = spring({frame: frame - 205, fps: rate, config: {damping: 9, stiffness: 160}});
   const cpu = count(frame, 120, 70, data.cpuCase.beforeMedian, data.cpuCase.afterMedian);
   return <AbsoluteFill style={{background: C.bg}}>
-    <AbsoluteFill style={{opacity: 0.65, transform: `scale(${1.1 + frame / 3000})`}}><Game footage={footage} start={90} /></AbsoluteFill>
+    <AbsoluteFill style={{opacity: 0.65, transform: `scale(${1.1 + frame / 3000})`}}><Game footage={footage} /></AbsoluteFill>
     <AbsoluteFill style={{background: 'linear-gradient(90deg, #0a0706f5 5%, #0a070680 80%)'}} />
     <Embers count={40} intensity={0.7} seed="perf" />
     <div style={{position: 'absolute', left: 120, top: 100}}>
@@ -125,7 +128,7 @@ export const Performance: React.FC<SceneProps> = ({footage}) => {
     </div>
     <Rise delay={40} distance={60} style={{position: 'absolute', right: 120, bottom: 130, width: 680}}>
       <Panel style={{padding: '35px 48px', position: 'relative'}} glow={`${color}33`}>
-        <Pill color={C.ok}>MEASURED FPS FIX</Pill>
+        <Pill color={C.ok}>REPORTED LOG ROLL FIX</Pill>
         <div style={{fontFamily: sans, fontWeight: 800, fontSize: 200, lineHeight: 1.1, color, marginTop: 25, fontVariantNumeric: 'tabular-nums',
           transform: `scale(${1 + 0.06 * Math.sin(Math.min(1, landed) * Math.PI) * (frame > 205 ? 1 : 0)})`, transformOrigin: 'left center',
           textShadow: `0 0 ${30 + 30 * rise}px ${color}55`}}>{fps}<span style={{fontSize: 50, color: C.dim}}> FPS</span></div>
@@ -254,10 +257,11 @@ export const Dashboard: React.FC<SceneProps> = () => {
 
 export const Montage: React.FC<SceneProps> = ({footage}) => {
   const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
   const games = [
-    {name: 'LOG ROLL', file: 'log-roll', note: 'Compute particles + glow', start: 120},
-    {name: 'FLAPPY LOG', file: 'flappy-log', note: 'Particles + scrolling world', start: 60},
-    {name: 'NEON STACK', file: 'log-stack', note: 'Falling blocks + Metal effects', start: 520},
+    {name: 'LOG ROLL', file: 'log-roll', note: 'Compute particles + glow'},
+    {name: 'FLAPPY LOG', file: 'flappy-log', note: 'Particles + scrolling world'},
+    {name: 'NEON STACK', file: 'log-stack', note: 'Falling blocks + Metal effects'},
   ];
   return <AbsoluteFill style={{background: C.bg}}>
     <div style={{position: 'absolute', inset: 0, display: 'flex', gap: 12}}>
@@ -266,7 +270,7 @@ export const Montage: React.FC<SceneProps> = ({footage}) => {
         return <div key={game.file} style={{flex: 1, overflow: 'hidden', position: 'relative', clipPath: `inset(${(1 - p) * 100}% 0 0 0)`}}>
           <div style={{position: 'absolute', inset: 0, transformOrigin: game.file === 'log-stack' ? '50% 0%' : '50% 50%',
             transform: game.file === 'log-stack' ? `translateY(-24%) scale(${1.08 - 0.05 * p + frame / 3000})` : `scale(${1.25 - 0.12 * p + frame / 2000})`}}>
-            {footage ? <OffthreadVideo src={staticFile(`footage/${game.file}.mp4`)} muted startFrom={game.start} style={{width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center bottom'}} />
+            {footage ? <Loop durationInFrames={8 * fps}><OffthreadVideo src={staticFile(`footage/${game.file}.mp4`)} muted style={{width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center bottom'}} /></Loop>
               : <Img src={staticFile(`${game.file}.jpg`)} style={{width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center bottom'}} />}
           </div>
           <div style={{position: 'absolute', inset: 0, background: 'linear-gradient(0deg, #0a0706f5, transparent 65%)'}} />

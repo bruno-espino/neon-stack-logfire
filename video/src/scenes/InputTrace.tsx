@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Img, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Img, Loop, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {C, mono, sans} from '../theme';
 import {Atmosphere, Embers, Headline, Kicker, Panel, Pill, progress} from '../components/kit';
 import {KenBurns, Rise} from '../components/motion';
@@ -43,7 +43,7 @@ export const InputTrace: React.FC<ReelProps & {duration: number}> = ({footage}) 
     <div style={{display: 'flex', gap: 48, marginTop: 35, alignItems: 'center'}}>
       <Rise delay={6} distance={60}><Panel style={{width: 365, height: 730, overflow: 'hidden', flexShrink: 0}} glow={`${C.ember}33`}>
         {footage
-          ? <OffthreadVideo src={staticFile('footage/log-stack.mp4')} muted startFrom={380} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+          ? <Loop durationInFrames={8 * fps}><OffthreadVideo src={staticFile('footage/log-stack.mp4')} muted style={{width: '100%', height: '100%', objectFit: 'cover'}} /></Loop>
           : <KenBurns src={staticFile('log-stack.jpg')} from={1.02} to={1.1} />}
       </Panel></Rise>
       <div style={{flex: 1, minWidth: 0}}>

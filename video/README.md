@@ -1,7 +1,7 @@
 # Apple Metal + Logfire showcase
 
 A 77-second React video built with [Remotion](https://www.remotion.dev).
-It presents SDK setup, game input spans, trace correlation, a flashy FPS scenario, native CPU/GPU capabilities, and a real Logfire dashboard.
+It presents SDK setup, game input spans, trace correlation, a reported Log Roll FPS fix, native CPU/GPU capabilities, and a real Logfire dashboard.
 The shared ember theme and animation components preserve the original reel's visual style.
 
 ![Input operations beside gameplay feedback](public/input-trace-preview.jpg)
@@ -37,12 +37,13 @@ npm run render:footage
 The script records fixed-clock footage at 60 FPS and disables telemetry export.
 It generates Log Roll, Flappy Log and Neon Stack clips. The current reel includes all three workloads.
 These clips illustrate gameplay. They do not supply the performance figures.
+The reel loops each clip's first eight seconds. Longer scenes keep moving, and all source offsets stay within the included footage.
 Raw footage and rendered outputs stay outside Git.
 
 ## Data and claims
 
-The 45 → 117 FPS animation shows a measured Log Roll fix. See [the presentation notes](../docs/presentation.md) for the method.
-It shows a capability and target. It does not claim that this prototype measured that improvement.
+The 45 → 117 FPS animation shows the collaborator's reported Log Roll fix. See [the presentation notes](../docs/presentation.md) for the method and evidence limits.
+It is an approximate one-run comparison. The original frame reports are not included, so the figure does not establish confirmed presented FPS.
 The `CPUCase` composition shows the separate measured CPU comparison. Render it with `npm run render:cpu`.
 
 `src/data.json` contains the ten measured CPU runs, their medians, and one native next-drawable capture.
