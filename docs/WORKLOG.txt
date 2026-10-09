@@ -705,3 +705,21 @@ A longer opt-in CPU run and Apple live attach pass. Default checks and app deadl
 Rejected filling gaps, joining unrelated sessions, and treating the busy host as a new performance baseline.
 Added a proposed Apache 2.0 license, notices, and preview changelog. Kept hosted Profiles outside the preview requirements.
 A second independent Mac, physical iOS, and daily MetricKit delivery remain unverified. No Xcode CI or local platform stack was added.
+
+2026-10-09: Separate CPU recording from scenario polling
+Reproduced a passed game assertion whose CPU recording lost finalization at the app deadline.
+Moved Time Profiler recording to a bounded worker. App polling and host sampling continue while it records.
+Reap the app before joining the recorder and decoding. The normal app deadline remains 20 seconds.
+One cancellation scope owns the app, CPU recorder, and CPU export commands until each is reaped.
+Native Ctrl-C checks pass during recording and after app exit during finalization. Both return 130 and skip decoding.
+The first worker reused the caller's OTel span object. Hosted queries exposed split analysis and summary traces.
+Rejected that context reuse. A separate non-recording wrapper carries the copied SpanContext without removing the caller's binding.
+Logfire confirms the corrected run's recording, analysis, summary, and all 102 selected CPU evidence records in one trace.
+That capture decodes 298 running samples. These counts validate collection and correlation on a busy host, not performance.
+A rebuilt-app run becomes ready too late for Instruments to attach before exit. It correctly reports incomplete evidence with exit 2.
+A warm repeat against that rebuilt app passes with 515 running samples and all 102 CPU evidence records verified in Logfire.
+The app stops after 12.44 seconds. Recorder finalization takes another 4.29 seconds, followed by 4.39 seconds of analysis.
+Late readiness, native app launch, and concurrent GPU/System Trace recording remain separate workflow gaps.
+Added four behavioral tests for independent app deadlines, shared cancellation, post-interruption spawn prevention, and context ownership.
+The full development check passes 108 Swift tests, game logic, repository checks, formatting, and the macOS Debug build.
+No profiler, Simulator, longer app deadline, Xcode CI, or local platform stack enters default checks.

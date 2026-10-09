@@ -79,7 +79,8 @@ MetricKit reports keep their historical dates and omit current-session identity.
 A shared source code revision is insufficient to claim that different workloads form a comparable cohort.
 
 The current automated trace structure is useful for investigation.
-The remaining material gaps are native app launch ownership, shared recorder cancellation, full presentation attribution, artifact sharing, and testing on another Mac.
+CPU recording now shares cancellation with its app and decoding commands. Native interruption checks cover recording and post-app finalization.
+The remaining material gaps are native app launch ownership, concurrent GPU/System Trace cancellation, full presentation attribution, artifact sharing, and testing on another Mac.
 These need validation before a release claim or a fully unattended timeline workflow.
 
 The review follows [Apple's Metal investigation guidance](https://developer.apple.com/videos/play/wwdc2026/388/)
@@ -129,6 +130,8 @@ A separate 60-second diagnostic session completed CPU recording, decoding, and e
 Live attach collected 26 Apple layer and process records during that session.
 CPU analysis exported one profile summary, 20 leaf functions, 40 inclusive callers, and 40 caller paths.
 These targeted runs validate the evidence paths. Their profiler overhead prevents baseline comparisons.
+The CPU lifecycle follow-up records beside app polling and finalizes after app reaping.
+A rebuilt-app warm run completes with the existing 20-second app deadline. Late readiness can still miss attachment and return incomplete evidence.
 The two older hosted dashboards now carry a Legacy label. Their links remain available.
 
 An additional six-case local-only audit passes with disabled exporters. It retains 6,351 frame samples and uploads no telemetry.

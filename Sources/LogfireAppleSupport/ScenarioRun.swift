@@ -224,6 +224,8 @@ enum ScenarioRun {
         var profiled = false
         var capturedGPU: CapturedGPUWorkload?
         var capturedCPU: CapturedCPURecording?
+        var cpuRecording: CPURecordingJob?
+        var finalizationDuration: Double = 0
         var appDuration: Double = 0
         var analysisDuration: Double = 0
         var analysisInterruption: Int32?
@@ -245,6 +247,8 @@ enum ScenarioRun {
         }
         var result = CommandResult(exitCode: 127, timedOut: false, requestedStop: false)
         try client.withSpan("development.run", attributes: Companion.attributes(context)) {
+            let cancellation = CommandCancellation()
+            defer { cancellation.finish() }
             let runSpan = OpenTelemetry.instance.contextProvider.activeSpan
             let runParent = client.activeTraceParent
             if let runParent { environment["LOGFIRE_TRACE_PARENT"] = runParent }
@@ -274,11 +278,11 @@ enum ScenarioRun {
                             do {
                                 let remaining = max(0.1, options.seconds - (ProcessInfo.processInfo.systemUptime - began))
                                 if profile == "cpu" {
-                                    capturedCPU = try client.withSpan("development.cpu.record", attributes: Companion.attributes(context)) {
-                                        try InstrumentsProfile.record(args + ["--seconds", "5"], timeout: remaining, onTick: {
-                                            host.tick(client: client, context: context.merging(["process.pid": pid]) { _, value in value })
-                                            return false
-                                        })
+                                    let recordArguments = args + ["--seconds", "5"]
+                                    cpuRecording = CPURecordingJob(parent: runSpan) {
+                                        try client.withSpan("development.cpu.record", attributes: Companion.attributes(context)) {
+                                            try InstrumentsProfile.record(recordArguments, cancellation: cancellation)
+                                        }
                                     }
                                 } else if profile == "gpu" {
                                     capturedGPU = try client.withSpan("development.gpu.capture", attributes: Companion.attributes(context)) {
@@ -290,21 +294,31 @@ enum ScenarioRun {
                             signal = try ScenarioSignal.read(status, id: definition.id, session: session)
                         }
                         return signal?.phase == "passed" || signal?.phase == "failed"
-                    })
+                    }, cancellation: cancellation)
             } catch {
                 result = CommandResult(exitCode: 1, timedOut: false, requestedStop: false)
                 failure = "Run identity or scenario protocol failed. Inspect retained SDK marker, status, and console output."
             }
             appDuration = ProcessInfo.processInfo.systemUptime - began
+            if let cpuRecording {
+                let finalizationStarted = ProcessInfo.processInfo.systemUptime
+                do { capturedCPU = try cpuRecording.wait() }
+                catch CompanionError.interrupted(let code) { analysisInterruption = code }
+                catch { issues.append("Optional CPU recording failed. Inspect retained profile evidence.") }
+                finalizationDuration = ProcessInfo.processInfo.systemUptime - finalizationStarted
+            }
+            if cancellation.signum != 0 { analysisInterruption = 128 + cancellation.signum }
             // The runner reaps the app before either profiler analyzes its recording.
-            let interruptedRun = !result.requestedStop && [130, 143].contains(result.exitCode)
+            let interruptedRun = analysisInterruption != nil || (!result.requestedStop && [130, 143].contains(result.exitCode))
             if interruptedRun, capturedCPU != nil || capturedGPU != nil {
                 issues.append("Profile analysis was skipped after run interruption. The recording remains local.")
             }
             if let capturedCPU, !interruptedRun {
                 let analysisStarted = ProcessInfo.processInfo.systemUptime
                 do {
-                    let code = try client.withSpan("development.cpu.analysis", attributes: Companion.attributes(context)) { try InstrumentsProfile.analyze(capturedCPU) }
+                    let code = try client.withSpan("development.cpu.analysis", attributes: Companion.attributes(context)) {
+                        try InstrumentsProfile.analyze(capturedCPU, cancellation: cancellation)
+                    }
                     if code != 0 {
                         issues.append("Optional CPU profile is incomplete. Inspect retained profile evidence.")
                     }
@@ -396,6 +410,7 @@ enum ScenarioRun {
                 "exit_code": code, "app.exit_code": result.exitCode, "app.pid": pid, "app.requested_stop": result.requestedStop,
                 "run.started_at": beganDate.timeIntervalSince1970, "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
                 "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
+                "profile.finalization_wait_seconds": finalizationDuration,
                 "run.deadline_seconds": options.seconds, "scenario.phase": signal?.phase ?? "missing", "scenario.details": signal?.details ?? [:],
                 "readiness.seconds": readyElapsed as Any? ?? NSNull(), "frame.windows": windows.count,
                 "readiness.observation": readinessObservation,
@@ -410,11 +425,12 @@ enum ScenarioRun {
             report["diagnostic"] = try SessionDiagnostics.object(diagnostic)
             try SessionDiagnostics.publish(diagnostic, client: client, context: context)
             runSpan?.setAttribute(key: "app.duration_seconds", value: appDuration)
+            runSpan?.setAttribute(key: "profile.finalization_wait_seconds", value: finalizationDuration)
             runSpan?.setAttribute(key: "profile.analysis.duration_seconds", value: analysisDuration)
             runSpan?.setAttribute(key: "run.exit_code", value: Int(code))
             runSpan?.setAttribute(key: "scenario.phase", value: signal?.phase ?? "missing")
             if code != 0 {
-                runSpan?.status = .error(description: analysisInterruption != nil ? "Profiler analysis interrupted" :
+                runSpan?.status = .error(description: analysisInterruption != nil ? "Profiler interrupted" :
                     outcome == .incomplete ? "Requested observation is incomplete" : "Development scenario failed")
             }
             client.event("development.run.summary", attributes: Companion.attributes(context.merging([
@@ -422,6 +438,7 @@ enum ScenarioRun {
                 "run.observation_gaps": issues.count, "profile.requested": options.profile ?? "none",
                 "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
                 "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
+                "profile.finalization_wait_seconds": finalizationDuration,
                 "readiness.seconds": readyElapsed as Any? ?? NSNull(),
                 "app.delivery.exported_spans": signal?.delivery?.exportedSpans as Any? ?? NSNull(),
                 "app.delivery.failed_spans": signal?.delivery?.failedSpans as Any? ?? NSNull(),

@@ -14,7 +14,13 @@ enum CommandRunner {
                     environment: [String: String] = ProcessInfo.processInfo.environment,
                     seconds: Double, echo: Bool = false, onOutput: ((Data) throws -> Void)? = nil,
                     onLaunch: ((Int32) throws -> Void)? = nil,
-                    onTick: (() throws -> Bool)? = nil) throws -> CommandResult {
+                    onTick: (() throws -> Bool)? = nil,
+                    cancellation: CommandCancellation? = nil) throws -> CommandResult {
+        let cancel = cancellation ?? CommandCancellation()
+        defer { if cancellation == nil { cancel.finish() } }
+        if cancel.signum != 0 {
+            return CommandResult(exitCode: 128 + cancel.signum, timedOut: false, requestedStop: false)
+        }
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?
         posix_spawn_file_actions_init(&actions); posix_spawnattr_init(&attributes)
@@ -41,9 +47,8 @@ enum CommandRunner {
         var reaped = false
         defer { if !reaped { kill(-pid, SIGKILL); var status: Int32 = 0; while waitpid(pid, &status, 0) < 0 && errno == EINTR {} } }
         try onLaunch?(pid)
-        let cancel = CommandCancellation()
         let stdout = try FileHandle(forReadingFrom: output); let stderr = try FileHandle(forReadingFrom: errors)
-        defer { try? stdout.close(); try? stderr.close(); cancel.finish() }
+        defer { try? stdout.close(); try? stderr.close() }
         let deadline = ProcessInfo.processInfo.systemUptime + seconds
         var stopping: TimeInterval?
         var timedOut = false; var requestedStop = false; var interrupted: Int32 = 0
@@ -80,7 +85,8 @@ enum CommandRunner {
     }
 }
 
-private final class CommandCancellation {
+/// The operation owns this signal scope until all of its process groups are reaped.
+final class CommandCancellation: @unchecked Sendable {
     private let lock = NSLock()
     private var received: Int32 = 0
     private var sources: [DispatchSourceSignal] = []

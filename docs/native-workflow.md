@@ -218,6 +218,23 @@ The app calls `finish(passed:details:)` on a background queue after it checks it
 The SDK flushes queued telemetry before it publishes completion. The runner then terminates and reaps its process group.
 Ordinary Command-R does not activate this protocol.
 
+With `--profile cpu`, a worker records a five-second Time Profiler interval while the runner continues app polling and host samples.
+The app keeps its own 20-second deadline. The recorder command has a separate 65-second limit for setup, recording, and finalization.
+The companion reaps the app, waits for recorder finalization, and then exports and decodes the capture.
+Each `xctrace export` command has a 30-second limit. Optional profiling can therefore extend the total command beyond the app deadline.
+One signal scope stays active until these owned commands finish. Ctrl-C cancels their process groups and returns exit 130.
+An interrupted recording does not start analysis or publish a complete profile manifest. Available raw evidence stays local.
+
+The report separates these durations:
+
+- `app.duration_seconds` covers app launch through reaping.
+- `profile.finalization_wait_seconds` covers the recorder join after app reaping. It is zero when no CPU recording starts.
+- `profile.record.command_duration_seconds` in the capture manifest covers the recorder command, including its setup and finalization.
+- `profile.analysis.duration_seconds` covers export, decoding, and evidence publication.
+
+Recording and app execution overlap. Do not add the full recorder duration to the app duration.
+The worker carries a separate OTel context wrapper. Recording, analysis, selected CPU evidence, and the final summary share the run trace.
+
 The definition uses schema version 1, `id`, `arguments`, `environment`, and `require_frame_windows`.
 The runner reserves telemetry credentials, session identity, and Metal injection settings.
 An unrecognized scenario or missing assertion cannot pass because the process exits successfully.
@@ -457,11 +474,12 @@ The instrumented recording covers about 44% of that window. Host load remains un
 GPU scheduling and complete presentation timelines still require validated decoding. Next-drawable waits do not supply those timelines.
 For this experiment, Metal System Trace also included the Thread Activity and System Call Trace instruments.
 Its default template did not contain the dedicated `thread-state` and `syscall` tables required by this importer.
-Native recording finalization still belongs to the `xctrace record` process. CPU decoding already runs after the app stops.
-A concurrent recorder needs shared cancellation ownership and separate app/recorder deadlines.
-The current command runner changes process-wide signal handlers. Do not run two instances on independent background threads.
+Native recording finalization belongs to the `xctrace record` process.
+CPU recording now uses a worker with shared cancellation ownership and separate app/recorder deadlines. CPU decoding follows app reaping.
+Concurrent System Trace and GPU recording still need this lifecycle integration.
+The command runner changes process-wide signal handlers. Concurrent commands must share one cancellation scope.
 The experiment finalized its recorder independently after the normal scenario runner stopped its app.
-This validates the recording path. A production lifecycle still needs cancellation and cleanup checks.
+This validates the System Trace recording path. Its unattended lifecycle still needs shared cancellation and cleanup checks.
 Direct executable launches on this Mac sometimes create no SwiftUI window, even while SDK queue probes remain responsive.
 Opening the owned private app copy through the native app UI restored rendering and passed the game assertions.
 Changing the bundle ID alone did not solve the direct-launch case.
@@ -477,8 +495,8 @@ The five-second CPU average does not prove what the thread did during a brief st
 Startup, scheduling, locks, and I/O can all affect probe delay.
 Each finding retains the affected five-second measurement intervals. These intervals are not exact stall timestamps.
 The report never labels GPU command sums as utilization or presented-frame latency.
-Time Profiler setup and finalization can exhaust the short run's remaining budget.
-The runner reports requested evidence as incomplete with exit 2. It does not extend the default app deadline or retry automatically.
+Time Profiler startup can miss a short app's useful interval. Its finalization now has a separate bounded wait after app reaping.
+The runner reports missing requested evidence as incomplete with exit 2. It does not extend the default app deadline or retry automatically.
 
 Apple recommends [call-tree views](https://developer.apple.com/documentation/xcode/analyzing-cpu-profiles-with-call-tree-views)
 and a [diagnostic flow for responsiveness](https://developer.apple.com/videos/play/wwdc2026/268/).
