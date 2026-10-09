@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "presentation-continuous-v1",
+  "arguments": [],
+  "environment": {
+    "PROBE_PRESENT_EVERY": "1",
+    "PROBE_DURATION_SECONDS": "60"
+  },
+  "require_frame_windows": true
+}

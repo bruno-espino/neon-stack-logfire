@@ -71,7 +71,7 @@ final class Renderer: NSObject, MTKViewDelegate {
 }
 
 guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is unavailable") }
-let client = try Logfire.development(serviceName: "metal-presentation-probe", apple: .init(metricKit: false))
+let client = try Logfire.development(serviceName: "metal-presentation-probe", apple: .init(metricKit: false, responsiveness: true))
 print("session=\(client.sessionID)")
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
@@ -80,6 +80,10 @@ view.clearColor = MTLClearColor(red: 0.1, green: 0.3, blue: 0.7, alpha: 1)
 view.preferredFramesPerSecond = 60
 let presentEvery = ProcessInfo.processInfo.environment["PROBE_PRESENT_EVERY"] ?? "1"
 guard ["1", "2"].contains(presentEvery) else { fatalError("Use PROBE_PRESENT_EVERY=1 or 2") }
+let durationValue = ProcessInfo.processInfo.environment["PROBE_DURATION_SECONDS"] ?? "12"
+guard let duration = Double(durationValue), duration.isFinite, (12...60).contains(duration) else {
+    fatalError("Use PROBE_DURATION_SECONDS between 12 and 60")
+}
 let renderer = Renderer(device: device, client: client, presentEvery: Int(presentEvery)!)
 view.delegate = renderer
 let window = NSWindow(contentRect: view.frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -88,7 +92,7 @@ window.contentView = view
 window.level = .floating
 window.center(); window.makeKeyAndOrderFront(nil)
 app.activate(ignoringOtherApps: true)
-DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
     view.isPaused = true
     // Allow the last drawable's presentation handler to run after GPU completion.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
