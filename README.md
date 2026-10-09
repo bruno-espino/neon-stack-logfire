@@ -75,7 +75,8 @@ The overview starts with the last 15 minutes. Select one session and zoom to its
 Charts retain five-second buckets. Isolated observations remain dots, and stopped sessions remain separate.
 Short source labels preserve distinct metric identities. Detailed GPU distributions and profiler tables live on the investigation dashboard.
 Open the runtime or build trace directly from the session window table.
-Use [Apple Development Workflow](dashboards/apple-development.json) for the complete 28-panel investigation dashboard.
+Use [Apple Development Workflow](dashboards/apple-development.json) for the complete 29-panel investigation dashboard.
+Its App export health table separates recovered HTTP retries from unacknowledged spans and metric export items.
 
 | Evidence | Producer | Availability |
 | --- | --- | --- |
@@ -125,6 +126,9 @@ Default checks add no profiler, Simulator, or Xcode CI. The normal scenario app 
 The [presentation verification](examples/presentation-probe/README.md) checks a controlled submission policy through real scenario reports and diagnosis.
 Native app launch and shared profiler cancellation still need consolidation before a fully unattended timeline workflow.
 The exporter has bounded batches and no persistent offline queue. Abrupt debugger stops can lose the final batch.
+Trace export can retry one temporary connection failure or HTTP 429/502/503/504 response within its existing three-second budget.
+It honors `Retry-After` when that delay fits. Permanent rejections do not retry. Failed requests remain visible after recovery.
+Metrics do not use this retry policy. Retained reports still need hosted reconciliation to prove complete observation coverage.
 
 [PROJECT.txt](docs/PROJECT.txt) gives the compact terminology. [WORKLOG.txt](docs/WORKLOG.txt) records experiments, decisions, and remaining gaps.
 

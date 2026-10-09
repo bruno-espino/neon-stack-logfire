@@ -1061,6 +1061,32 @@
             }
           ]
         }
+      },
+      "Delivery": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "App export health",
+            "description": "The app reports this snapshot at scenario completion. Trace HTTP request failures can recover through a retry. Request failures and retries remain separate counts. Unacknowledged spans or metric export items remain incomplete. Older retry or metric fields stay unknown. Acknowledgment does not prove complete hosted coverage; compare retained observations when needed."
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT substr(attributes->>'session_id',1,8) AS session,\nCASE\n WHEN attributes->>'app.delivery.failed_spans' IS NULL THEN 'unknown'\n WHEN CAST(attributes->>'app.delivery.failed_spans' AS DOUBLE)>0 OR CAST(attributes->>'app.metric_delivery.failed_metrics' AS DOUBLE)>0 THEN 'unacknowledged'\n WHEN attributes->>'app.metric_delivery.failed_metrics' IS NULL THEN 'metrics unknown'\n WHEN attributes->>'app.delivery.retried_requests' IS NULL THEN 'retry history unknown'\n WHEN CAST(attributes->>'app.delivery.retried_requests' AS DOUBLE)>0 THEN 'recovered retry'\n ELSE 'acknowledged'\nEND AS delivery,\nCAST(attributes->>'app.delivery.failed_spans' AS DOUBLE) AS failed_spans,\nCAST(attributes->>'app.metric_delivery.failed_metrics' AS DOUBLE) AS failed_metrics,\nCAST(attributes->>'app.delivery.failed_requests' AS DOUBLE) AS http_failures,\nCAST(attributes->>'app.delivery.retried_requests' AS DOUBLE) AS retries,\nattributes->>'app.delivery.last_failure' AS last_error,\ntrace_id\nFROM records WHERE kind='log' AND span_name='development.run.summary'\nAND ($session='all' OR attributes->>'session_id'=$session)\nAND ($build='' OR attributes->>'build.id'=$build)\nORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -1290,6 +1316,15 @@
             {
               "x": 0,
               "y": 7,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/Delivery"
+              }
+            },
+            {
+              "x": 0,
+              "y": 13,
               "width": 24,
               "height": 7,
               "content": {

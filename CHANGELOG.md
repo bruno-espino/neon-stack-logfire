@@ -13,6 +13,8 @@ and selected Apple profiler evidence in Logfire.
   Workflow retains the detailed evidence panels.
 - An opt-in audit runs repeated reference workloads and a longer onscreen session.
   It retains local evidence for reconciliation with hosted records and metrics.
+- Trace export retries one eligible HTTP request inside its original timeout.
+  App export health distinguishes HTTP retries from failed span and metric exports.
 
 The tested developer workflow uses macOS 27 and Xcode 27 on Apple Silicon.
 The SDK declares macOS 14 and iOS 17 support. Physical iOS delivery remains unverified.

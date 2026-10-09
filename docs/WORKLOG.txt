@@ -705,3 +705,24 @@ A longer opt-in CPU run and Apple live attach pass. Default checks and app deadl
 Rejected filling gaps, joining unrelated sessions, and treating the busy host as a new performance baseline.
 Added a proposed Apache 2.0 license, notices, and preview changelog. Kept hosted Profiles outside the preview requirements.
 A second independent Mac, physical iOS, and daily MetricKit delivery remain unverified. No Xcode CI or local platform stack was added.
+
+2026-10-09: Continue real use with export recovery and delivery health
+Reproduced a discarded span batch after a temporary connection failure.
+Rejected a generic span retry queue. It cannot classify HTTP errors and can retain unbounded failed batches.
+Added one eligible HTTP retry inside the existing three-second trace export budget. Kept permanent errors and long Retry-After delays as failures.
+Kept failed request counts and safe reason codes visible after recovery. Added those fields to app and companion receipts.
+Added App export health to the detailed dashboard. Older missing fields remain unknown. The overview stays at 12 panels.
+Verified seven hosted proof records after one simulated 503 and one real retry with the identical body.
+The cold game build failed resolving dependencies through the machine's SSH rewrite. Its telemetry reported network_-1009; a separate doctor check succeeded.
+A private copy of cached dependencies allowed the game build to pass. It acknowledged all 72 spans.
+CPU recording still blocks app-deadline polling during recorder finalization. Shared process ownership and cancellation need a separate change.
+Review found a late-response race in the initial retry experiment. Two regression tests reproduced deadline and cancellation failures.
+Each request now owns one deadline and completion result. Native URLSession tasks stop on deadline or cancellation. Late responses cannot change the result.
+The full development check passes 112 Swift tests, game checks, repository checks, formatting, and the Debug game build.
+The final build acknowledges all 82 spans. Its ordinary dependency resolution succeeds after the earlier cold failure.
+An eleven-session coverage run matches all 9,246 frame samples, 37 windows, and 11 run traces in hosted Logfire.
+Three additional sessions use the final exporter. Hosted queries match all 1,797 frame samples and eight windows.
+The final normal/half-rate pair reports about 60 and 30 presented FPS. The host remains unsuitable for performance baselines.
+The final failure proof recovers all seven records. The first hosted query returns no rows before a later identity query finds all seven.
+All 35 distinct dashboard queries execute without errors. Optional Apple capture panels have no rows in this runtime-only audit interval.
+Inspected App export health in Logfire and shortened its headers. The dashboard retains 29 panels, with advanced groups collapsed.

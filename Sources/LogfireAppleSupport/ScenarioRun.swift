@@ -142,7 +142,13 @@ struct ScenarioSignal: Decodable {
         let enabled: Bool
         let exportedSpans: Int
         let failedSpans: Int
-        enum CodingKeys: String, CodingKey { case enabled, exportedSpans = "exported_spans", failedSpans = "failed_spans" }
+        let failedRequests: Int?
+        let retriedRequests: Int?
+        let lastFailure: String?
+        enum CodingKeys: String, CodingKey {
+            case enabled, exportedSpans = "exported_spans", failedSpans = "failed_spans"
+            case failedRequests = "failed_requests", retriedRequests = "retried_requests", lastFailure = "last_failure"
+        }
     }
     let schemaVersion: Int
     let scenarioID: String
@@ -403,7 +409,11 @@ enum ScenarioRun {
                 "issues": issues, "telemetry.app_direct_enabled": client.delivery.enabled,
                 "scenario.arguments": definition.arguments, "scenario.environment": definition.environment,
                 "profile.directory": profiled ? folder.appendingPathComponent("profile").path : "",
-                "app.delivery": signal?.delivery.map { ["enabled": $0.enabled, "exported_spans": $0.exportedSpans, "failed_spans": $0.failedSpans] as [String: Any] } as Any? ?? NSNull(),
+                "app.delivery": signal?.delivery.map {
+                    ["enabled": $0.enabled, "exported_spans": $0.exportedSpans, "failed_spans": $0.failedSpans,
+                     "failed_requests": $0.failedRequests as Any? ?? NSNull(), "retried_requests": $0.retriedRequests as Any? ?? NSNull(),
+                     "last_failure": $0.lastFailure as Any? ?? NSNull()] as [String: Any]
+                } as Any? ?? NSNull(),
             ]) { _, value in value }
             if let runParent { report["trace_id"] = runParent.components(separatedBy: "-")[1] }
             let diagnostic = SessionDiagnostics.build(report: report, folder: folder, windows: windows)
@@ -425,6 +435,10 @@ enum ScenarioRun {
                 "readiness.seconds": readyElapsed as Any? ?? NSNull(),
                 "app.delivery.exported_spans": signal?.delivery?.exportedSpans as Any? ?? NSNull(),
                 "app.delivery.failed_spans": signal?.delivery?.failedSpans as Any? ?? NSNull(),
+                "app.delivery.failed_requests": signal?.delivery?.failedRequests as Any? ?? NSNull(),
+                "app.delivery.retried_requests": signal?.delivery?.retriedRequests as Any? ?? NSNull(),
+                "app.delivery.last_failure": signal?.delivery?.lastFailure as Any? ?? NSNull(),
+                "app.metric_delivery.failed_metrics": signal?.metricDelivery?.failedMetrics as Any? ?? NSNull(),
             ]) { _, value in value }))
             retained = report
             finalOutcome = outcome
@@ -444,7 +458,10 @@ enum ScenarioRun {
         retained["status"] = finalOutcome.status
         retained["exit_code"] = finalOutcome.exitCode
         retained["app.metric_delivery"] = signal?.metricDelivery.map { ["enabled": $0.enabled, "exported_metrics": $0.exportedMetrics, "failed_metrics": $0.failedMetrics] as [String: Any] } as Any? ?? NSNull()
-        retained["runner.delivery"] = ["enabled": client.delivery.enabled, "exported_spans": client.delivery.exportedSpans, "failed_spans": client.delivery.failedSpans]
+        let delivery = client.delivery
+        retained["runner.delivery"] = ["enabled": delivery.enabled, "exported_spans": delivery.exportedSpans, "failed_spans": delivery.failedSpans,
+                                      "failed_requests": delivery.failedRequests, "retried_requests": delivery.retriedRequests,
+                                      "last_failure": delivery.lastFailure as Any? ?? NSNull()]
         if var diagnostic = retained["diagnostic"] as? [String: Any] {
             let gaps = (diagnostic["observationGaps"] as? [String] ?? []) + (retained["issues"] as? [String] ?? [])
             diagnostic["observationGaps"] = Array(Set(gaps)).sorted()
