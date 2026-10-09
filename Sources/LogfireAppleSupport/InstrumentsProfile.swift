@@ -195,6 +195,11 @@ enum InstrumentsXML {
     }
 }
 
+enum CPURecordingTrigger: String {
+    case sessionIdentity = "session-identity"
+    case liveAttach = "live-attach"
+}
+
 /// The saved recording retains process identity after the app stops.
 struct CapturedCPURecording {
     let options: Companion.Options
@@ -203,10 +208,12 @@ struct CapturedCPURecording {
     let trace: URL
     let binaryHash: String
     let commandDuration: Double
+    var trigger = CPURecordingTrigger.liveAttach
 }
 
 /// The scenario polls its app while this worker records and finalizes a bounded CPU capture.
 final class CPURecordingJob: @unchecked Sendable {
+    let requestedAt = ProcessInfo.processInfo.systemUptime
     private enum State {
         case running
         case finished(Result<CapturedCPURecording, Error>)
@@ -256,7 +263,8 @@ enum InstrumentsProfile {
     }
 
     static func record(_ arguments: [String], timeout: Double? = nil, onTick: (() throws -> Bool)? = nil,
-                       cancellation: CommandCancellation? = nil) throws -> CapturedCPURecording {
+                       cancellation: CommandCancellation? = nil,
+                       trigger: CPURecordingTrigger = .liveAttach) throws -> CapturedCPURecording {
         guard !arguments.contains("--last") else { throw CompanionError.message("CPU profiling records a live interval. Use --seconds instead of --last.") }
         var options = try Companion.parse(arguments)
         if !arguments.contains("--seconds") { options.seconds = 5 }
@@ -281,7 +289,7 @@ enum InstrumentsProfile {
         guard FileManager.default.fileExists(atPath: trace.path) else { throw CompanionError.message("Instruments recording failed. Inspect \(folder.path)") }
         if kill(session.pid, 0) == 0 { try session.validate() }
         return CapturedCPURecording(options: options, session: session, folder: folder, trace: trace, binaryHash: binaryHash,
-            commandDuration: ProcessInfo.processInfo.systemUptime - began)
+            commandDuration: ProcessInfo.processInfo.systemUptime - began, trigger: trigger)
     }
 
     static func analyze(_ capture: CapturedCPURecording, cancellation: CommandCancellation? = nil) throws -> Int32 {
@@ -304,6 +312,7 @@ enum InstrumentsProfile {
             "capture.id": folder.lastPathComponent, "capture.path": folder.path, "capture.storage": "local",
             "capture.kind": "instruments-cpu", "capture.tool": "apple.xctrace", "binary.sha256": capture.binaryHash,
             "profile.record.command_duration_seconds": capture.commandDuration,
+            "profile.start_trigger": capture.trigger.rawValue,
             "profile.analysis.duration_seconds": ProcessInfo.processInfo.systemUptime - analysisStarted,
             "profile.template": "Time Profiler", "profile.requested_seconds": options.seconds,
             "profile.instrumented": true, "measurement.source": "apple.xctrace.time-profile",

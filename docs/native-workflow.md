@@ -219,6 +219,9 @@ The SDK flushes queued telemetry before it publishes completion. The runner then
 Ordinary Command-R does not activate this protocol.
 
 With `--profile cpu`, a worker records a five-second Time Profiler interval while the runner continues app polling and host samples.
+The worker starts from verified SDK session identity. It does not wait for a full renderer window or the scenario readiness signal.
+CPU captures can include startup. Use `logfire-apple profile` on an already-running app to investigate a later interval.
+GPU capture still waits for scenario readiness. Early CPU recording does not satisfy any scenario assertion or renderer-window requirement.
 The app keeps its own 20-second deadline. The recorder command has a separate 65-second limit for setup, recording, and finalization.
 The companion reaps the app, waits for recorder finalization, and then exports and decodes the capture.
 Each `xctrace export` command has a 30-second limit. Optional profiling can therefore extend the total command beyond the app deadline.
@@ -234,6 +237,10 @@ The report separates these durations:
 
 Recording and app execution overlap. Do not add the full recorder duration to the app duration.
 The worker carries a separate OTel context wrapper. Recording, analysis, selected CPU evidence, and the final summary share the run trace.
+`profile.start_trigger` distinguishes `session-identity` from a manual `live-attach` capture.
+The run reports `profile.start_requested_seconds` relative to app launch. This is a request timestamp, not confirmation that Instruments has attached.
+The capture manifest retains Apple's actual `profile.started_at` and `profile.ended_at` timestamps.
+The CPU dashboard table shows the trigger. Older captures without that metadata show `unreported`.
 
 The definition uses schema version 1, `id`, `arguments`, `environment`, and `require_frame_windows`.
 The runner reserves telemetry credentials, session identity, and Metal injection settings.
@@ -241,7 +248,7 @@ An unrecognized scenario or missing assertion cannot pass because the process ex
 Malformed status, stale identity, absent required windows, abnormal exit, and late completion fail the run.
 A fast app can publish its final assertion between polls. The runner checks its retained marker against the launched PID and process start time.
 
-Add `--profile cpu` to request one five-second Time Profiler recording after readiness.
+Add `--profile cpu` to request one five-second Time Profiler recording after SDK identity verification.
 The recording phase includes tool setup and artifact finalization. Its wall duration exceeds the requested sample interval.
 The runner continues one-second host sampling while the recording command runs.
 Add `--profile gpu` for one capture during play. The runner enables Metal capture for that diagnostic launch.
@@ -486,6 +493,10 @@ Changing the bundle ID alone did not solve the direct-launch case.
 The runner needs a native app-launch integration before this recording path becomes an unattended scenario option.
 Apple's [NSWorkspace launch configuration](https://developer.apple.com/documentation/appkit/nsworkspace/openconfiguration) supplies explicit instance, URL substitution, environment, and argument controls.
 The current runner still owns and reaps a directly launched child. Preserve that ownership contract during a launcher change.
+An isolated `NSWorkspace` experiment passes the game assertions with a new instance and explicit environment, then terminates the private app.
+Launch Services owns that process. `waitpid` reports `ECHILD` in the companion, and `NSRunningApplication` has no exit-status property.
+`OpenConfiguration` also has no stdout or stderr redirection property. It is not a drop-in replacement for the current child runner.
+Keep this launch path experimental until its exit-status, console, identity, and cancellation behavior preserve the scenario contract.
 
 The diagnostic thresholds select investigations. They do not define performance gates.
 The report counts callback intervals above 25 ms and main-queue delays above 100 ms.

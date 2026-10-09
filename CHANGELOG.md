@@ -15,6 +15,8 @@ and selected Apple profiler evidence in Logfire.
   It retains local evidence for reconciliation with hosted records and metrics.
 - CPU recording runs alongside scenario polling with shared cancellation.
   Recorder finalization has its own bound after app reaping. Analysis remains in the same run trace.
+- Scenario CPU recording starts from verified SDK identity. Capture records and
+  the detailed dashboard identify its start trigger because the interval can include startup.
 
 The tested developer workflow uses macOS 27 and Xcode 27 on Apple Silicon.
 The SDK declares macOS 14 and iOS 17 support. Physical iOS delivery remains unverified.

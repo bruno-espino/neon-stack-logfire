@@ -723,3 +723,22 @@ Late readiness, native app launch, and concurrent GPU/System Trace recording rem
 Added four behavioral tests for independent app deadlines, shared cancellation, post-interruption spawn prevention, and context ownership.
 The full development check passes 108 Swift tests, game logic, repository checks, formatting, and the macOS Debug build.
 No profiler, Simulator, longer app deadline, Xcode CI, or local platform stack enters default checks.
+
+2026-10-09: Start CPU recording from verified app identity
+The failed rebuilt-app run has a valid SDK marker at 0.27 seconds but becomes renderer-ready at 11.45 seconds.
+CPU recording now starts after identity verification. It does not need a rendered frame or satisfy any scenario assertion.
+The run reports its request time. Capture records retain Apple's actual recording interval and the start trigger.
+Three native captures pass and decode 1,497, 1,238, and 1,091 running samples.
+The requests occur within 0.17 seconds. Instruments starts the first recording at 2.25 seconds, so request time does not prove attachment.
+Hosted queries confirm each capture's recording, analysis, summary, and all 102 selected CPU evidence records in its run trace.
+The rebuilt-app repeats share one build ID. These counts prove collection on a busy host, not performance improvement.
+Ctrl-C during early recording returns 130, reaps the app and recorder, and skips analysis.
+Three controlled cases cover recording before readiness, rejected identity, and the unchanged missing-readiness deadline.
+The full development check passes 109 Swift tests, game logic, repository checks, formatting, and the macOS Debug build.
+The hosted CPU table shows the start trigger and places measured values before trace IDs. Older captures show an unreported trigger.
+An isolated NSWorkspace launch passes the game assertions and terminates its private app instance.
+The first probe miscompares directory URL spellings. Verified cleanup closes that instance, and a normalized-path repeat passes.
+Kept native launch experimental. Launch Services owns the process, and the API lacks the current child exit-status and console contract.
+Startup samples can differ from a later live capture. Use the manual profile command to select a later interval.
+GPU recording still waits for scenario readiness. Concurrent GPU and System Trace recording remains a separate workflow gap.
+No profiler, Simulator, longer app deadline, Xcode CI, or local platform stack enters default checks.

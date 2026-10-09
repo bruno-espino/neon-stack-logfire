@@ -180,7 +180,9 @@ struct ScenarioSignal: Decodable {
 
 /// The app owns scenario assertions. The companion owns lifetime and evidence.
 enum ScenarioRun {
-    static func run(_ arguments: [String]) throws -> Int32 {
+    static func run(_ arguments: [String], recordCPU: @escaping ([String], CommandCancellation) throws -> CapturedCPURecording = {
+        try InstrumentsProfile.record($0, cancellation: $1, trigger: .sessionIdentity)
+    }) throws -> Int32 {
         if arguments.contains("--help") {
             print("Usage: logfire-apple run --app APP --scenario FILE [--seconds 20] [--profile cpu|gpu|shader] [--no-telemetry] [--output DIRECTORY]")
             print("The app must publish session identity, readiness, and completion. Profiling is optional and has a separate bounded duration.")
@@ -268,6 +270,19 @@ enum ScenarioRun {
                             session = try readSession()
                         }
                         host.tick(client: client, context: context.merging(["process.pid": pid]) { _, value in value })
+                        if session != nil, !profiled, options.profile == "cpu" {
+                            profiled = true
+                            var args = ["--sessions", sessions.path, "--output", folder.appendingPathComponent("profile").path, "--seconds", "5"]
+                            if options.local { args += ["--no-telemetry"] }
+                            let recordArguments = args
+                            cpuRecording = CPURecordingJob(parent: runSpan) {
+                                try client.withSpan("development.cpu.record", attributes: Companion.attributes(context.merging([
+                                    "profile.start_trigger": CPURecordingTrigger.sessionIdentity.rawValue
+                                ]) { _, value in value })) {
+                                    try recordCPU(recordArguments, cancellation)
+                                }
+                            }
+                        }
                         guard let session, FileManager.default.fileExists(atPath: status.path) else { return false }
                         signal = try ScenarioSignal.read(status, id: definition.id, session: session)
                         if readyElapsed == nil { readyElapsed = ProcessInfo.processInfo.systemUptime - began }
@@ -277,14 +292,7 @@ enum ScenarioRun {
                             if options.local { args += ["--no-telemetry"] }
                             do {
                                 let remaining = max(0.1, options.seconds - (ProcessInfo.processInfo.systemUptime - began))
-                                if profile == "cpu" {
-                                    let recordArguments = args + ["--seconds", "5"]
-                                    cpuRecording = CPURecordingJob(parent: runSpan) {
-                                        try client.withSpan("development.cpu.record", attributes: Companion.attributes(context)) {
-                                            try InstrumentsProfile.record(recordArguments, cancellation: cancellation)
-                                        }
-                                    }
-                                } else if profile == "gpu" {
+                                if profile == "gpu" {
                                     capturedGPU = try client.withSpan("development.gpu.capture", attributes: Companion.attributes(context)) {
                                         try GPUCapture.capture(GPUCaptureOptions(args + ["--profile"]), seconds: min(30, remaining))
                                     }
@@ -411,6 +419,8 @@ enum ScenarioRun {
                 "run.started_at": beganDate.timeIntervalSince1970, "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
                 "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
                 "profile.finalization_wait_seconds": finalizationDuration,
+                "profile.start_trigger": cpuRecording.map { _ in CPURecordingTrigger.sessionIdentity.rawValue } as Any? ?? NSNull(),
+                "profile.start_requested_seconds": cpuRecording.map { $0.requestedAt - began } as Any? ?? NSNull(),
                 "run.deadline_seconds": options.seconds, "scenario.phase": signal?.phase ?? "missing", "scenario.details": signal?.details ?? [:],
                 "readiness.seconds": readyElapsed as Any? ?? NSNull(), "frame.windows": windows.count,
                 "readiness.observation": readinessObservation,
@@ -426,6 +436,10 @@ enum ScenarioRun {
             try SessionDiagnostics.publish(diagnostic, client: client, context: context)
             runSpan?.setAttribute(key: "app.duration_seconds", value: appDuration)
             runSpan?.setAttribute(key: "profile.finalization_wait_seconds", value: finalizationDuration)
+            if let cpuRecording {
+                runSpan?.setAttribute(key: "profile.start_trigger", value: CPURecordingTrigger.sessionIdentity.rawValue)
+                runSpan?.setAttribute(key: "profile.start_requested_seconds", value: cpuRecording.requestedAt - began)
+            }
             runSpan?.setAttribute(key: "profile.analysis.duration_seconds", value: analysisDuration)
             runSpan?.setAttribute(key: "run.exit_code", value: Int(code))
             runSpan?.setAttribute(key: "scenario.phase", value: signal?.phase ?? "missing")
@@ -439,6 +453,8 @@ enum ScenarioRun {
                 "run.duration_seconds": ProcessInfo.processInfo.systemUptime - began,
                 "app.duration_seconds": appDuration, "profile.analysis.duration_seconds": analysisDuration,
                 "profile.finalization_wait_seconds": finalizationDuration,
+                "profile.start_trigger": cpuRecording.map { _ in CPURecordingTrigger.sessionIdentity.rawValue } as Any? ?? NSNull(),
+                "profile.start_requested_seconds": cpuRecording.map { $0.requestedAt - began } as Any? ?? NSNull(),
                 "readiness.seconds": readyElapsed as Any? ?? NSNull(),
                 "app.delivery.exported_spans": signal?.delivery?.exportedSpans as Any? ?? NSNull(),
                 "app.delivery.failed_spans": signal?.delivery?.failedSpans as Any? ?? NSNull(),
