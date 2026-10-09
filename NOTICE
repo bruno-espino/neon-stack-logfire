@@ -1,0 +1,9 @@
+Apple Metal + Logfire
+Copyright 2026, project contributors.
+
+This is a community project. Apple, OpenTelemetry, and Pydantic do not
+endorse this project. Their names identify the tools this project uses.
+
+Swift Package Manager resolves OpenTelemetry Swift and SwiftProtobuf as
+separate dependencies. Those projects retain their own licenses and notices.
+The showcase uses separately resolved npm dependencies with their own licenses.

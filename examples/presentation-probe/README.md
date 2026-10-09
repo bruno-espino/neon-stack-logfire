@@ -52,3 +52,14 @@ The complete command passed on the development Mac. Logfire queries reproduce th
 Raw metrics include the final partial samples. Normal has 620 callbacks and 620 confirmed presentations.
 Half-rate has 607 callbacks and 303 confirmed presentations.
 These measurements verify the deliberate policies and complete export. They do not show a performance optimization.
+
+## Longer dashboard audit
+
+The optional `continuous.json` scenario runs the normal policy for 60 seconds.
+`PROBE_DURATION_SECONDS` accepts a duration from 12 through 60 seconds. The default stays 12.
+The probe also enables the SDK responsiveness monitor. It does not enable MetricKit.
+
+After building the probe and reference game, run the [preview audit](../../docs/session-review.md#developer-preview-audit-on-october-9-2026).
+It reuses these application bundles and retains each scenario result.
+Keep the floating window visible. Focus changes can produce additional partial windows.
+The longer run provides real adjacent observations. It does not fill gaps between separate sessions.

@@ -7,6 +7,8 @@ The shared ember theme and animation components preserve the original reel's vis
 ![Input operations beside gameplay feedback](public/input-trace-preview.jpg)
 
 The dashboard scene uses [this real Logfire view](public/apple-metal-overview.jpg).
+The current image shows the verified 60-second session with callback/presentation cadence, CPU activity, slow-frame share, and queue delay.
+These observations are separate from the reported FPS animation.
 
 ## Render
 

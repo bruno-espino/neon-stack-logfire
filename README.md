@@ -1,6 +1,8 @@
 # Apple Metal + Logfire
 
-An experimental development toolkit for Metal games. Connect gameplay, frame measurements, Xcode builds, and selected Apple profiler evidence in Logfire.
+A macOS developer toolkit for Metal games. Find a slow session, connect it to its build, and inspect the app and Apple profiler evidence together in Logfire.
+
+**Community developer preview.** The API can change. Complete hosted CPU Profiles is a separate experiment and is not required for the toolkit.
 
 The toolkit has three parts:
 
@@ -21,6 +23,8 @@ Its animated FPS improvement shows the collaborator's reported Log Roll fix. The
 Use Xcode 27 and its Metal toolchain. Configure a project write token once.
 
 ```sh
+git clone https://github.com/bruno-espino/neon-stack-logfire.git
+cd neon-stack-logfire
 tools/install-companion.sh
 ~/.local/bin/logfire-apple configure --region us
 ~/.local/bin/logfire-apple doctor --send
@@ -64,9 +68,12 @@ Use it on a tester Mac to verify setup, async parentage, and live delivery befor
 
 Import [Apple Metal Overview](dashboards/apple-metal-overview.json) into Logfire.
 Choose the measurement time range. Its session selector discovers SDK sessions automatically.
-The 15-panel overview starts with compact session summaries, including launches without a complete renderer window.
+The 12-panel overview starts with compact session summaries, including launches without a complete renderer window.
+It shows callback rate beside presented FPS, CPU activity, slow-frame share, and queue delay.
 Expand live measurements, gameplay events, builds, host context, or native evidence as needed.
-Charts retain five-second buckets and show isolated observations as dots. Select one session and zoom to minutes for detail.
+The overview starts with the last 15 minutes. Select one session and zoom to its measurement interval for a readable timeline.
+Charts retain five-second buckets. Isolated observations remain dots, and stopped sessions remain separate.
+Short source labels preserve distinct metric identities. Detailed GPU distributions and profiler tables live on the investigation dashboard.
 Open the runtime or build trace directly from the session window table.
 Use [Apple Development Workflow](dashboards/apple-development.json) for the complete 28-panel investigation dashboard.
 
@@ -107,7 +114,12 @@ See [the native workflow](docs/native-workflow.md) for builds, live attach, impo
 tools/check-dev.sh          # Local checks and cached macOS Debug build
 tools/check-dev.sh --smoke  # Also run a short SDK session
 tools/check-presentation.sh # Opt-in normal versus half-rate onscreen verification
+tools/check-preview.sh --app PATH_TO_APP --probe PATH_TO_PRESENTATION_PROBE --repeat 5
 ```
+
+The preview audit is opt-in. It runs five workload policies repeatedly and one 60-second onscreen session.
+It retains every case and checks local delivery receipts. Reconcile its retained evidence with Logfire before claiming complete delivery.
+It is a coverage check, not a performance baseline on a busy Mac.
 
 Default checks add no profiler, Simulator, or Xcode CI. The normal scenario app deadline remains 20 seconds.
 The [presentation verification](examples/presentation-probe/README.md) checks a controlled submission policy through real scenario reports and diagnosis.
@@ -115,3 +127,13 @@ Native app launch and shared profiler cancellation still need consolidation befo
 The exporter has bounded batches and no persistent offline queue. Abrupt debugger stops can lose the final batch.
 
 [PROJECT.txt](docs/PROJECT.txt) gives the compact terminology. [WORKLOG.txt](docs/WORKLOG.txt) records experiments, decisions, and remaining gaps.
+
+## Developer preview
+
+The tested companion workflow uses Apple Silicon, macOS 27, and Xcode 27. Install from source on a trusted development Mac.
+A Logfire project write token enables direct export. Full hosted Profiles does not gate ordinary traces, metrics, CPU summaries, or dashboards.
+A fresh independent Mac setup, physical iOS, and daily MetricKit delivery still need verification before broader support claims.
+
+See [CHANGELOG.md](CHANGELOG.md) for the preview scope. The project uses the [Apache 2.0 license](LICENSE).
+The [notices](NOTICE) identify upstream components. Report setup problems with the OS/Xcode versions, command, and redacted report.
+Keep tokens, raw captures, and local credential files out of public issues.

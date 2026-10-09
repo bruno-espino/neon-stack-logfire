@@ -687,3 +687,21 @@ The default check retains the cached macOS build and short local tests. No GUI p
 The full development check passes 104 Swift tests, game logic, repository checks, formatting, and the macOS Debug build.
 The final changed-build assertion also passes its focused scenario suite.
 The final floating-window command passes both policies and the verifier. Logfire queries reproduce rates, parent IDs, build identity, and every metric sample.
+
+2026-10-09: Prepare the macOS developer preview and audit hosted dashboards
+Synced a new preview branch with current main while preserving the optional CPU exporter experiment locally.
+The development check, Swift suites, Debug game build, and Release game build pass.
+Added an opt-in audit that reuses built apps. It covers five repeated workload policies and one longer onscreen session.
+All 26 cases pass. Hosted queries reproduce 77 windows, 17,986 frame samples, GPU samples, presentation intervals, and 26 run traces.
+The normal/half-rate pairs consistently distinguish callback cadence from actual presentation.
+One Debug-build host sample fails export. Its build span and task summaries arrive. The Release build delivers all 125 records.
+Reduced the overview to 12 panels. Kept 28 detailed investigation panels, with advanced groups collapsed.
+Added presented FPS and explicit complete/all coverage to the compact session table. Kept weighted cadence and full metric source identities.
+Shortened selected-session legends. Added real input spans and maze outcomes to the gameplay table.
+Validated all 34 distinct panel queries against hosted data and inspected the continuous lines in the browser.
+Marked the old Neon Stack Performance and Xcode Builds dashboards as legacy. Retained their links.
+GPU replay and shader analysis pass. A short CPU run remains incomplete because Instruments cannot finalize within its app deadline.
+A longer opt-in CPU run and Apple live attach pass. Default checks and app deadlines remain unchanged.
+Rejected filling gaps, joining unrelated sessions, and treating the busy host as a new performance baseline.
+Added a proposed Apache 2.0 license, notices, and preview changelog. Kept hosted Profiles outside the preview requirements.
+A second independent Mac, physical iOS, and daily MetricKit delivery remain unverified. No Xcode CI or local platform stack was added.

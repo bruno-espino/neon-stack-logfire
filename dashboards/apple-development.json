@@ -63,7 +63,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -77,11 +77,11 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'recorded_at' AS TIMESTAMPTZ)) AS time, attributes->>'session_id' AS session, SUM(CAST(attributes->>'frames' AS DOUBLE)) / NULLIF(SUM(CAST(attributes->>'frames' AS DOUBLE) / NULLIF(CAST(attributes->>'render_callback_fps' AS DOUBLE), 0)), 0) AS callback_hz, SUM(CAST(attributes->>'display_presentation_intervals' AS DOUBLE)) / NULLIF(SUM(CAST(attributes->>'display_presentation_intervals' AS DOUBLE) / NULLIF(CAST(attributes->>'display_presented_fps' AS DOUBLE), 0)), 0) AS presented_fps FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time DESC LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'recorded_at' AS TIMESTAMPTZ)) AS time, CASE WHEN $session='all' THEN attributes->>'session_id' ELSE 'selected session' END AS session, SUM(CAST(attributes->>'frames' AS DOUBLE)) / NULLIF(SUM(CAST(attributes->>'frames' AS DOUBLE) / NULLIF(CAST(attributes->>'render_callback_fps' AS DOUBLE), 0)), 0) AS \"Callbacks\", SUM(CAST(attributes->>'display_presentation_intervals' AS DOUBLE)) / NULLIF(SUM(CAST(attributes->>'display_presentation_intervals' AS DOUBLE) / NULLIF(CAST(attributes->>'display_presented_fps' AS DOUBLE), 0)), 0) AS \"Presented FPS\" FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.performance.window' GROUP BY time, session ORDER BY time DESC LIMIT 10000",
                     "groupBy": "session",
                     "metrics": [
-                      "callback_hz",
-                      "presented_fps"
+                      "Callbacks",
+                      "Presented FPS"
                     ]
                   }
                 }
@@ -115,7 +115,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -189,7 +189,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -203,7 +203,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'measurement.ended_at' AS TIMESTAMPTZ)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, sum(CAST(attributes->>'presented_frames' AS DOUBLE)) / nullif(sum(CAST(attributes->>'window_seconds' AS DOUBLE)), 0) AS presented_fps FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' GROUP BY time, session_layer ORDER BY time DESC LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'measurement.ended_at' AS TIMESTAMPTZ)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, sum(CAST(attributes->>'presented_frames' AS DOUBLE)) / nullif(sum(CAST(attributes->>'window_seconds' AS DOUBLE)), 0) AS presented_fps FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' AND attributes->>'measurement.ended_at' IS NOT NULL GROUP BY time, session_layer ORDER BY time DESC LIMIT 10000",
                     "groupBy": "session_layer",
                     "metrics": [
                       "presented_fps"
@@ -240,7 +240,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -254,7 +254,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'measurement.ended_at' AS TIMESTAMPTZ)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, avg(CAST(attributes->>'gpu_wall_mean_ms' AS DOUBLE)) AS gpu_mean_ms, avg(CAST(attributes->>'drawable_wait_mean_ms' AS DOUBLE)) AS drawable_wait_mean_ms FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' GROUP BY time, session_layer ORDER BY time DESC LIMIT 10000",
+                    "query": "SELECT time_bucket('5 seconds', CAST(attributes->>'measurement.ended_at' AS TIMESTAMPTZ)) AS time, concat(attributes->>'session_id', '/layer-', attributes->>'layer_index') AS session_layer, avg(CAST(attributes->>'gpu_wall_mean_ms' AS DOUBLE)) AS gpu_mean_ms, avg(CAST(attributes->>'drawable_wait_mean_ms' AS DOUBLE)) AS drawable_wait_mean_ms FROM records WHERE kind IN ('span', 'log') AND ($session = 'all' OR attributes->>'session_id' = $session) AND ($build = '' OR attributes->>'build.id' = $build) AND span_name = 'game.native.performance' AND attributes->>'measurement.scope' = 'layer' AND attributes->>'measurement.ended_at' IS NOT NULL GROUP BY time, session_layer ORDER BY time DESC LIMIT 10000",
                     "groupBy": "session_layer",
                     "metrics": [
                       "gpu_mean_ms",
@@ -292,7 +292,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -344,7 +344,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -395,7 +395,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -584,7 +584,7 @@
         "spec": {
           "display": {
             "name": "SDK raw-frame distribution p95",
-            "description": "Delta histograms contain individual samples from full and partial SDK windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+            "description": "Delta histograms contain individual samples from full and partial SDK windows. Bucket quantiles are estimates from histogram bounds, not averages of window p95 values. GPU command sums differ from presentation latency. Series retain mode, workload, GPU timing scope, and source instance. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined. Source numbers distinguish full source identities and render contexts within this query."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -599,7 +599,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -616,7 +616,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, metric_quantile(0.95, value) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration','game.display.present.interval','game.display.present.lateness') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
+                    "query": "WITH observations AS (\nSELECT time_bucket('5 seconds', recorded_timestamp) AS time, metric_name,  metric_quantile(0.95, value) AS value, service_name, service_namespace, deployment_environment, service_instance_id, attributes FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('game.frame.interval','game.renderer.preparation','game.gpu.commands.duration','game.display.present.interval','game.display.present.lateness') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes \n) SELECT time, concat(CASE metric_name WHEN 'app.main_thread.cpu.utilization' THEN 'Main thread' WHEN 'app.process.cpu.utilization' THEN 'Process' WHEN 'app.main_queue.delay' THEN 'Completed delay' WHEN 'app.main_queue.pending_age.max' THEN 'Pending age' WHEN 'game.frame.interval' THEN 'Callback interval' WHEN 'game.renderer.preparation' THEN 'Preparation' WHEN 'game.gpu.commands.duration' THEN 'GPU commands' WHEN 'game.display.present.interval' THEN 'Presentation interval' WHEN 'game.display.present.lateness' THEN 'Presentation lateness' ELSE metric_name END, ' \u00b7 source ', CAST(dense_rank() OVER (ORDER BY service_name, service_namespace, deployment_environment, service_instance_id, CAST(attributes AS TEXT)) AS TEXT)) AS series, value FROM observations ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -633,7 +633,7 @@
         "spec": {
           "display": {
             "name": "Main-thread and process CPU activity",
-            "description": "CPU activity as a percentage of one core. Process CPU can exceed 100% across multiple cores. The SDK samples independently of rendering. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+            "description": "CPU activity as a percentage of one core. Process CPU can exceed 100% across multiple cores. The SDK samples independently of rendering. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined. Source numbers distinguish full source identities and render contexts within this query."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -650,7 +650,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -667,7 +667,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, 100 * MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_thread.cpu.utilization','app.process.cpu.utilization') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
+                    "query": "WITH observations AS (\nSELECT time_bucket('5 seconds', recorded_timestamp) AS time, metric_name,  100 * MAX(metric_max(value)) AS value, service_name, service_namespace, deployment_environment, service_instance_id, attributes FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_thread.cpu.utilization','app.process.cpu.utilization') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes \n) SELECT time, concat(CASE metric_name WHEN 'app.main_thread.cpu.utilization' THEN 'Main thread' WHEN 'app.process.cpu.utilization' THEN 'Process' WHEN 'app.main_queue.delay' THEN 'Completed delay' WHEN 'app.main_queue.pending_age.max' THEN 'Pending age' WHEN 'game.frame.interval' THEN 'Callback interval' WHEN 'game.renderer.preparation' THEN 'Preparation' WHEN 'game.gpu.commands.duration' THEN 'GPU commands' WHEN 'game.display.present.interval' THEN 'Presentation interval' WHEN 'game.display.present.lateness' THEN 'Presentation lateness' ELSE metric_name END, ' \u00b7 source ', CAST(dense_rank() OVER (ORDER BY service_name, service_namespace, deployment_environment, service_instance_id, CAST(attributes AS TEXT)) AS TEXT)) AS series, value FROM observations ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -684,7 +684,7 @@
         "spec": {
           "display": {
             "name": "Main-queue completed delay and pending age",
-            "description": "Worst completed probe delay and the maximum age of an unfinished probe in each five-second window. One outstanding probe bounds queued work. A blocked queue stays observable before that probe completes. Probe delay includes scheduling latency. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+            "description": "Worst completed probe delay and the maximum age of an unfinished probe in each five-second window. One outstanding probe bounds queued work. A blocked queue stays observable before that probe completes. Probe delay includes scheduling latency. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined. Source numbers distinguish full source identities and render contexts within this query."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -699,7 +699,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -716,7 +716,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(metric_name, ' / ', service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, MAX(metric_max(value)) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_queue.delay','app.main_queue.pending_age.max') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
+                    "query": "WITH observations AS (\nSELECT time_bucket('5 seconds', recorded_timestamp) AS time, metric_name,  MAX(metric_max(value)) AS value, service_name, service_namespace, deployment_environment, service_instance_id, attributes FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) AND metric_name IN ('app.main_queue.delay','app.main_queue.pending_age.max') GROUP BY time_bucket('5 seconds', recorded_timestamp), metric_name, service_name, service_namespace, deployment_environment, service_instance_id, attributes \n) SELECT time, concat(CASE metric_name WHEN 'app.main_thread.cpu.utilization' THEN 'Main thread' WHEN 'app.process.cpu.utilization' THEN 'Process' WHEN 'app.main_queue.delay' THEN 'Completed delay' WHEN 'app.main_queue.pending_age.max' THEN 'Pending age' WHEN 'game.frame.interval' THEN 'Callback interval' WHEN 'game.renderer.preparation' THEN 'Preparation' WHEN 'game.gpu.commands.duration' THEN 'GPU commands' WHEN 'game.display.present.interval' THEN 'Presentation interval' WHEN 'game.display.present.lateness' THEN 'Presentation lateness' ELSE metric_name END, ' \u00b7 source ', CAST(dense_rank() OVER (ORDER BY service_name, service_namespace, deployment_environment, service_instance_id, CAST(attributes AS TEXT)) AS TEXT)) AS series, value FROM observations ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -774,7 +774,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -810,7 +810,7 @@
         "spec": {
           "display": {
             "name": "Frames above 25 ms (%)",
-            "description": "The ratio of raw delta counters counts slow observations directly. A rare stall can be absent from p95. Each source instance and render context remains separate. This threshold is 25 ms, not the display refresh budget. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined."
+            "description": "The ratio of raw delta counters counts slow observations directly. A rare stall can be absent from p95. Each source instance and render context remains separate. This threshold is 25 ms, not the display refresh budget. Dots show isolated observations. Blank intervals mean no observation; stopped sessions are not joined. Source numbers distinguish full source identities and render contexts within this query."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -825,7 +825,7 @@
               },
               "visual": {
                 "showPoints": "always",
-                "pointRadius": 5,
+                "pointRadius": 2,
                 "lineWidth": 2,
                 "connectNulls": false,
                 "areaOpacity": 0
@@ -842,7 +842,7 @@
                 "plugin": {
                   "kind": "LogfireTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT time_bucket('5 seconds', recorded_timestamp) AS time, concat(service_name, ' / ', coalesce(service_namespace, ''), ' / ', coalesce(deployment_environment, ''), ' / ', service_instance_id, ' / ', CAST(attributes AS TEXT)) AS series, 100 * SUM(CASE WHEN metric_name='game.frame.over_25ms.count' THEN metric_sum(value) ELSE 0 END) / NULLIF(SUM(CASE WHEN metric_name='game.frame.count' THEN metric_sum(value) ELSE 0 END), 0) AS value FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND aggregation_temporality='delta' AND metric_name IN ('game.frame.count','game.frame.over_25ms.count') AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) GROUP BY time_bucket('5 seconds', recorded_timestamp), service_name, service_namespace, deployment_environment, service_instance_id, attributes ORDER BY time DESC LIMIT 10000",
+                    "query": "WITH observations AS (\nSELECT time_bucket('5 seconds', recorded_timestamp) AS time,  100 * SUM(CASE WHEN metric_name='game.frame.over_25ms.count' THEN metric_sum(value) ELSE 0 END) / NULLIF(SUM(CASE WHEN metric_name='game.frame.count' THEN metric_sum(value) ELSE 0 END), 0) AS value, service_name, service_namespace, deployment_environment, service_instance_id, attributes FROM metrics WHERE otel_resource_attributes->>'logfire.metric_schema.version'='1' AND aggregation_temporality='delta' AND metric_name IN ('game.frame.count','game.frame.over_25ms.count') AND ($session = 'all' OR otel_resource_attributes->>'session_id' = $session) AND ($build = '' OR otel_resource_attributes->>'build.id' = $build) GROUP BY time_bucket('5 seconds', recorded_timestamp), service_name, service_namespace, deployment_environment, service_instance_id, attributes \n) SELECT time, concat('Frames above 25 ms', ' \u00b7 source ', CAST(dense_rank() OVER (ORDER BY service_name, service_namespace, deployment_environment, service_instance_id, CAST(attributes AS TEXT)) AS TEXT)) AS series, value FROM observations ORDER BY time DESC LIMIT 10000",
                     "groupBy": "series",
                     "metrics": [
                       "value"
@@ -1068,7 +1068,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "SDK and session context"
+            "title": "SDK and session context",
+            "collapse": {
+              "open": true
+            }
           },
           "items": [
             {
@@ -1105,7 +1108,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Apple live evidence"
+            "title": "Apple live evidence",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1142,7 +1148,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Host context"
+            "title": "Host context",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1170,7 +1179,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Targeted CPU investigation"
+            "title": "Targeted CPU investigation",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1207,7 +1219,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Captures and builds"
+            "title": "Captures and builds",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1235,7 +1250,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "GPU workload replay"
+            "title": "GPU workload replay",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1254,7 +1272,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "App-owned scenarios"
+            "title": "App-owned scenarios",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1282,7 +1303,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Native metrics and responsiveness"
+            "title": "Native metrics and responsiveness",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1346,7 +1370,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Shader compilation evidence"
+            "title": "Shader compilation evidence",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1365,7 +1392,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Inclusive CPU evidence"
+            "title": "Inclusive CPU evidence",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
@@ -1384,7 +1414,10 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Native main-thread investigations"
+            "title": "Native main-thread investigations",
+            "collapse": {
+              "open": false
+            }
           },
           "items": [
             {
