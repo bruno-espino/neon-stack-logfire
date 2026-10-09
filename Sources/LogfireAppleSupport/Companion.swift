@@ -69,9 +69,10 @@ enum HostCommand {
 
     static func run(_ executable: String, _ arguments: [String], output: URL, errors: URL,
                     seconds: Double, stopAtDeadline: Bool = false, onTick: (() throws -> Bool)? = nil,
-                    onOutput: ((Data) throws -> Void)? = nil) throws -> Int32 {
+                    onOutput: ((Data) throws -> Void)? = nil,
+                    cancellation: CommandCancellation? = nil) throws -> Int32 {
         let result = try CommandRunner.run(executable, arguments, output: output, errors: errors,
-            seconds: seconds, onOutput: onOutput, onTick: onTick)
+            seconds: seconds, onOutput: onOutput, onTick: onTick, cancellation: cancellation)
         if result.timedOut {
             if stopAtDeadline { return 0 }
             throw CompanionError.message("Apple command exceeded its time limit. Inspect \(errors.path)")

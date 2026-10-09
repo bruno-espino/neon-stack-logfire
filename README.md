@@ -123,7 +123,9 @@ It is a coverage check, not a performance baseline on a busy Mac.
 
 Default checks add no profiler, Simulator, or Xcode CI. The normal scenario app deadline remains 20 seconds.
 The [presentation verification](examples/presentation-probe/README.md) checks a controlled submission policy through real scenario reports and diagnosis.
-Native app launch and shared profiler cancellation still need consolidation before a fully unattended timeline workflow.
+CPU recording runs alongside app polling. The companion reaps the app, waits for recorder finalization, and then decodes the capture.
+Optional profiling can extend the command beyond the app deadline. Ctrl-C cancels the owned app, CPU recorder, and CPU export commands.
+Native app launch and concurrent GPU/timeline recording still need consolidation before a fully unattended timeline workflow.
 The exporter has bounded batches and no persistent offline queue. Abrupt debugger stops can lose the final batch.
 
 [PROJECT.txt](docs/PROJECT.txt) gives the compact terminology. [WORKLOG.txt](docs/WORKLOG.txt) records experiments, decisions, and remaining gaps.

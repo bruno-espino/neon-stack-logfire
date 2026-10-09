@@ -1,4 +1,5 @@
 import Foundation
+import OpenTelemetryApi
 import LogfireSwift
 #if os(macOS)
 import Darwin
@@ -204,6 +205,44 @@ struct CapturedCPURecording {
     let commandDuration: Double
 }
 
+/// The scenario polls its app while this worker records and finalizes a bounded CPU capture.
+final class CPURecordingJob: @unchecked Sendable {
+    private enum State {
+        case running
+        case finished(Result<CapturedCPURecording, Error>)
+    }
+    private let condition = NSCondition()
+    private var state = State.running
+
+    init(parent: Span? = nil, operation: @escaping () throws -> CapturedCPURecording) {
+        let parentContext = parent?.context
+        DispatchQueue.global(qos: .utility).async { [self] in
+            let result = Result {
+                guard let parentContext else { return try operation() }
+                // ActivityContextManager removes every binding of the same span object at scope exit.
+                let propagated = DefaultTracer.instance.spanBuilder(spanName: "development.run.context")
+                    .setParent(parentContext).startSpan()
+                return try OpenTelemetry.instance.contextProvider.withActiveSpan(propagated, operation)
+            }
+            condition.lock()
+            state = .finished(result)
+            condition.broadcast()
+            condition.unlock()
+        }
+    }
+
+    func wait() throws -> CapturedCPURecording {
+        condition.lock()
+        while true {
+            if case .finished(let result) = state {
+                condition.unlock()
+                return try result.get()
+            }
+            condition.wait()
+        }
+    }
+}
+
 enum InstrumentsProfile {
     static func timeLimit(seconds: Double) -> String { "\(Int((seconds * 1000).rounded()))ms" }
 
@@ -216,7 +255,8 @@ enum InstrumentsProfile {
         catch CompanionError.interrupted(let code) { return code }
     }
 
-    static func record(_ arguments: [String], timeout: Double? = nil, onTick: (() throws -> Bool)? = nil) throws -> CapturedCPURecording {
+    static func record(_ arguments: [String], timeout: Double? = nil, onTick: (() throws -> Bool)? = nil,
+                       cancellation: CommandCancellation? = nil) throws -> CapturedCPURecording {
         guard !arguments.contains("--last") else { throw CompanionError.message("CPU profiling records a live interval. Use --seconds instead of --last.") }
         var options = try Companion.parse(arguments)
         if !arguments.contains("--seconds") { options.seconds = 5 }
@@ -236,7 +276,7 @@ enum InstrumentsProfile {
         let result = try HostCommand.run("/usr/bin/xcrun", ["xctrace", "record", "--template", "Time Profiler",
             "--attach", String(session.pid), "--time-limit", timeLimit(seconds: options.seconds), "--output", trace.path, "--no-prompt"],
             output: folder.appendingPathComponent("record.stdout"), errors: folder.appendingPathComponent("record.stderr"),
-            seconds: min(options.seconds + 60, timeout ?? .infinity), onTick: onTick)
+            seconds: min(options.seconds + 60, timeout ?? .infinity), onTick: onTick, cancellation: cancellation)
         try HostCommand.requireSuccess(result, message: "Instruments recording failed. Inspect \(folder.path)")
         guard FileManager.default.fileExists(atPath: trace.path) else { throw CompanionError.message("Instruments recording failed. Inspect \(folder.path)") }
         if kill(session.pid, 0) == 0 { try session.validate() }
@@ -244,7 +284,7 @@ enum InstrumentsProfile {
             commandDuration: ProcessInfo.processInfo.systemUptime - began)
     }
 
-    static func analyze(_ capture: CapturedCPURecording) throws -> Int32 {
+    static func analyze(_ capture: CapturedCPURecording, cancellation: CommandCancellation? = nil) throws -> Int32 {
         let options = capture.options, session = capture.session, folder = capture.folder, trace = capture.trace
         let analysisStarted = ProcessInfo.processInfo.systemUptime
         let toc = folder.appendingPathComponent("toc.xml")
@@ -252,7 +292,7 @@ enum InstrumentsProfile {
         for (output, selection) in [(toc, ["--toc"]), (cpu, ["--xpath", "/trace-toc/run[@number='1']/data/table[@schema='time-profile']"])] {
             let status = try HostCommand.run("/usr/bin/xcrun", ["xctrace", "export", "--input", trace.path] + selection + ["--output", output.path],
                 output: folder.appendingPathComponent(output.lastPathComponent + ".stdout"),
-                errors: folder.appendingPathComponent(output.lastPathComponent + ".stderr"), seconds: 30)
+                errors: folder.appendingPathComponent(output.lastPathComponent + ".stderr"), seconds: 30, cancellation: cancellation)
             try HostCommand.requireSuccess(status, message: "Instruments export failed. Recording remains at \(trace.path)")
         }
         let recording = try InstrumentsXML.recording(Data(contentsOf: toc), pid: session.pid)
