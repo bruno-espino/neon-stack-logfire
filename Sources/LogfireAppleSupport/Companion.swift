@@ -353,6 +353,9 @@ public enum Companion {
         let status = client.delivery
         if status.enabled { print("Exporter acknowledged \(status.exportedSpans) spans; failed spans: \(status.failedSpans)") }
         else { print("Export disabled. Measurements remain local.") }
+        if status.failedRequests > 0 {
+            print("HTTP requests failed: \(status.failedRequests); retries: \(status.retriedRequests); last failure: \(status.lastFailure ?? "unknown")")
+        }
     }
 
     static func client(local: Bool, service: String, resource: [String: Any] = [:]) -> Logfire {

@@ -74,10 +74,8 @@ public struct LogfireConfiguration: Sendable {
             envVarHeaders: token.map { [("Authorization", "Bearer " + $0)] } ?? [], requeueOnFailure: false)
     }
 
-    func makeExporter(httpClient: HTTPClient = BaseHTTPClient()) -> OtlpHttpTraceExporter {
-        OtlpHttpTraceExporter(endpoint: endpoint,
-            config: .init(timeout: 3, compression: .gzip, exportAsJson: false),
-            httpClient: httpClient,
-            envVarHeaders: token.map { [("Authorization", "Bearer " + $0)] } ?? [], requeueOnFailure: false)
+    func makeExporter(httpClient: HTTPClient = DevelopmentURLSession()) -> DevelopmentTraceExporter {
+        DevelopmentTraceExporter(endpoint: endpoint,
+            headers: token.map { [("Authorization", "Bearer " + $0)] } ?? [], transport: httpClient)
     }
 }

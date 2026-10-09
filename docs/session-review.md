@@ -35,7 +35,7 @@ Charts use five-second buckets and visible points. UTC timestamp casts align cal
 Select a session and zoom to seconds or minutes. Short captures remain visible as dots in a day-wide view.
 The dashboard requests a five-second refresh. Logfire controls the actual refresh cadence for the selected range. A stopped session does not produce a continuous feed.
 
-Use [Apple Development Workflow](../dashboards/apple-development.json) for the full 28-panel investigation.
+Use [Apple Development Workflow](../dashboards/apple-development.json) for the full 29-panel investigation.
 It retains original IDs, raw frame distributions, selected CPU callers, GPU replay nodes, task totals, and native capture details.
 Detailed groups start collapsed. Expand the evidence needed for the current question.
 Its session selector also discovers native-only imports that have no SDK window.
@@ -156,3 +156,25 @@ Keep the four overview charts. Each answers a different first investigation ques
 Keep raw distributions, native CPU callers, GPU replay costs, shader updates, and wait coverage in the detailed dashboard.
 Those panels answer targeted questions after collection. They are not continuous feeds from an ordinary app launch.
 No third dashboard is needed for this preview. Independent tester feedback should guide the next addition.
+
+## Export recovery investigation
+
+The App export health table shows the app's snapshot at scenario completion.
+HTTP failures and retries describe requests. Failed spans and metric export items describe unacknowledged export results.
+A recovered request can have zero failed spans. Its request-failure count and last safe reason remain visible.
+Older reports have no retry or metric fields. The table keeps those fields unknown.
+The companion's final delivery receipt remains local. The app table does not certify the companion's export or complete hosted coverage.
+
+Trace export retries one eligible HTTP request inside the original three-second export deadline.
+It retries connection failures and HTTP 429, 502, 503, and 504. Other HTTP errors do not retry.
+The retry uses the same body and headers, randomized backoff, and the remaining timeout.
+The client honors a numeric or HTTP-date `Retry-After` when the delay fits the remaining budget.
+A longer delay returns failure. It does not extend shutdown or retain a durable offline queue.
+The policy follows the [OTLP HTTP retry guidance](https://opentelemetry.io/docs/specs/otlp/#retryable-response-codes).
+Metrics retain their existing export policy.
+
+A temporary proof transport returns one simulated HTTP 503 before it uses the real hosted connection.
+All seven proof records reach Logfire. The local receipt shows one failed request, one retry, and zero failed spans.
+The retried body is identical. The proof test is opt-in audit material and is excluded from the automatic test target.
+Production transport errors can leave delivery ambiguous. A server can accept a request before a connection fails.
+Retries therefore do not establish exactly-once delivery. Compare retained observations with hosted records when completeness matters.

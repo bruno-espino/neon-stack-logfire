@@ -165,8 +165,10 @@ enum NativeBuild {
         }
         client.flush()
         report["host_samples"] = samples; report["observation_errors"] = observerErrors
-        report["delivery"] = ["enabled": client.delivery.enabled, "acknowledged_spans": client.delivery.exportedSpans,
-            "failed_spans": client.delivery.failedSpans]
+        let delivery = client.delivery
+        report["delivery"] = ["enabled": delivery.enabled, "acknowledged_spans": delivery.exportedSpans,
+            "failed_spans": delivery.failedSpans, "failed_requests": delivery.failedRequests, "retried_requests": delivery.retriedRequests,
+            "last_failure": delivery.lastFailure as Any? ?? NSNull()]
         try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys, .prettyPrinted]).write(to: folder.appendingPathComponent("report.json"), options: .atomic)
         print("Build exit \(result.exitCode). Report: \(folder.appendingPathComponent("report.json").path)")
         Companion.printDelivery(client)

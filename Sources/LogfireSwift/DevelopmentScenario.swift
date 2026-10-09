@@ -98,10 +98,13 @@ public final class DevelopmentScenario: @unchecked Sendable {
     }
 
     private func write(phase: String, isReady: Bool, details: [String: String]) throws {
+        let delivery = client.delivery
         let value: [String: Any] = ["schema_version": 1, "scenario_id": id, "session_id": client.sessionID,
             "pid": ProcessInfo.processInfo.processIdentifier, "ready": isReady, "phase": phase,
             "recorded_at": Date().timeIntervalSince1970, "details": details,
-            "delivery": ["enabled": client.delivery.enabled, "exported_spans": client.delivery.exportedSpans, "failed_spans": client.delivery.failedSpans]]
+            "delivery": ["enabled": delivery.enabled, "exported_spans": delivery.exportedSpans, "failed_spans": delivery.failedSpans,
+                         "failed_requests": delivery.failedRequests, "retried_requests": delivery.retriedRequests,
+                         "last_failure": delivery.lastFailure as Any? ?? NSNull()]]
         var report = value
         if let delivery = client.metrics?.delivery {
             report["metric_delivery"] = ["enabled": delivery.enabled, "exported_metrics": delivery.exportedMetrics, "failed_metrics": delivery.failedMetrics]
