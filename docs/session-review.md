@@ -136,3 +136,23 @@ An additional six-case local-only audit passes with disabled exporters. It retai
 Queries also find 18 distinct metric instruments in this audit interval. Four describe companion builds or host context; 14 describe the app.
 Detailed CPU callers, GPU replay costs, and shader compiler updates remain structured records, not additional live metric instruments.
 The presentation-lateness instrument has no observations because these workloads do not supply presentation target times.
+The interruption check returns exit 130, stops the owned app, and starts no subsequent case.
+
+### Which panels proved useful
+
+The five repetitions produce these medians on the busy development Mac.
+They demonstrate signal sensitivity. They do not establish a release performance baseline or a measured speedup.
+CPU values describe the identified main thread relative to one core.
+
+| Deliberate policy | Callback Hz | Presented FPS | Main-thread CPU % | What the overview reveals |
+| --- | --- | --- | --- | --- |
+| Normal drawable submission | 60.0 | 59.9 | 1.3 | Callback and presentation cadence agree |
+| Every second drawable submission | 60.0 | 30.0 | 1.1 | Callback cadence alone hides the presentation limit |
+| Log Roll with bounded HUD updates | 60.0 | 60.0 | 6.5 | The app retains headroom while it presents normally |
+| Log Roll with every-frame HUD updates | 60.0 | 60.0 | 28.9 | Extra main-thread work is visible even before FPS drops |
+| Log Roll with increased GPU work | 52.8 | 52.1 | 5.9 | Cadence falls without a similar rise in main-thread CPU |
+
+Keep the four overview charts. Each answers a different first investigation question.
+Keep raw distributions, native CPU callers, GPU replay costs, shader updates, and wait coverage in the detailed dashboard.
+Those panels answer targeted questions after collection. They are not continuous feeds from an ordinary app launch.
+No third dashboard is needed for this preview. Independent tester feedback should guide the next addition.

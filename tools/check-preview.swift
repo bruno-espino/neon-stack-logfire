@@ -72,7 +72,7 @@ struct SessionEvidence: Encodable {
 }
 
 struct Verification: Encodable {
-    let hostedReconciliationRequired = true
+    let hostedReconciliationRequired: Bool
     let performanceBaseline = false
     let sessions: [SessionEvidence]
     let failures: [String]
@@ -156,10 +156,9 @@ for label in labels {
 if Set(sessions.map(\.sessionID)).count != sessions.count { failures.append("Session identities are duplicated") }
 let encoder = JSONEncoder()
 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-try encoder.encode(Verification(sessions: sessions, failures: failures)).write(
+try encoder.encode(Verification(hostedReconciliationRequired: !local, sessions: sessions, failures: failures)).write(
     to: root.appendingPathComponent("verification.json"), options: .atomic)
 for failure in failures { fputs(failure + "\n", stderr) }
 guard failures.isEmpty, sessions.count == labels.count else { exit(1) }
-print(
-    "Verified \(sessions.count) local sessions and \(sessions.reduce(0) { $0 + $1.frames }) frame samples. Hosted reconciliation remains required."
-)
+print("Verified \(sessions.count) local sessions and \(sessions.reduce(0) { $0 + $1.frames }) frame samples.")
+print(local ? "Exporters are disabled. Evidence remains local." : "Hosted reconciliation remains required.")

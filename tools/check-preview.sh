@@ -62,4 +62,8 @@ while [ "$i" -le "$repetitions" ]; do
     i=$((i + 1))
 done
 /usr/bin/xcrun swift "$root/tools/check-preview.swift" "$output" "$repetitions" ${local_flag:+--no-telemetry}
-printf 'Local preview audit passed. Reconcile these sessions with hosted records and metrics before claiming complete delivery.\n'
+if [ -n "$local_flag" ]; then
+    printf 'Local-only preview audit passed. Exporters are disabled.\n'
+else
+    printf 'Local preview audit passed. Reconcile hosted records and metrics before claiming complete delivery.\n'
+fi
